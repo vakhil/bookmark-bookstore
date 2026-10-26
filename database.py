@@ -263,6 +263,28 @@ def init_db(force_reseed: bool = False):
 
         conn.close()
 
+def ensure_database_ready():
+    """Verifies books exist; if empty or missing, initializes and seeds from CSV or Google Sheet."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='books'")
+        if not cursor.fetchone():
+            conn.close()
+            init_database(force_reseed=True)
+            return
+        cursor.execute("SELECT COUNT(*) FROM books")
+        cnt = cursor.fetchone()[0]
+        conn.close()
+        if cnt == 0:
+            init_database(force_reseed=True)
+    except Exception as e:
+        print(f"Notice initializing database: {e}")
+        try:
+            init_database(force_reseed=True)
+        except Exception:
+            pass
+
 def sync_csv_update_status(book_id: str, status: str = "SOLD OUT"):
     """Directly updates the status of a book in initial_inventory.csv in Column K."""
     if not os.path.exists(SEED_CSV_PATH):

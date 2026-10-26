@@ -31,7 +31,14 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
     """HTTP request handler supporting REST API endpoints and static file serving."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=STATIC_DIR, **kwargs)
+        if "directory" not in kwargs and os.path.exists(STATIC_DIR):
+            kwargs["directory"] = STATIC_DIR
+        try:
+            super().__init__(*args, **kwargs)
+        except TypeError:
+            # Handle BaseHTTPRequestHandler signatures
+            kwargs.pop("directory", None)
+            super().__init__(*args, **kwargs)
 
     def _send_json(self, data: Any, status_code: int = 200):
         """Sends a JSON response with CORS headers."""

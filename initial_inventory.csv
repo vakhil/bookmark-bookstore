@@ -1,6 +1,6 @@
 ,Book_ID,Rack,Column,Position_Top_To_Bottom,Title,Author_or_Editor,Genre,Notes,Simple_Genre,Status
 ,BK-001,Rack 1,Column 1,1,Women Philosophers: Entering Academia in Nineteenth-Century America,Dorothy Rogers,Philosophy / History of Philosophy / Women's Studies,Top book below white boundary line,Philosophy,SOLD OUT
-,BK-002,Rack 1,Column 1,2,The Road to Vietnam,Pablo de Orellana,History / International Relations,,History
+,BK-002,Rack 1,Column 1,2,The Road to Vietnam,Pablo de Orellana,History / International Relations,,History,SOLD OUT
 ,BK-003,Rack 1,Column 1,3,Karl Polanyi and the Contemporary Political Crisis: Transforming Market Society in the Era of Climate Change,Peader Kirby,Political Economy / Political Science,,Politics
 ,BK-004,Rack 1,Column 1,4,Faith and Reason in Continental and Japanese Philosophy,Takeshi Morisato,Comparative Philosophy / Philosophy of Religion,,Philosophy
 ,BK-005,Rack 1,Column 1,5,Auguste Blanqui and the Politics of Popular Empowerment,Philippe Le Goff,Political Philosophy / Political History,,Philosophy
@@ -5562,3 +5562,6 @@
 ,BK-13519,Rack 12,Column 2,3,Agentic Systems Engineering,Demis Hassabis,Computer Science / AI,Brand new copy,Science & Technology,Available
 ,BK-13520,Rack 99,Column 1,1,Unassigned Test 1,Author 1,,,General Non-Fiction,Available
 ,BK-13521,Rack 99,Column 1,2,Unassigned Test 2,Author 2,,,General Non-Fiction,Available
+,BK-13522,Rack 12,Column 2,3,Agentic Systems Engineering,Demis Hassabis,Computer Science / AI,Brand new copy,Science & Technology,Available
+,BK-13523,Rack 99,Column 1,1,Unassigned Test 1,Author 1,,,General Non-Fiction,Available
+,BK-13524,Rack 99,Column 1,2,Unassigned Test 2,Author 2,,,General Non-Fiction,Available
