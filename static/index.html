@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Bookstore">
+  <title>Bookstore</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <!-- Clean, Minimal Header -->
+  <header class="simple-header">
+    <div class="brand">📚 Bookstore</div>
+    <div class="sheet-status" id="syncStatusPill">
+      <span class="status-dot"></span>
+      <span id="syncStatusText">Google Sheets Connected</span>
+      <button id="btnReloadSheet" class="btn btn-xs btn-outline" style="margin-left:0.5rem; padding: 2px 8px; font-size:0.75rem; border-radius:4px; cursor:pointer;" title="Pull latest books from Google Sheet">🔄 Refresh Sheet</button>
+      <a href="https://docs.google.com/spreadsheets/d/1-b8dp2W_1z1BT_2vAxpAMYTIP68CiyQf5z-Hal33JrU/edit?gid=0#gid=0" target="_blank" class="sheet-link">Sheet ↗</a>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs (Search & Sell, Genre, Book Advisor, Add Book, Sell by ID, Unassigned) -->
+  <nav class="main-tabs simple-nav">
+    <button class="tab-btn active" data-tab="tabSearch">
+      <span class="tab-icon">🔍</span>
+      <span class="tab-label">Search</span>
+    </button>
+    <button class="tab-btn" data-tab="tabGenre">
+      <span class="tab-icon">🏷️</span>
+      <span class="tab-label">Genre</span>
+    </button>
+    <button class="tab-btn" data-tab="tabAdvisor">
+      <span class="tab-icon">💡</span>
+      <span class="tab-label">Advisor</span>
+    </button>
+    <button class="tab-btn" data-tab="tabAdd">
+      <span class="tab-icon">➕</span>
+      <span class="tab-label">Add</span>
+    </button>
+    <button class="tab-btn" data-tab="tabSell">
+      <span class="tab-icon">⚡</span>
+      <span class="tab-label">Sell ID</span>
+    </button>
+    <button class="tab-btn tab-btn-quiet" data-tab="tabUnassigned">
+      <span class="tab-icon">📍</span>
+      <span class="tab-label">Shelf (<span id="tabUnassignedBadge">0</span>)</span>
+    </button>
+  </nav>
+
+  <!-- Main Workspaces -->
+  <main class="simple-container">
+
+    <!-- ==================== TAB 1: SEARCH & SELL (CORE PRIORITY) ==================== -->
+    <section id="tabSearch" class="tab-pane active">
+      <!-- Search Mode Pills (All, Title, Author) -->
+      <div class="search-mode-bar" id="searchModeBar">
+        <span class="search-mode-label">Search by:</span>
+        <button type="button" class="search-mode-pill active" data-type="all">🔍 All</button>
+        <button type="button" class="search-mode-pill" data-type="title">📖 Book Title</button>
+        <button type="button" class="search-mode-pill" data-type="author">✍️ Author's Name</button>
+      </div>
+
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search by title, author, or Book ID (e.g. BK-10151)..." autocomplete="off" autofocus>
+        <button class="btn-clear" id="btnClearSearch" style="display: none;" title="Clear">✕</button>
+      </div>
+
+      <!-- Dedicated Camera Scan Button Below Search -->
+      <div class="search-camera-bar">
+        <label class="camera-scan-btn-full" title="Scan book cover or spine to search">
+          <span class="cam-icon">📷</span>
+          <span>Scan Book Cover or Spine to Search</span>
+          <input type="file" id="cameraSearchInput" accept="image/*" capture="environment" style="display: none;">
+        </label>
+      </div>
+
+      <!-- Live Search Results -->
+      <div id="searchResultsContainer">
+        <div class="empty-prompt">
+          <div class="prompt-icon">📖</div>
+          <h3>Find Any Book Instantly</h3>
+          <p>Type a book title, author, or Book ID to see its rack location and sell copies with 1-click.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: BROWSE BY GENRE ==================== -->
+    <section id="tabGenre" class="tab-pane">
+      <div class="clean-card">
+        <div class="card-title-row">
+          <div>
+            <h2>Browse Books by Genre</h2>
+            <p class="subtitle" style="margin: 0.2rem 0 0; font-size: 0.85rem; color: #64748b;">
+              Explore the bookstore's inventory organized into standard canonical genres.
+            </p>
+          </div>
+          <span class="id-tag" id="genreBooksCountBadge">0 Books</span>
+        </div>
+
+        <div class="genre-filter-row" style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; margin: 1rem 0;">
+          <div style="flex: 1.2; min-width: 220px;">
+            <label style="display:block; font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:0.25rem;">SELECT SIMPLE GENRE</label>
+            <select id="genreSelect" class="form-control" style="font-size:0.95rem; font-weight:600; padding:0.6rem 0.8rem; width:100%; border:1px solid #cbd5e1; border-radius:8px; background:#fff;">
+              <option value="">-- Choose a Genre --</option>
+            </select>
+          </div>
+
+          <div style="flex: 1; min-width: 200px;">
+            <label style="display:block; font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:0.25rem;">FILTER TITLES OR AUTHORS</label>
+            <input type="text" id="genreFilterInput" placeholder="Type to filter..." style="font-size:0.9rem; padding:0.6rem 0.8rem; width:100%; border:1px solid #cbd5e1; border-radius:8px;">
+          </div>
+
+          <div style="padding-bottom:0.35rem;">
+            <label style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.85rem; font-weight:600; color:#475569; cursor:pointer;">
+              <input type="checkbox" id="chkGenreAvailableOnly" checked>
+              <span>Available Only</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Quick Genre Pills Bar -->
+        <div id="quickGenrePills" class="quick-pills-bar" style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:1rem;"></div>
+
+        <!-- Genre Books Results Container -->
+        <div id="genreBooksContainer">
+          <div class="empty-prompt">
+            <div class="prompt-icon">🏷️</div>
+            <h3>Select a Genre Above</h3>
+            <p>Choose any canonical simple genre from the dropdown or click a quick category pill to display all matching books.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: ASK QUESTIONS & AI RECOMMENDATIONS ==================== -->
+    <section id="tabAdvisor" class="tab-pane">
+      <div class="clean-card">
+        <div class="card-title-row">
+          <div>
+            <h2>Ask for Book Recommendations</h2>
+            <p class="subtitle" style="margin: 0.2rem 0 0; font-size: 0.85rem; color: #64748b;">
+              Ask natural questions to discover relevant books (e.g. <i>"I need books on organizing and simple living"</i> or <i>"I want philosophical Japanese books"</i>).
+            </p>
+          </div>
+          <span class="status-pill" style="background:#eef2ff; color:#4338ca; border-color:#c7d2fe;">AI & Semantic Search</span>
+        </div>
+
+        <div class="advisor-input-box" style="margin: 1rem 0;">
+          <div style="display:flex; gap:0.5rem;">
+            <input type="text" id="advisorQuestionInput" placeholder="Ask a question or describe what you're looking for..." style="flex:1; font-size:0.95rem; padding:0.75rem 1rem; border:1px solid #cbd5e1; border-radius:8px;">
+            <button type="button" class="btn btn-primary" id="btnAskAdvisor" style="padding:0.75rem 1.25rem;">
+              ✨ Ask
+            </button>
+          </div>
+
+          <!-- Example Question Pills -->
+          <div style="margin-top:0.75rem; display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center;">
+            <span style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Try asking:</span>
+            <button type="button" class="example-question-pill" data-q="i need to get some books on organizing and simple living?">🧹 Organizing & simple living</button>
+            <button type="button" class="example-question-pill" data-q="i want some philosphical japanese books">🗾 Philosophical Japanese books</button>
+            <button type="button" class="example-question-pill" data-q="books about procrastination and habit formation">⏳ Procrastination & habits</button>
+            <button type="button" class="example-question-pill" data-q="what beginner books do you have on investing and finance?">📈 Investing & finance</button>
+            <button type="button" class="example-question-pill" data-q="books on stoicism, peace of mind, and solitude">🕊️ Stoicism & solitude</button>
+          </div>
+        </div>
+
+        <!-- AI Advisor Response / Summary Banner -->
+        <div id="advisorSummaryBanner" style="display:none;" class="advisor-summary-card">
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+            <span style="font-size:1.2rem;">💡</span>
+            <h4 id="advisorSummaryTitle" style="margin:0; font-size:0.95rem; color:#1e293b;">Recommendations</h4>
+          </div>
+          <p id="advisorSummaryText" style="margin:0; font-size:0.88rem; color:#334155; line-height:1.45;"></p>
+        </div>
+
+        <!-- Recommended Books Container -->
+        <div id="advisorResultsContainer">
+          <div class="empty-prompt">
+            <div class="prompt-icon">💡</div>
+            <h3>Looking for Book Recommendations?</h3>
+            <p>Ask a question or select an example above to find matching titles from inventory.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: ADD NEW BOOK ==================== -->
+    <section id="tabAdd" class="tab-pane">
+      <div class="clean-card">
+        <div class="card-title-row">
+          <h2>Add Book to Inventory</h2>
+          <span class="id-tag">ID Auto-Generated</span>
+        </div>
+
+        <!-- Camera / Photo Action -->
+        <div class="camera-actions">
+          <button type="button" class="btn btn-primary" id="btnOpenLiveCamera">
+            📸 Open Camera Viewfinder
+          </button>
+          <label class="btn btn-secondary">
+            📁 Upload Photo
+            <input type="file" id="singleBookCamera" accept="image/*" style="display: none;">
+          </label>
+        </div>
+
+        <!-- Photo preview & OCR status -->
+        <div id="singlePhotoPreview" class="photo-preview-box" style="display: none;">
+          <img id="singlePhotoImg" src="" alt="Captured book">
+          <div class="ocr-status-box">
+            <span id="singleOcrStatus">Analyzing book...</span>
+            <div id="singleMatchBadge"></div>
+          </div>
+        </div>
+
+        <form id="formSingleBook" class="simple-form">
+          <div class="form-field">
+            <label>Book Title *</label>
+            <input type="text" id="singleTitle" required placeholder="Book title">
+          </div>
+
+          <div class="form-field">
+            <label>Author / Editor *</label>
+            <input type="text" id="singleAuthor" required placeholder="Author name">
+          </div>
+
+          <div class="form-row">
+            <div class="form-field half">
+              <label>Genre (Optional)</label>
+              <input type="text" id="singleGenre" placeholder="e.g. Fiction, History">
+            </div>
+            <div class="form-field half">
+              <label>Language</label>
+              <input type="text" id="singleLanguage" value="English">
+            </div>
+          </div>
+
+          <!-- Shelf Location -->
+          <div class="shelf-box">
+            <div class="shelf-box-title">📍 Shelf Location (Optional — can leave empty)</div>
+            <div class="form-row">
+              <div class="form-field third">
+                <label>Rack</label>
+                <input type="text" id="singleRack" placeholder="e.g. Rack 50">
+              </div>
+              <div class="form-field third">
+                <label>Column</label>
+                <input type="text" id="singleColumn" placeholder="e.g. Column 2">
+              </div>
+              <div class="form-field third">
+                <label>Book Position</label>
+                <input type="text" id="singlePosition" placeholder="e.g. 1 = Top, 5 = 5th">
+              </div>
+            </div>
+            <div class="english-loc-preview" id="singleLocationEnglishPreview">
+              Location: <span class="highlight">Unassigned</span>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label>Spine / Physical Notes (Optional)</label>
+            <input type="text" id="singleNotes" placeholder="e.g. Hardcover, red spine">
+          </div>
+
+          <div id="singleDupAlert" class="alert-box" style="display: none;"></div>
+
+          <button type="submit" class="btn btn-success btn-block" id="btnSaveSingleBook">
+            💾 Save Book to Inventory & Google Sheets
+          </button>
+        </form>
+
+        <!-- Collapsible Bulk Workflows -->
+        <details class="bulk-toggle-section">
+          <summary>Need to photograph books in bulk? (Workflows A & B)</summary>
+          <div class="bulk-inner">
+            <div class="mode-selector-bar">
+              <button class="mode-btn active" data-mode="bulkA">Workflow A: Rapid Batch Photos</button>
+              <button class="mode-btn" data-mode="bulkB">Workflow B: Shelf / Stack Photo</button>
+            </div>
+
+            <!-- Workflow A -->
+            <div id="sectionBulkA" class="mode-content active">
+              <div class="bulk-header-actions">
+                <label class="btn btn-primary btn-sm">
+                  📸 Photograph Next Book
+                  <input type="file" id="batchCameraInput" accept="image/*" capture="environment" style="display: none;">
+                </label>
+                <button class="btn btn-success btn-sm" id="btnSaveBatchA" disabled>
+                  Save Batch (<span id="batchCountSave">0</span>)
+                </button>
+              </div>
+              <span id="batchCount" style="display: none;">0</span>
+              <table class="simple-table" id="tableBatchA">
+                <tbody id="tbodyBatchA">
+                  <tr class="empty-row"><td>No books in batch. Tap "Photograph Next Book" to begin.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Workflow B -->
+            <div id="sectionBulkB" class="mode-content" style="display: none;">
+              <div class="bulk-header-actions">
+                <label class="btn btn-primary btn-sm">
+                  📸 Photograph Shelf / Stack
+                  <input type="file" id="multiBookCameraInput" accept="image/*" capture="environment" style="display: none;">
+                </label>
+                <button class="btn btn-success btn-sm" id="btnSaveBatchB" disabled>
+                  Save Candidates (<span id="multiCandidateCount">0</span>)
+                </button>
+              </div>
+              <div id="multiPhotoPreviewWrap" style="display: none;" class="multi-preview-box">
+                <img id="multiPhotoImg" src="" alt="Multi book photo">
+                <div id="multiPhotoStatus" class="photo-meta">Detecting book spines in image...</div>
+              </div>
+              <table class="simple-table" id="tableBatchB">
+                <tbody id="tbodyBatchB">
+                  <tr class="empty-row"><td>Photograph a shelf row or stack of books.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: QUICK SELL (POS) ==================== -->
+    <section id="tabSell" class="tab-pane">
+      <div class="clean-card">
+        <div class="card-title-row">
+          <h2>Sell a Book</h2>
+          <span class="status-pill">Instant Sheets Update</span>
+        </div>
+
+        <div class="pos-input-group">
+          <input type="text" id="posSearchInput" placeholder="Enter Book ID (e.g. BK-10151) or title..." autocomplete="off">
+        </div>
+        <div style="margin-bottom: 1.25rem;">
+          <label class="camera-scan-btn-full" title="Scan book cover or spine to sell">
+            <span class="cam-icon">📷</span>
+            <span>Scan Book Cover or Spine to Sell</span>
+            <input type="file" id="posCameraInput" accept="image/*" capture="environment" style="display: none;">
+          </label>
+        </div>
+
+        <div id="posCandidatesContainer" class="pos-results">
+          <div class="empty-prompt small">
+            Enter a Book ID or book title above to find available copies to sell.
+          </div>
+        </div>
+
+        <div id="saleReceiptContainer" style="display: none;" class="receipt-box"></div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: UNASSIGNED BOOKS ==================== -->
+    <section id="tabUnassigned" class="tab-pane">
+      <div class="clean-card">
+        <div class="card-title-row">
+          <h2>Unassigned Books (<span id="unassignedCountLabel">0</span>)</h2>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="btn btn-danger btn-sm" id="btnBulkDeleteUnassigned" disabled>
+              🗑️ Delete Selected
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnOpenBulkAssignModal" disabled>
+              📍 Assign Location
+            </button>
+          </div>
+        </div>
+
+        <input type="text" id="unassignedSearchInput" class="filter-input" placeholder="Filter by title or author...">
+
+        <div class="table-wrap">
+          <table class="simple-table" id="tableUnassigned">
+            <thead>
+              <tr>
+                <th width="30"><input type="checkbox" id="chkSelectAllUnassigned"></th>
+                <th>Book ID</th>
+                <th>Title</th>
+                <th>Author</th>
+                <th>Assign to Row & Column</th>
+                <th width="60">Delete</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyUnassigned">
+              <tr class="empty-row"><td colspan="6">Loading unassigned books...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Sale Confirmation Modal -->
+  <div id="saleDrawer" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="bottom-sheet-handle"></div>
+      <div class="modal-header">
+        <h3>Confirm Sale</h3>
+        <button class="btn-close" id="btnCloseSaleDrawer">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="sale-summary">
+          <div class="sale-title" id="saleBookTitle">-</div>
+          <div class="sale-author" id="saleBookAuthor">-</div>
+          <div class="sale-id" id="saleBookId">-</div>
+          <div class="sale-loc" id="saleBookLocation">-</div>
+        </div>
+
+        <div class="form-field">
+          <label>Selling Price (Optional)</label>
+          <input type="number" step="0.01" min="0" id="salePrice" placeholder="Leave blank if not tracked">
+        </div>
+
+        <div class="form-field">
+          <label>Payment / Customer Note (Optional)</label>
+          <input type="text" id="saleNotes" placeholder="e.g. Cash, Card, UPI">
+        </div>
+
+        <button class="btn btn-success btn-block btn-lg" id="btnConfirmSale">
+          ✅ Complete Sale & Mark SOLD OUT
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Camera Modal -->
+  <div id="modalLiveCamera" class="modal-backdrop" style="display: none;">
+    <div class="modal-card camera-modal-card">
+      <div class="modal-header">
+        <h3>📸 Camera Viewfinder</h3>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <button type="button" class="btn btn-xs btn-outline" id="btnToggleGoogleKey">🔑 Key</button>
+          <button class="btn-close" id="btnCloseLiveCamera">✕</button>
+        </div>
+      </div>
+
+      <div id="googleKeyInputWrap" style="display:none; padding:0.5rem; background:#1e293b; gap:0.5rem;">
+        <input type="password" id="inputGoogleApiKey" placeholder="Google Vision / Gemini API Key" style="flex:1;">
+        <button type="button" class="btn btn-sm btn-primary" id="btnSaveGoogleKey">Save</button>
+      </div>
+
+      <div class="camera-viewport-wrap">
+        <video id="liveCameraVideo" autoplay playsinline muted></video>
+        <div class="camera-frame-guide">
+          <div class="guide-box">
+            <span class="guide-corner tl"></span><span class="guide-corner tr"></span>
+            <span class="guide-corner bl"></span><span class="guide-corner br"></span>
+            <span class="guide-label" id="guideStatusLabel">Align Book Cover or Spine Here</span>
+          </div>
+        </div>
+        <div id="liveDetectionBanner" class="live-detection-hud" style="display: none;">
+          <div class="hud-text">
+            <span class="hud-tag">DETECTED</span>
+            <span id="liveDetectedTitle">Scanning...</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-success" id="btnLiveUseDetected">⚡ Select</button>
+        </div>
+        <canvas id="liveCameraCanvas" style="display: none;"></canvas>
+      </div>
+
+      <div class="camera-controls">
+        <label class="video-auto-scan-toggle">
+          <input type="checkbox" id="chkAutoScanVideo">
+          <span>Real-time Video AI</span>
+        </label>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-secondary" id="btnSwitchCamera">Flip</button>
+          <button type="button" class="btn btn-primary" id="btnSnapLivePhoto">📸 Snap</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Assign Location Modal -->
+  <div id="modalBulkAssign" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Assign Location (<span id="modalSelectedCount">0</span> books)</h3>
+        <button class="btn-close" id="btnCloseModalBulkAssign">✕</button>
+      </div>
+      <form id="formBulkAssign" class="simple-form">
+        <div class="form-field">
+          <label>Rack *</label>
+          <input type="text" id="bulkRack" required placeholder="e.g. Rack 50">
+        </div>
+        <div class="form-field">
+          <label>Column *</label>
+          <input type="text" id="bulkColumn" required placeholder="e.g. Column 2">
+        </div>
+        <div class="form-field">
+          <label>Book Position *</label>
+          <input type="text" id="bulkPosition" required placeholder="1 = Top of rack, 5 = 5th">
+        </div>
+        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+          <button type="button" class="btn btn-secondary" id="btnCancelBulkAssign" style="flex:1;">Cancel</button>
+          <button type="submit" class="btn btn-success" style="flex:1;">Update</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Hidden elements preserving compatibility with controller -->
+  <div style="display: none;">
+    <span id="statTotalCopies"></span>
+    <span id="statUniqueTitles"></span>
+    <span id="statAvailable"></span>
+    <span id="statSold"></span>
+    <span id="statUnassigned"></span>
+    <span id="statSalesCount"></span>
+    <span id="statRevenue"></span>
+    <span id="pendingSyncCount"></span>
+    <span id="syncPendingCount"></span>
+    <span id="syncCompletedCount"></span>
+    <span id="syncLastTime"></span>
+    <button id="btnSyncNow"></button>
+    <button id="btnDownloadCsv"></button>
+    <button id="btnManualSync"></button>
+    <button id="btnCreateBackup"></button>
+    <div id="cardUnassigned"></div>
+    <div id="ocrProgressWrap"><div id="ocrProgressFill"></div></div>
+    <div id="singleOcrRawTextWrap"><code id="singleOcrRawText"></code></div>
+    <table id="tableSales"><tbody id="tbodySales"></tbody></table>
+    <table id="tableAudit"><tbody id="tbodyAudit"></tbody></table>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
