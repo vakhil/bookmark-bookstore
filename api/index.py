@@ -68,10 +68,18 @@ def app(environ, start_response):
     # Ensure database is primed for every request
     database.ensure_database_ready()
 
-    path = environ.get("PATH_INFO", "")
     method = environ.get("REQUEST_METHOD", "GET").upper()
     query_string = environ.get("QUERY_STRING", "")
     query_params = urllib.parse.parse_qs(query_string)
+
+    # Resolve accurate API path
+    path = query_params.get("__path__", [""])[0]
+    if not path or path == "/api/index.py":
+        raw = environ.get("RAW_URI") or environ.get("REQUEST_URI") or environ.get("HTTP_X_MATCHED_PATH", "")
+        if raw:
+            path = urllib.parse.urlparse(raw).path
+    if not path or path == "/api/index.py":
+        path = environ.get("PATH_INFO", "")
 
     # 1. CORS Preflight
     if method == "OPTIONS":
