@@ -104,6 +104,10 @@ function doPost(e) {
       result = handleUpdateStatus(sheet, payload);
     } else if (action === "APPEND_SALE") {
       result = handleAppendSale(ss, payload);
+    } else if (action === "INSERT_ROW" || action === "ADD_BOOK") {
+      result = handleAddBook(sheet, payload);
+    } else if (action === "DELETE_ROW") {
+      result = handleDeleteBook(sheet, payload);
     }
 
     return ContentService.createTextOutput(JSON.stringify(result))
@@ -134,6 +138,8 @@ function handleUpdateStatus(sheet, payload) {
       cell.setValue(status);
       if (status === "SOLD OUT") {
         cell.setBackground("#fee2e2").setFontColor("#b91c1c").setFontWeight("bold");
+      } else {
+        cell.setBackground(null).setFontColor(null).setFontWeight("normal");
       }
       return { success: true, row: i + 1, book_id: bookId, status: status };
     }
@@ -161,6 +167,40 @@ function handleAppendSale(ss, payload) {
     payload.notes || ""
   ]);
   return { success: true };
+}
+
+function handleAddBook(sheet, payload) {
+  var lastRow = sheet.getLastRow();
+  var newIndex = lastRow;
+  var simpleGenre = classifyCommonGenre(payload.genre || "", payload.title || "");
+  sheet.appendRow([
+    newIndex,
+    payload.book_id || "",
+    payload.rack || "",
+    payload.column || "",
+    payload.position || "",
+    payload.title || "",
+    payload.author || "",
+    payload.genre || "",
+    payload.notes || "",
+    simpleGenre,
+    payload.status || "Available"
+  ]);
+  return { success: true, row: lastRow + 1 };
+}
+
+function handleDeleteBook(sheet, payload) {
+  var bookId = String(payload.book_id || "").trim();
+  if (!bookId) return { success: false, error: "Missing book_id" };
+  var lastRow = sheet.getLastRow();
+  var ids = sheet.getRange(1, 2, lastRow, 1).getValues();
+  for (var i = 1; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === bookId) {
+      sheet.deleteRow(i + 1);
+      return { success: true, deleted_book_id: bookId };
+    }
+  }
+  return { success: false, error: "Book ID not found" };
 }
 
 /**

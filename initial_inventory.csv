@@ -1,5 +1,5 @@
 ,Book_ID,Rack,Column,Position_Top_To_Bottom,Title,Author_or_Editor,Genre,Notes,Simple_Genre,Status
-,BK-001,Rack 1,Column 1,1,Women Philosophers: Entering Academia in Nineteenth-Century America,Dorothy Rogers,Philosophy / History of Philosophy / Women's Studies,Top book below white boundary line,Philosophy
+,BK-001,Rack 1,Column 1,1,Women Philosophers: Entering Academia in Nineteenth-Century America,Dorothy Rogers,Philosophy / History of Philosophy / Women's Studies,Top book below white boundary line,Philosophy,SOLD OUT
 ,BK-002,Rack 1,Column 1,2,The Road to Vietnam,Pablo de Orellana,History / International Relations,,History
 ,BK-003,Rack 1,Column 1,3,Karl Polanyi and the Contemporary Political Crisis: Transforming Market Society in the Era of Climate Change,Peader Kirby,Political Economy / Political Science,,Politics
 ,BK-004,Rack 1,Column 1,4,Faith and Reason in Continental and Japanese Philosophy,Takeshi Morisato,Comparative Philosophy / Philosophy of Religion,,Philosophy
@@ -5559,3 +5559,6 @@
 ,BK-13399,Top Rack 2,Column 6,17,The Room Where It Happened (Copy 2),John Bolton,Political Memoir / Trump Administration Insider,Duplicate white spine directly below[cite: 25],
 ,BK-13400,Top Rack 2,Column 6,18,A Life in Questions (Copy 1),Jeremy Paxman,Journalism Memoir / British Broadcasting & BBC,Dark blue spine with white lettering[cite: 25],
 ,BK-13401,Top Rack 2,Column 6,19,A Life in Questions (Copy 2),Jeremy Paxman,Journalism Memoir / British Broadcasting & BBC,Bottom book of Column 6 stack; duplicate dark blue spine[cite: 25],
+,BK-13519,Rack 12,Column 2,3,Agentic Systems Engineering,Demis Hassabis,Computer Science / AI,Brand new copy,Science & Technology,Available
+,BK-13520,Rack 99,Column 1,1,Unassigned Test 1,Author 1,,,General Non-Fiction,Available
+,BK-13521,Rack 99,Column 1,2,Unassigned Test 2,Author 2,,,General Non-Fiction,Available

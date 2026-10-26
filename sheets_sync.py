@@ -35,14 +35,22 @@ DEFAULT_CONFIG = {
 }
 
 def load_config() -> Dict[str, Any]:
-    """Loads configuration for Google Sheets connection."""
+    """Loads configuration for Google Sheets connection, checking env vars for Vercel."""
+    cfg = DEFAULT_CONFIG.copy()
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return {**DEFAULT_CONFIG, **json.load(f)}
+                cfg = {**cfg, **json.load(f)}
         except Exception:
             pass
-    return DEFAULT_CONFIG.copy()
+    # Support Vercel / serverless environment variables
+    env_url = os.environ.get("GOOGLE_APPS_SCRIPT_URL") or os.environ.get("APPS_SCRIPT_URL")
+    if env_url:
+        cfg["apps_script_url"] = env_url.strip()
+    env_sheet_id = os.environ.get("SPREADSHEET_ID")
+    if env_sheet_id:
+        cfg["spreadsheet_id"] = env_sheet_id.strip()
+    return cfg
 
 def save_config(config: Dict[str, Any]):
     """Saves updated Google Sheets connection configuration."""

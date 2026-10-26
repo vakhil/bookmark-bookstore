@@ -912,6 +912,13 @@ def sell_book(
         conn.close()
         sync_csv_update_status(book_id, "SOLD OUT")
 
+        # Immediately flush sync queue to Google Sheets if webhook is available
+        try:
+            import sheets_sync
+            sheets_sync.process_outbox_queue()
+        except Exception as e:
+            print(f"Notice auto-flushing sync queue: {e}")
+
         return {
             "success": True,
             "transaction_ref": tx_ref,
