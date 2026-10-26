@@ -193,14 +193,7 @@ def app(environ, start_response):
             )
             return json_response(start_response, {"success": True, "book": book})
 
-        elif path == "/api/books/batch-a":
-            books_list = body.get("books", [])
-            if not books_list:
-                return json_response(start_response, {"error": "No books provided in batch."}, 400)
-            res = database.add_books_batch(books_list, user="Staff")
-            return json_response(start_response, res)
-
-        elif path == "/api/books/batch-b":
+        elif path in ("/api/books/bulk", "/api/books/batch-a", "/api/books/batch-b"):
             books_list = body.get("books", [])
             if not books_list:
                 return json_response(start_response, {"error": "No books provided in batch."}, 400)

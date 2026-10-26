@@ -166,7 +166,7 @@ def call_google_gemini_multimodal(image_b64: str, api_key: str) -> Optional[Dict
     else:
         mime_type = "image/jpeg"
 
-    models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3-flash-preview"]
+    models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
     prompt = """You are an automated bookstore scanner. Look at this book cover or spine photograph.
 Identify the exact:
 1. "title": The main book title.
@@ -220,7 +220,7 @@ def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict
     else:
         mime_type = "image/jpeg"
 
-    models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3-flash-preview"]
+    models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
     prompt = """You are an automated bookstore inventory scanner.
 Look at this photograph of books stacked one on top of each other (or a row of books on a shelf).
 Examine each individual book spine or cover from the TOP of the stack to the BOTTOM.
