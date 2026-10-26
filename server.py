@@ -223,7 +223,7 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
         # 3. OCR Text Extraction & Book Candidate Detection (Req 1.1 Option A & Req 1.2)
         elif path == "/api/books/ocr-extract":
             raw_text = body.get("raw_text", "")
-            multiple = body.get("multiple", False)
+            multiple = body.get("multiple", False) or body.get("spine_mode", False)
             image_data = body.get("image_data", "")
             batch_hashes = body.get("batch_hashes", [])
 

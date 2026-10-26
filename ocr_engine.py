@@ -166,7 +166,7 @@ def call_google_gemini_multimodal(image_b64: str, api_key: str) -> Optional[Dict
     else:
         mime_type = "image/jpeg"
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     prompt = """You are an automated bookstore scanner. Look at this book cover or spine photograph.
 Identify the exact:
 1. "title": The main book title.
@@ -202,6 +202,66 @@ Return strictly valid JSON with these keys, and no extra markdown or explanation
             return parsed
     except Exception as e:
         print(f"Google Gemini Multimodal notice (offline or unreachable): {e}")
+    return None
+
+def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Calls Google Gemini Multimodal Vision API to identify multiple books stacked on top of each other
+    or placed in a row on a shelf, ordered from top to bottom (or left to right).
+    """
+    if "," in image_b64:
+        mime_match = re.search(r"data:(image/[a-zA-Z]+);base64,", image_b64)
+        mime_type = mime_match.group(1) if mime_match else "image/jpeg"
+        image_b64 = image_b64.split(",", 1)[1]
+    else:
+        mime_type = "image/jpeg"
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    prompt = """You are an automated bookstore inventory scanner.
+Look at this photograph of books stacked one on top of each other (or a row of books on a shelf).
+Identify each individual book spine visible, ordered from the TOP of the stack to the BOTTOM.
+For each book, determine:
+- "title": Exact book title
+- "author": Primary author or editor name
+- "genre": Subject category (e.g. Fiction, Self-Help, Business, Science, History)
+- "language": Language (default "English")
+- "confidence": "high", "medium", or "low"
+
+Return strictly a valid JSON array of objects, e.g.:
+[
+  {"title": "Book Title 1", "author": "Author 1", "genre": "Fiction", "language": "English", "confidence": "high"},
+  {"title": "Book Title 2", "author": "Author 2", "genre": "Business", "language": "English", "confidence": "high"}
+]
+Return only the JSON array with no extra text or markdown formatting."""
+
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inlineData": {"mimeType": mime_type, "data": image_b64}}
+            ]
+        }],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+    }
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            if text.startswith("```"):
+                text = re.sub(r"^```[a-z]*\n|\n```$", "", text, flags=re.MULTILINE).strip()
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return parsed
+            elif isinstance(parsed, dict) and "books" in parsed and isinstance(parsed["books"], list):
+                return parsed["books"]
+    except Exception as e:
+        print(f"Google Gemini Stack detection notice (offline or unreachable): {e}")
     return None
 
 def extract_candidates_from_text(
@@ -468,28 +528,111 @@ def detect_multiple_books_in_image(
     google_api_key: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Workflow B: Processes multiple books captured in one image or video frame (stack or row).
-    Segments text blocks into individual candidate book records.
+    Workflow B: Processes multiple books captured in one image (books stacked one on top of each other,
+    or shelf row). Segments spines into individual candidate book records ordered from top to bottom.
     Flags duplicates and uncertain items.
     """
+    api_key = google_api_key if is_valid_google_key(google_api_key) else get_google_api_key()
     candidates = []
     is_dup_image = False
     if current_image_hash and batch_image_hashes and current_image_hash in batch_image_hashes:
         is_dup_image = True
 
-    for idx, block in enumerate(raw_text_blocks):
+    # 1. Try Google Gemini Vision to detect all spines in the stack directly from image
+    if image_data and api_key:
+        gemini_stack = call_google_gemini_stack(image_data, api_key)
+        if gemini_stack and len(gemini_stack) > 0:
+            conn = database.get_db_connection()
+            cursor = conn.cursor()
+            for idx, g_cand in enumerate(gemini_stack):
+                g_title = (g_cand.get("title") or "").strip()
+                g_author = (g_cand.get("author") or "").strip()
+                g_genre = (g_cand.get("genre") or "").strip()
+                if not g_title:
+                    continue
+
+                # Cross-reference with store catalog
+                cat_search = search_engine.search_books(g_title)
+                matched_existing = False
+                if cat_search["exact_matches"]:
+                    top = cat_search["exact_matches"][0]
+                    g_title = top["title"]
+                    g_author = top["author"]
+                    g_genre = top.get("genre", g_genre)
+                    matched_existing = True
+
+                cursor.execute(
+                    "SELECT book_id, rack, column_num, position FROM books WHERE lower(title) = ? AND status = 'Available'",
+                    (g_title.lower(),)
+                )
+                existing_copies = cursor.fetchall()
+                existing_count = len(existing_copies)
+
+                item = {
+                    "candidate_index": idx + 1,
+                    "position": idx + 1,
+                    "title": g_title,
+                    "author": g_author,
+                    "genre": g_genre,
+                    "language": g_cand.get("language", "English"),
+                    "confidence": g_cand.get("confidence", "high"),
+                    "flag_uncertain": g_cand.get("confidence") == "low",
+                    "matched_existing": matched_existing or existing_count > 0,
+                    "existing_in_inventory": existing_count > 0,
+                    "existing_copies_count": existing_count,
+                    "info_message": f"Title exists in store ({existing_count} copies)" if existing_count > 0 else "New title",
+                    "engine": "Google Gemini Vision AI",
+                    "warning": "Same image photographed twice" if is_dup_image else None,
+                    "is_duplicate_image": is_dup_image
+                }
+                candidates.append(item)
+            conn.close()
+            if candidates:
+                return candidates
+
+    # 2. Fallback: Parse raw_text_blocks into individual book spine segments
+    all_blocks = []
+    for b in raw_text_blocks:
+        if not b or not b.strip():
+            continue
+        if "---" in b:
+            all_blocks.extend([part.strip() for part in b.split("---") if part.strip()])
+        elif "\n\n" in b:
+            all_blocks.extend([part.strip() for part in b.split("\n\n") if part.strip()])
+        else:
+            all_blocks.append(b.strip())
+
+    # If all_blocks only has 1 block but with several lines, group into 2-line spine segments
+    if len(all_blocks) == 1 and "\n" in all_blocks[0]:
+        lines = [l.strip() for l in all_blocks[0].splitlines() if l.strip()]
+        if len(lines) > 2:
+            all_blocks = []
+            chunk = []
+            for l in lines:
+                chunk.append(l)
+                if len(chunk) >= 2:
+                    all_blocks.append("\n".join(chunk))
+                    chunk = []
+            if chunk:
+                all_blocks.append("\n".join(chunk))
+
+    for idx, block in enumerate(all_blocks):
         cand = extract_candidates_from_text(block, google_api_key=google_api_key)
         cand["candidate_index"] = idx + 1
+        cand["position"] = idx + 1
         cand["is_duplicate_image"] = is_dup_image
 
         if is_dup_image:
             cand["flag_uncertain"] = True
             cand["warning"] = "Same image photographed twice in this batch. Please verify if intentional."
 
-        if cand["title"]:
+        if cand.get("title"):
             conn = database.get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT book_id, rack, column_num, position FROM books WHERE lower(title) = ? AND status = 'Available'", (cand["title"].lower(),))
+            cursor.execute(
+                "SELECT book_id, rack, column_num, position FROM books WHERE lower(title) = ? AND status = 'Available'",
+                (cand["title"].lower(),)
+            )
             existing_copies = cursor.fetchall()
             conn.close()
 

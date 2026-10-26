@@ -73,12 +73,18 @@
         <button class="btn-clear" id="btnClearSearch" style="display: none;" title="Clear">✕</button>
       </div>
 
-      <!-- Dedicated Camera Scan Button Below Search -->
-      <div class="search-camera-bar">
-        <label class="camera-scan-btn-full" title="Scan book cover or spine to search">
-          <span class="cam-icon">📷</span>
-          <span>Scan Book Cover or Spine to Search</span>
-          <input type="file" id="cameraSearchInput" accept="image/*" capture="environment" style="display: none;">
+      <!-- Dedicated Camera Scan Buttons Below Search -->
+      <div class="pos-camera-options-row">
+        <button type="button" class="btn btn-primary" id="btnSearchLiveCamera">
+          📸 Live Webcam Scanner
+        </button>
+        <label class="btn btn-secondary">
+          📱 Phone Camera
+          <input type="file" id="cameraSearchInput" accept="image/*" capture="environment" class="visually-hidden-input">
+        </label>
+        <label class="btn btn-outline">
+          📁 Upload Photo
+          <input type="file" id="cameraSearchFileInput" accept="image/*" class="visually-hidden-input">
         </label>
       </div>
 
@@ -203,11 +209,15 @@
         <!-- Camera / Photo Action -->
         <div class="camera-actions">
           <button type="button" class="btn btn-primary" id="btnOpenLiveCamera">
-            📸 Open Camera Viewfinder
+            📸 Open Webcam Viewfinder
           </button>
           <label class="btn btn-secondary">
+            📱 Phone Camera
+            <input type="file" id="singleBookCamera" accept="image/*" capture="environment" class="visually-hidden-input">
+          </label>
+          <label class="btn btn-outline">
             📁 Upload Photo
-            <input type="file" id="singleBookCamera" accept="image/*" style="display: none;">
+            <input type="file" id="singleBookFile" accept="image/*" class="visually-hidden-input">
           </label>
         </div>
 
@@ -288,18 +298,26 @@
             <!-- Workflow A -->
             <div id="sectionBulkA" class="mode-content active">
               <div class="bulk-header-actions">
-                <label class="btn btn-primary btn-sm">
-                  📸 Photograph Next Book
-                  <input type="file" id="batchCameraInput" accept="image/*" capture="environment" style="display: none;">
+                <button type="button" class="btn btn-primary btn-sm" id="btnBatchALiveCamera">
+                  📸 Webcam (Rapid Sequential)
+                </button>
+                <label class="btn btn-secondary btn-sm">
+                  📱 Snap Next Book (Phone Camera)
+                  <input type="file" id="batchCameraInput" accept="image/*" capture="environment" class="visually-hidden-input">
+                </label>
+                <label class="btn btn-outline btn-sm">
+                  📁 Upload Photo
+                  <input type="file" id="batchFileInput" accept="image/*" class="visually-hidden-input">
                 </label>
                 <button class="btn btn-success btn-sm" id="btnSaveBatchA" disabled>
                   Save Batch (<span id="batchCountSave">0</span>)
                 </button>
               </div>
+              <div id="batchAStatusNotice" style="display:none; margin: 0.5rem 0; padding: 0.5rem 0.75rem; background: #e0f2fe; border-radius: 6px; font-size: 0.85rem; color: #0369a1; font-weight: 500;"></div>
               <span id="batchCount" style="display: none;">0</span>
               <table class="simple-table" id="tableBatchA">
                 <tbody id="tbodyBatchA">
-                  <tr class="empty-row"><td>No books in batch. Tap "Photograph Next Book" to begin.</td></tr>
+                  <tr class="empty-row"><td>No books in batch. Snap books one after another using "Webcam" or "Snap Next Book".</td></tr>
                 </tbody>
               </table>
             </div>
@@ -307,9 +325,16 @@
             <!-- Workflow B -->
             <div id="sectionBulkB" class="mode-content" style="display: none;">
               <div class="bulk-header-actions">
-                <label class="btn btn-primary btn-sm">
-                  📸 Photograph Shelf / Stack
-                  <input type="file" id="multiBookCameraInput" accept="image/*" capture="environment" style="display: none;">
+                <button type="button" class="btn btn-primary btn-sm" id="btnBatchBLiveCamera">
+                  📸 Webcam Viewfinder
+                </button>
+                <label class="btn btn-secondary btn-sm">
+                  📱 Photograph Stack (Phone Camera)
+                  <input type="file" id="multiBookCameraInput" accept="image/*" capture="environment" class="visually-hidden-input">
+                </label>
+                <label class="btn btn-outline btn-sm">
+                  📁 Upload Stack Photo
+                  <input type="file" id="multiBookFileInput" accept="image/*" class="visually-hidden-input">
                 </label>
                 <button class="btn btn-success btn-sm" id="btnSaveBatchB" disabled>
                   Save Candidates (<span id="multiCandidateCount">0</span>)
@@ -317,11 +342,11 @@
               </div>
               <div id="multiPhotoPreviewWrap" style="display: none;" class="multi-preview-box">
                 <img id="multiPhotoImg" src="" alt="Multi book photo">
-                <div id="multiPhotoStatus" class="photo-meta">Detecting book spines in image...</div>
+                <div id="multiPhotoStatus" class="photo-meta">Detecting book spines in stack...</div>
               </div>
               <table class="simple-table" id="tableBatchB">
                 <tbody id="tbodyBatchB">
-                  <tr class="empty-row"><td>Photograph a shelf row or stack of books.</td></tr>
+                  <tr class="empty-row"><td>Take a photo of a stack of books (stacked one on top of each other) to detect all spines from top to bottom.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -341,11 +366,17 @@
         <div class="pos-input-group">
           <input type="text" id="posSearchInput" placeholder="Enter Book ID (e.g. BK-10151) or title..." autocomplete="off">
         </div>
-        <div style="margin-bottom: 1.25rem;">
-          <label class="camera-scan-btn-full" title="Scan book cover or spine to sell">
-            <span class="cam-icon">📷</span>
-            <span>Scan Book Cover or Spine to Sell</span>
-            <input type="file" id="posCameraInput" accept="image/*" capture="environment" style="display: none;">
+        <div class="pos-camera-options-row">
+          <button type="button" class="btn btn-primary" id="btnPosLiveCamera">
+            📸 Live Webcam Scanner
+          </button>
+          <label class="btn btn-secondary">
+            📱 Phone Camera
+            <input type="file" id="posCameraInput" accept="image/*" capture="environment" class="visually-hidden-input">
+          </label>
+          <label class="btn btn-outline">
+            📁 Upload Photo
+            <input type="file" id="posFileInput" accept="image/*" class="visually-hidden-input">
           </label>
         </div>
 
@@ -435,7 +466,7 @@
   <div id="modalLiveCamera" class="modal-backdrop" style="display: none;">
     <div class="modal-card camera-modal-card">
       <div class="modal-header">
-        <h3>📸 Camera Viewfinder</h3>
+        <h3 id="liveCameraModalTitle">📸 Camera Viewfinder</h3>
         <div style="display:flex; gap:0.5rem; align-items:center;">
           <button type="button" class="btn btn-xs btn-outline" id="btnToggleGoogleKey">🔑 Key</button>
           <button class="btn-close" id="btnCloseLiveCamera">✕</button>
@@ -467,13 +498,14 @@
       </div>
 
       <div class="camera-controls">
-        <label class="video-auto-scan-toggle">
+        <label class="video-auto-scan-toggle" id="wrapAutoScan">
           <input type="checkbox" id="chkAutoScanVideo">
-          <span>Real-time Video AI</span>
+          <span>Real-time AI</span>
         </label>
-        <div style="display:flex; gap:0.5rem;">
-          <button type="button" class="btn btn-secondary" id="btnSwitchCamera">Flip</button>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnSwitchCamera">Flip</button>
           <button type="button" class="btn btn-primary" id="btnSnapLivePhoto">📸 Snap</button>
+          <button type="button" class="btn btn-success" id="btnDoneLiveBatchA" style="display:none;">✅ Done (<span id="countDoneBatchA">0</span>)</button>
         </div>
       </div>
     </div>

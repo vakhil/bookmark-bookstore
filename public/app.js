@@ -239,61 +239,86 @@ function initSearch() {
     performSearch('');
   });
 
-  // Photo search via camera (Req 2.5)
-  cameraInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
+  // Live Webcam button for Search
+  const btnSearchLive = document.getElementById('btnSearchLiveCamera');
+  if (btnSearchLive) {
+    btnSearchLive.addEventListener('click', () => {
+      if (typeof window.openLiveCamera === 'function') {
+        window.openLiveCamera('search');
+      }
+    });
+  }
+
+  // Photo search via camera or file upload (Req 2.5)
+  const cameraSearchFileInput = document.getElementById('cameraSearchFileInput');
+  const handleSearchFile = async (file) => {
     if (!file) return;
+    await processCoverSearchImage(file, file.name);
+    if (cameraInput) cameraInput.value = '';
+    if (cameraSearchFileInput) cameraSearchFileInput.value = '';
+  };
 
-    input.value = '📸 Optimizing photo...';
-    try {
-      const downscaledB64 = await downscaleImage(file, 1200, 0.85);
+  if (cameraInput) {
+    cameraInput.addEventListener('change', (e) => handleSearchFile(e.target.files[0]));
+  }
+  if (cameraSearchFileInput) {
+    cameraSearchFileInput.addEventListener('change', (e) => handleSearchFile(e.target.files[0]));
+  }
+}
 
-      let clientOcrText = '';
-      if (window.Tesseract) {
-        input.value = '🔍 Reading cover text...';
-        try {
-          const tRes = await Tesseract.recognize(downscaledB64, 'eng');
-          clientOcrText = (tRes.data?.text || '').trim();
-        } catch (tErr) {
-          console.warn('Local OCR warning:', tErr);
-        }
-      }
+async function processCoverSearchImage(fileOrB64, fallbackName = 'cover.jpg') {
+  const input = document.getElementById('searchInput');
+  const clearBtn = document.getElementById('btnClearSearch');
 
-      input.value = '📚 Matching inventory...';
-      const ocrRes = await fetch('/api/books/ocr-extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_text: clientOcrText || file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " "),
-          image_data: downscaledB64
-        })
-      });
-
-      const cand = await ocrRes.json();
-      if (cand && cand.title && cand.title.trim()) {
-        input.value = cand.title.trim();
-        clearBtn.style.display = 'inline-block';
-        performSearch(input.value);
-      } else if (clientOcrText) {
-        // Fallback: pick the best meaningful title line from client OCR
-        const lines = clientOcrText.split('\n')
-          .map(l => l.replace(/[^a-zA-Z0-9\s\-\':]/g, '').trim())
-          .filter(l => l.length >= 3 && !/^(bestseller|edition|novel|published|isbn|\d+$)/i.test(l));
-        const bestGuess = lines.length ? lines.sort((a, b) => b.length - a.length)[0] : clientOcrText.slice(0, 40);
-        input.value = bestGuess;
-        clearBtn.style.display = 'inline-block';
-        performSearch(bestGuess);
-      } else {
-        input.value = '';
-        alert('Could not detect clear text on this cover or spine. Please hold camera closer or enter the title manually.');
-      }
-    } catch (err) {
-      input.value = '';
-      alert('Photo analysis note: ' + err.message);
-    } finally {
-      cameraInput.value = '';
+  input.value = '📸 Optimizing photo...';
+  try {
+    let base64Data = fileOrB64;
+    if (typeof fileOrB64 !== 'string') {
+      base64Data = await downscaleImage(fileOrB64, 1200, 0.85);
     }
-  });
+
+    let clientOcrText = '';
+    if (window.Tesseract) {
+      input.value = '🔍 Reading cover / spine...';
+      try {
+        const tRes = await Tesseract.recognize(base64Data, 'eng');
+        clientOcrText = (tRes.data?.text || '').trim();
+      } catch (tErr) {
+        console.warn('Local OCR warning:', tErr);
+      }
+    }
+
+    input.value = '📚 Matching inventory...';
+    const ocrRes = await fetch('/api/books/ocr-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        raw_text: clientOcrText || fallbackName.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " "),
+        image_data: base64Data
+      })
+    });
+
+    const cand = await ocrRes.json();
+    if (cand && cand.title && cand.title.trim()) {
+      input.value = cand.title.trim();
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+      performSearch(input.value);
+    } else if (clientOcrText) {
+      const lines = clientOcrText.split('\n')
+        .map(l => l.replace(/[^a-zA-Z0-9\s\-\':]/g, '').trim())
+        .filter(l => l.length >= 3 && !/^(bestseller|edition|novel|published|isbn|\d+$)/i.test(l));
+      const bestGuess = lines.length ? lines.sort((a, b) => b.length - a.length)[0] : clientOcrText.slice(0, 40);
+      input.value = bestGuess;
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+      performSearch(bestGuess);
+    } else {
+      input.value = '';
+      alert('Could not detect clear text on this cover or spine. Please hold camera closer or enter the title manually.');
+    }
+  } catch (err) {
+    input.value = '';
+    alert('Photo analysis note: ' + err.message);
+  }
 }
 
 function setSearch(query, searchType = 'all') {
@@ -720,17 +745,20 @@ function initSingleAdd() {
   // Setup Live Camera Viewfinder & File Upload (Req 1.1 Option A)
   initLiveCamera();
 
-  // File upload input
-  cameraInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
+  const fileInput = document.getElementById('singleBookFile');
+  const handleSingleImage = (file) => {
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
       processBookImageOCR(reader.result, file.name);
     };
     reader.readAsDataURL(file);
-  });
+    if (cameraInput) cameraInput.value = '';
+    if (fileInput) fileInput.value = '';
+  };
+
+  if (cameraInput) cameraInput.addEventListener('change', (e) => handleSingleImage(e.target.files[0]));
+  if (fileInput) fileInput.addEventListener('change', (e) => handleSingleImage(e.target.files[0]));
 
   // Title duplicate check on blur
   document.getElementById('singleTitle').addEventListener('blur', () => {
@@ -860,12 +888,64 @@ function initLiveCamera() {
     keyWrap.style.display = 'none';
   });
 
-  openBtn.addEventListener('click', async () => {
+  let currentLiveCameraMode = 'single';
+  const modalTitle = document.getElementById('liveCameraModalTitle');
+  const doneBatchABtn = document.getElementById('btnDoneLiveBatchA');
+  const countDoneSpan = document.getElementById('countDoneBatchA');
+  const wrapAutoScan = document.getElementById('wrapAutoScan');
+
+  function updateBatchADoneCount() {
+    if (countDoneSpan) countDoneSpan.textContent = batchBooksA.length;
+  }
+
+  window.openLiveCamera = async function(mode = 'single') {
+    currentLiveCameraMode = mode;
     modal.style.display = 'flex';
     hudBanner.style.display = 'none';
-    guideStatus.textContent = 'Align Book Cover or Spine Here';
+
+    if (doneBatchABtn) doneBatchABtn.style.display = (mode === 'batchA') ? 'inline-flex' : 'none';
+    if (wrapAutoScan) wrapAutoScan.style.display = (mode === 'single') ? 'inline-flex' : 'none';
+
+    if (mode === 'batchA') {
+      if (modalTitle) modalTitle.textContent = '📸 Workflow A: Rapid Batch Photos';
+      guideStatus.textContent = 'Hold book in frame & tap Snap. Snaps one after another!';
+      snapBtn.textContent = `📸 Snap Book #${batchBooksA.length + 1}`;
+      updateBatchADoneCount();
+    } else if (mode === 'batchB') {
+      if (modalTitle) modalTitle.textContent = '📸 Workflow B: Shelf / Stack Photo';
+      guideStatus.textContent = 'Align entire stack of books (spines stacked vertically) in frame';
+      snapBtn.textContent = '📸 Snap Stack Photo';
+    } else if (mode === 'pos') {
+      if (modalTitle) modalTitle.textContent = '📸 Quick Sell: Cover / Spine Scanner';
+      guideStatus.textContent = 'Align book cover or spine to sell and tap Snap';
+      snapBtn.textContent = '📸 Scan to Sell';
+    } else if (mode === 'search') {
+      if (modalTitle) modalTitle.textContent = '📸 Search: Cover / Spine Scanner';
+      guideStatus.textContent = 'Align book cover or spine to search';
+      snapBtn.textContent = '📸 Scan Book';
+    } else {
+      if (modalTitle) modalTitle.textContent = '📸 Camera Viewfinder (Single Book)';
+      guideStatus.textContent = 'Align Book Cover or Spine Here';
+      snapBtn.textContent = '📸 Snap Photo';
+    }
+
     await startCameraStream();
-  });
+  };
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => window.openLiveCamera('single'));
+  }
+
+  if (doneBatchABtn) {
+    doneBatchABtn.addEventListener('click', () => {
+      stopCameraStream();
+      modal.style.display = 'none';
+      const bulkToggle = document.querySelector('.bulk-toggle-section');
+      if (bulkToggle) bulkToggle.open = true;
+      const btnBulkA = document.querySelector('[data-mode="bulkA"]');
+      if (btnBulkA) btnBulkA.click();
+    });
+  }
 
   closeBtn.addEventListener('click', () => {
     stopCameraStream();
@@ -897,7 +977,7 @@ function initLiveCamera() {
     applyDetectedBookToForm(latestDetectedBook);
   });
 
-  snapBtn.addEventListener('click', () => {
+  snapBtn.addEventListener('click', async () => {
     if (!video.videoWidth) {
       alert('Camera is loading, please wait a moment.');
       return;
@@ -907,12 +987,35 @@ function initLiveCamera() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    stopCameraStream();
-    modal.style.display = 'none';
-
-    processBookImageOCR(dataUrl, 'camera_capture.jpg');
+    if (currentLiveCameraMode === 'batchA') {
+      // Rapid sequential batch mode: "one pic after another"
+      await addPhotoToBatchA(dataUrl, `book_${batchBooksA.length + 1}.jpg`);
+      snapBtn.textContent = `📸 Snap Book #${batchBooksA.length + 1}`;
+      updateBatchADoneCount();
+      guideStatus.textContent = `✅ Book #${batchBooksA.length} captured! Hold next book & tap Snap.`;
+      video.style.filter = 'brightness(1.5)';
+      setTimeout(() => { video.style.filter = 'none'; }, 200);
+      // Stays open for next photo
+    } else if (currentLiveCameraMode === 'batchB') {
+      stopCameraStream();
+      modal.style.display = 'none';
+      processStackPhoto(dataUrl, 'stack_photo.jpg');
+    } else if (currentLiveCameraMode === 'pos') {
+      stopCameraStream();
+      modal.style.display = 'none';
+      processPosSearchImage(dataUrl, 'pos_capture.jpg');
+    } else if (currentLiveCameraMode === 'search') {
+      stopCameraStream();
+      modal.style.display = 'none';
+      processCoverSearchImage(dataUrl, 'search_capture.jpg');
+    } else {
+      // Single book
+      stopCameraStream();
+      modal.style.display = 'none';
+      processBookImageOCR(dataUrl, 'camera_capture.jpg');
+    }
   });
 
   async function startCameraStream() {
@@ -1296,76 +1399,124 @@ function testSampleBookPhoto(title, author, genre) {
 }
 
 /* =========================================================================
-   4. WORKFLOW A: BATCH INDIVIDUAL PHOTOS (Req 1.2)
+   4. WORKFLOW A: BATCH INDIVIDUAL PHOTOS (Req 1.2) - "ONE PIC AFTER ANOTHER"
    ========================================================================= */
+
+async function addPhotoToBatchA(base64Data, filename = 'book.jpg') {
+  const itemId = Date.now() + Math.floor(Math.random() * 1000);
+  const tempItem = {
+    id: itemId,
+    photo: base64Data,
+    title: 'Analyzing photo...',
+    author: 'Reading cover / spine...',
+    genre: '',
+    rack: '',
+    column_num: '',
+    position: '',
+    confidence: 'processing',
+    flag_uncertain: false,
+    warning: null
+  };
+  batchBooksA.push(tempItem);
+  renderBatchTableA();
+
+  // Run OCR asynchronously
+  (async () => {
+    let extractedText = '';
+    if (window.Tesseract) {
+      try {
+        const ocrRes = await Tesseract.recognize(base64Data, 'eng');
+        extractedText = (ocrRes.data?.text || '').trim();
+      } catch (err) {
+        console.warn('Batch OCR warning:', err);
+      }
+    }
+
+    const payloadText = extractedText || filename.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ");
+
+    try {
+      const res = await fetch('/api/books/ocr-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          raw_text: payloadText,
+          image_data: base64Data,
+          batch_hashes: batchImageHashes
+        })
+      });
+      const cand = await res.json();
+
+      if (cand.image_hash) {
+        if (batchImageHashes.includes(cand.image_hash)) {
+          const ok = confirm("⚠️ Duplicate Image Warning: You photographed the same book/image twice in this batch. Do you want to keep both physical copies?");
+          if (!ok) {
+            batchBooksA = batchBooksA.filter(b => b.id !== itemId);
+            renderBatchTableA();
+            return;
+          }
+        }
+        batchImageHashes.push(cand.image_hash);
+      }
+
+      const target = batchBooksA.find(b => b.id === itemId);
+      if (target) {
+        target.title = cand.title || 'Untitled Book';
+        target.author = cand.author || 'Unknown Author';
+        target.genre = cand.genre || '';
+        target.confidence = cand.confidence || 'high';
+        target.flag_uncertain = cand.flag_uncertain || false;
+        target.warning = cand.warning || null;
+        renderBatchTableA();
+      }
+    } catch (err) {
+      const target = batchBooksA.find(b => b.id === itemId);
+      if (target) {
+        target.title = filename.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ");
+        target.author = 'Unknown Author';
+        target.confidence = 'uncertain';
+        target.flag_uncertain = true;
+        target.warning = 'Could not analyze automatically; please enter details.';
+        renderBatchTableA();
+      }
+    }
+  })();
+}
 
 function initBatchA() {
   const cameraInput = document.getElementById('batchCameraInput');
-  const tbody = document.getElementById('tbodyBatchA');
+  const fileInput = document.getElementById('batchFileInput');
+  const liveCameraBtn = document.getElementById('btnBatchALiveCamera');
   const saveBatchBtn = document.getElementById('btnSaveBatchA');
 
-  cameraInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
+  if (liveCameraBtn) {
+    liveCameraBtn.addEventListener('click', () => {
+      if (typeof window.openLiveCamera === 'function') {
+        window.openLiveCamera('batchA');
+      }
+    });
+  }
+
+  const handleBatchAFile = async (file) => {
     if (!file) return;
+    try {
+      const downscaledB64 = await downscaleImage(file, 1200, 0.85);
+      await addPhotoToBatchA(downscaledB64, file.name);
+      if (cameraInput) cameraInput.value = '';
+      if (fileInput) fileInput.value = '';
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64Data = reader.result;
-      let extractedText = '';
-
-      if (window.Tesseract) {
-        try {
-          const ocrRes = await Tesseract.recognize(base64Data, 'eng');
-          extractedText = (ocrRes.data.text || '').trim();
-        } catch (err) {
-          console.warn('Batch OCR warning:', err);
-        }
+      const notice = document.getElementById('batchAStatusNotice');
+      if (notice) {
+        notice.style.display = 'block';
+        notice.textContent = `✅ Book #${batchBooksA.length} added! Tap "Snap Next Book" to capture the next one.`;
+        setTimeout(() => { notice.style.display = 'none'; }, 4000);
       }
+    } catch (err) {
+      alert('Error reading photo: ' + err.message);
+    }
+  };
 
-      const payloadText = extractedText || file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ");
-
-      try {
-        const res = await fetch('/api/books/ocr-extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            raw_text: payloadText,
-            image_data: base64Data,
-            batch_hashes: batchImageHashes
-          })
-        });
-        const cand = await res.json();
-
-        // Check duplicate photo in batch (Req 1.5)
-        if (cand.image_hash) {
-          if (batchImageHashes.includes(cand.image_hash)) {
-            const ok = confirm("⚠️ Duplicate Image Warning: You photographed the same book/image twice in this batch. Do you want to keep both physical copies?");
-            if (!ok) return;
-          }
-          batchImageHashes.push(cand.image_hash);
-        }
-
-        batchBooksA.push({
-          id: Date.now(),
-          photo: base64Data,
-          title: cand.title || 'Untitled Book',
-          author: cand.author || 'Unknown Author',
-          genre: cand.genre || '',
-          rack: '',
-          column_num: '',
-          position: '',
-          confidence: cand.confidence,
-          flag_uncertain: cand.flag_uncertain,
-          warning: cand.warning
-        });
-
-        renderBatchTableA();
-      } catch (err) {
-        alert('Failed to process image: ' + err.message);
-      }
-    };
-    reader.readAsDataURL(file);
-  });
+  if (cameraInput) cameraInput.addEventListener('change', (e) => handleBatchAFile(e.target.files[0]));
+  if (fileInput) fileInput.addEventListener('change', (e) => handleBatchAFile(e.target.files[0]));
 
   saveBatchBtn.addEventListener('click', async () => {
     if (batchBooksA.length === 0) return;
@@ -1408,7 +1559,7 @@ function renderBatchTableA() {
   saveBtn.disabled = batchBooksA.length === 0;
 
   if (batchBooksA.length === 0) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No books in batch. Tap "Photograph Next Book" to begin!</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No books in batch. Snap books one after another using "Webcam" or "Snap Next Book".</td></tr>';
     return;
   }
 
@@ -1448,8 +1599,77 @@ function removeBatchItemA(index) {
    5. WORKFLOW B: MULTI-BOOK SHELF / STACK PHOTOGRAPHY (Req 1.2)
    ========================================================================= */
 
+async function processStackPhoto(base64Data, filename = 'stack.jpg') {
+  const previewWrap = document.getElementById('multiPhotoPreviewWrap');
+  const previewImg = document.getElementById('multiPhotoImg');
+  const statusLbl = document.getElementById('multiPhotoStatus');
+
+  previewWrap.style.display = 'block';
+  previewImg.src = base64Data;
+  statusLbl.textContent = '🔍 Reading stack of books (detecting spines from top to bottom)...';
+
+  let ocrLines = [];
+  if (window.Tesseract) {
+    try {
+      statusLbl.textContent = '🔍 Extracting text lines from spines...';
+      const ocrRes = await Tesseract.recognize(base64Data, 'eng');
+      const text = ocrRes.data?.text || '';
+      ocrLines = text.split('\n').map(l => l.trim()).filter(l => l.length >= 2);
+    } catch (err) {
+      console.warn('Tesseract stack OCR notice:', err);
+    }
+  }
+
+  statusLbl.textContent = '📚 Segmenting individual book spines...';
+
+  // Group text into spine blocks (lines of text for each book spine in the stack)
+  let blocks = [];
+  if (ocrLines.length > 0) {
+    let curr = [];
+    for (let i = 0; i < ocrLines.length; i++) {
+      curr.push(ocrLines[i]);
+      if (curr.length >= 2 || i === ocrLines.length - 1) {
+        blocks.push(curr.join('\n'));
+        curr = [];
+      }
+    }
+  }
+
+  const rawPayload = blocks.length > 0 ? blocks.join('\n---\n') : (ocrLines.join('\n') || filename.replace(/\.[^/.]+$/, ""));
+
+  try {
+    const res = await fetch('/api/books/ocr-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        raw_text: rawPayload,
+        multiple: true,
+        spine_mode: true,
+        image_data: base64Data
+      })
+    });
+    const data = await res.json();
+    batchCandidatesB = (data.candidates || []).map((cand, idx) => ({
+      ...cand,
+      position: idx + 1, // Spine 1 is top of stack, Spine 2 is 2nd from top, etc.
+      skipped: false
+    }));
+
+    if (batchCandidatesB.length === 0) {
+      statusLbl.textContent = '⚠️ No clear book spines detected in stack. Please verify or take a closer photo.';
+    } else {
+      statusLbl.textContent = `✅ Successfully detected ${batchCandidatesB.length} books in stack (ordered top to bottom).`;
+    }
+    renderBatchTableB();
+  } catch (err) {
+    statusLbl.textContent = 'Error processing stack: ' + err.message;
+  }
+}
+
 function initBatchB() {
   const cameraInput = document.getElementById('multiBookCameraInput');
+  const fileInput = document.getElementById('multiBookFileInput');
+  const liveCameraBtn = document.getElementById('btnBatchBLiveCamera');
   const previewWrap = document.getElementById('multiPhotoPreviewWrap');
   const previewImg = document.getElementById('multiPhotoImg');
   const statusLbl = document.getElementById('multiPhotoStatus');
@@ -1470,47 +1690,28 @@ function initBatchB() {
     });
   });
 
-  cameraInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    previewWrap.style.display = 'block';
-    statusLbl.textContent = 'Detecting book spines in shelf/stack image...';
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      previewImg.src = reader.result;
-      const base64Data = reader.result;
-
-      // Simulate multi-spine text segmentation using known catalog titles
-      const simulatedSpines = [
-        "Continuous Discovery Habits\nTeresa Torres",
-        "Physics by Computer\nWolfgang Kinzel & Georg Reents",
-        "Walden\nHenry David Thoreau",
-        "--- blurry/obscured spine ---",
-        "The Science of Programming\nDavid Gries"
-      ];
-
-      try {
-        const res = await fetch('/api/books/ocr-extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            raw_text: simulatedSpines.join('\n'),
-            multiple: true,
-            image_data: base64Data
-          })
-        });
-        const data = await res.json();
-        batchCandidatesB = data.candidates || [];
-        statusLbl.textContent = `✅ Successfully segmented ${batchCandidatesB.length} book spines from image.`;
-        renderBatchTableB();
-      } catch (err) {
-        statusLbl.textContent = 'Error processing multi-book image.';
+  if (liveCameraBtn) {
+    liveCameraBtn.addEventListener('click', () => {
+      if (typeof window.openLiveCamera === 'function') {
+        window.openLiveCamera('batchB');
       }
-    };
-    reader.readAsDataURL(file);
-  });
+    });
+  }
+
+  const handleBatchBFile = async (file) => {
+    if (!file) return;
+    try {
+      const downscaledB64 = await downscaleImage(file, 1600, 0.88);
+      await processStackPhoto(downscaledB64, file.name);
+      if (cameraInput) cameraInput.value = '';
+      if (fileInput) fileInput.value = '';
+    } catch (err) {
+      alert('Error reading stack photo: ' + err.message);
+    }
+  };
+
+  if (cameraInput) cameraInput.addEventListener('change', (e) => handleBatchBFile(e.target.files[0]));
+  if (fileInput) fileInput.addEventListener('change', (e) => handleBatchBFile(e.target.files[0]));
 
   saveBtn.addEventListener('click', async () => {
     const validBooks = batchCandidatesB.filter(b => b.title && b.title.trim() && !b.skipped);
@@ -1600,12 +1801,72 @@ function toggleSkipCandidateB(index) {
    6. SELLING WORKFLOW (POS) (Req 3)
    ========================================================================= */
 
+async function processPosSearchImage(fileOrB64, fallbackName = 'cover.jpg') {
+  const searchInput = document.getElementById('posSearchInput');
+  searchInput.value = '📸 Optimizing photo...';
+  try {
+    let base64Data = fileOrB64;
+    if (typeof fileOrB64 !== 'string') {
+      base64Data = await downscaleImage(fileOrB64, 1200, 0.85);
+    }
+
+    let clientOcrText = '';
+    if (window.Tesseract) {
+      searchInput.value = '🔍 Reading cover / spine...';
+      try {
+        const tRes = await Tesseract.recognize(base64Data, 'eng');
+        clientOcrText = (tRes.data?.text || '').trim();
+      } catch (tErr) {
+        console.warn('Local OCR warning:', tErr);
+      }
+    }
+
+    searchInput.value = '📚 Matching inventory...';
+    const ocrRes = await fetch('/api/books/ocr-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        raw_text: clientOcrText || fallbackName.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " "),
+        image_data: base64Data
+      })
+    });
+    const cand = await ocrRes.json();
+    if (cand && cand.title && cand.title.trim()) {
+      searchInput.value = cand.title.trim();
+      searchPOS(cand.title.trim());
+    } else if (clientOcrText) {
+      const lines = clientOcrText.split('\n')
+        .map(l => l.replace(/[^a-zA-Z0-9\s\-\':]/g, '').trim())
+        .filter(l => l.length >= 3 && !/^(bestseller|edition|novel|published|isbn|\d+$)/i.test(l));
+      const bestGuess = lines.length ? lines.sort((a, b) => b.length - a.length)[0] : clientOcrText.slice(0, 40);
+      searchInput.value = bestGuess;
+      searchPOS(bestGuess);
+    } else {
+      searchInput.value = '';
+      alert('Could not identify book from photo. Please enter Book ID or title.');
+    }
+  } catch (err) {
+    searchInput.value = '';
+    alert('Photo analysis note: ' + err.message);
+  }
+}
+
 function initPOS() {
   const searchInput = document.getElementById('posSearchInput');
   const drawer = document.getElementById('saleDrawer');
   const closeBtn = document.getElementById('btnCloseSaleDrawer');
   const confirmBtn = document.getElementById('btnConfirmSale');
   const cameraInput = document.getElementById('posCameraInput');
+  const fileInput = document.getElementById('posFileInput');
+  const liveCameraBtn = document.getElementById('btnPosLiveCamera');
+
+  if (liveCameraBtn) {
+    liveCameraBtn.addEventListener('click', () => {
+      if (typeof window.openLiveCamera === 'function') {
+        window.openLiveCamera('pos');
+      }
+    });
+  }
 
   let posDebounce = null;
   searchInput.addEventListener('input', () => {
@@ -1615,55 +1876,15 @@ function initPOS() {
     }, 250);
   });
 
-  cameraInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
+  const handlePosFile = async (file) => {
     if (!file) return;
-    searchInput.value = '📸 Optimizing photo...';
-    try {
-      const downscaledB64 = await downscaleImage(file, 1200, 0.85);
+    await processPosSearchImage(file, file.name);
+    if (cameraInput) cameraInput.value = '';
+    if (fileInput) fileInput.value = '';
+  };
 
-      let clientOcrText = '';
-      if (window.Tesseract) {
-        searchInput.value = '🔍 Reading cover text...';
-        try {
-          const tRes = await Tesseract.recognize(downscaledB64, 'eng');
-          clientOcrText = (tRes.data?.text || '').trim();
-        } catch (tErr) {
-          console.warn('Local OCR warning:', tErr);
-        }
-      }
-
-      searchInput.value = '📚 Matching inventory...';
-      const ocrRes = await fetch('/api/books/ocr-extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_text: clientOcrText || file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " "),
-          image_data: downscaledB64
-        })
-      });
-      const cand = await ocrRes.json();
-      if (cand && cand.title && cand.title.trim()) {
-        searchInput.value = cand.title.trim();
-        searchPOS(cand.title.trim());
-      } else if (clientOcrText) {
-        const lines = clientOcrText.split('\n')
-          .map(l => l.replace(/[^a-zA-Z0-9\s\-\':]/g, '').trim())
-          .filter(l => l.length >= 3 && !/^(bestseller|edition|novel|published|isbn|\d+$)/i.test(l));
-        const bestGuess = lines.length ? lines.sort((a, b) => b.length - a.length)[0] : clientOcrText.slice(0, 40);
-        searchInput.value = bestGuess;
-        searchPOS(bestGuess);
-      } else {
-        searchInput.value = '';
-        alert('Could not identify book from photo. Please enter Book ID or title.');
-      }
-    } catch (err) {
-      searchInput.value = '';
-      alert('Photo analysis note: ' + err.message);
-    } finally {
-      cameraInput.value = '';
-    }
-  });
+  if (cameraInput) cameraInput.addEventListener('change', (e) => handlePosFile(e.target.files[0]));
+  if (fileInput) fileInput.addEventListener('change', (e) => handlePosFile(e.target.files[0]));
 
   closeBtn.addEventListener('click', () => {
     drawer.style.display = 'none';

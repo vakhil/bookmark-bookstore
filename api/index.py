@@ -297,7 +297,7 @@ def app(environ, start_response):
         elif path == "/api/books/ocr-extract":
             raw_text = body.get("raw_text", "")
             image_data = body.get("image_data", "")
-            is_spine_mode = body.get("spine_mode", False)
+            is_spine_mode = body.get("spine_mode", False) or body.get("multiple", False)
             batch_hashes = body.get("batch_hashes", [])
             google_key = body.get("google_api_key", None)
             img_hash = ocr_engine.compute_image_hash(image_data) if image_data else ""

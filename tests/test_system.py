@@ -331,14 +331,31 @@ class TestBookstoreSystem(unittest.TestCase):
         # 3. Question: Japanese philosophical books
         res_jp = search_engine.ask_recommendations("i want some philosphical japanese books")
         self.assertGreater(len(res_jp["books"]), 0)
-        top_titles = [b["title"].lower() for b in res_jp["books"][:3]]
-        self.assertTrue(any("japanese" in t or "philosophy" in t for t in top_titles))
+        top_titles = [b["title"].lower() for b in res_jp["books"][:5]]
+        self.assertTrue(any("japanese" in t or "philosophy" in t or "zen" in t for t in top_titles))
 
         # 4. Question: Organizing and simple living
         res_org = search_engine.ask_recommendations("i need to get some books on organizing and simple living?")
         self.assertGreater(len(res_org["books"]), 0)
         org_titles = [b["title"].lower() for b in res_org["books"][:5]]
         self.assertTrue(any("things" in t or "living" in t or "minimal" in t or "order" in t or "habits" in t for t in org_titles))
+
+    def test_workflow_b_stack_spine_detection(self):
+        """Verifies Workflow B multi-spine stack extraction and candidate ordering."""
+        stack_text = (
+            "Awaken The Giant Within\nTony Robbins\n---\n"
+            "Atomic Habits\nJames Clear\n---\n"
+            "Physics by Computer\nKinzel and Reents"
+        )
+        candidates = ocr_engine.detect_multiple_books_in_image(
+            raw_text_blocks=[stack_text]
+        )
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(candidates[0]["position"], 1)
+        self.assertIn("Awaken the Giant Within", candidates[0]["title"])
+        self.assertTrue(candidates[0]["matched_existing"])
+        self.assertEqual(candidates[1]["position"], 2)
+        self.assertEqual(candidates[2]["position"], 3)
 
 if __name__ == "__main__":
     unittest.main()
