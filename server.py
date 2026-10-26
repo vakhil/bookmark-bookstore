@@ -10,6 +10,8 @@ import sys
 import os
 import json
 import mimetypes
+import ssl
+import threading
 from urllib.parse import urlparse, parse_qs
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -424,10 +426,20 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
         else:
             self._send_json({"error": "Endpoint not found."}, 404)
 
-def run_server(port: int = 8088):
-    """Starts the bookstore web server with automatic fallback if port is busy."""
+def ensure_ssl_certs(cert_file: str, key_file: str):
+    """Generates self-signed SSL certificate if missing."""
+    if not (os.path.exists(cert_file) and os.path.exists(key_file)):
+        print("Generating self-signed SSL certificates for HTTPS (cert.pem, key.pem)...")
+        os.system(f'openssl req -x509 -newkey rsa:2048 -keyout "{key_file}" -out "{cert_file}" -days 365 -nodes -subj "/CN=localhost" 2>/dev/null')
+
+def run_server(port: int = 8088, use_ssl: bool = False, enable_dual_https: bool = True):
+    """Starts the bookstore web server with automatic fallback and HTTPS support."""
     os.makedirs(STATIC_DIR, exist_ok=True)
     database.init_db()
+
+    cert_file = os.path.join(os.path.dirname(__file__), "cert.pem")
+    key_file = os.path.join(os.path.dirname(__file__), "key.pem")
+    ensure_ssl_certs(cert_file, key_file)
 
     candidate_ports = [port, 8088, 8888, 9000, 9090, 5050]
     server = None
@@ -446,19 +458,49 @@ def run_server(port: int = 8088):
     if not server:
         raise RuntimeError("Could not bind to any available candidate port.")
 
+    protocol = "http"
+    if use_ssl and os.path.exists(cert_file) and os.path.exists(key_file):
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_ctx.load_cert_chain(certfile=cert_file, keyfile=key_file)
+        server.socket = ssl_ctx.wrap_socket(server.socket, server_side=True)
+        protocol = "https"
+
     conn = database.get_db_connection()
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM books")
     total_count = c.fetchone()[0]
     conn.close()
+
     print(f"Serving {total_count:,} live inventory records directly linked to Google Sheets.")
-    print(f"Bookstore application running at http://localhost:{actual_port}/")
+    print(f"Bookstore application running at {protocol}://localhost:{actual_port}/")
+    print(f"LAN Access: {protocol}://192.168.29.144:{actual_port}/")
+
+    # If main server is HTTP and dual HTTPS is enabled, start HTTPS companion on 8443
+    https_server = None
+    if not use_ssl and enable_dual_https and os.path.exists(cert_file) and os.path.exists(key_file):
+        try:
+            https_server = ThreadedHTTPServer(("0.0.0.0", 8443), BookstoreAPIHandler)
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(certfile=cert_file, keyfile=key_file)
+            https_server.socket = ssl_ctx.wrap_socket(https_server.socket, server_side=True)
+            t = threading.Thread(target=https_server.serve_forever, daemon=True)
+            t.start()
+            print(f"🔒 Secure HTTPS companion active at https://localhost:8443/")
+            print(f"🔒 Secure HTTPS LAN access at https://192.168.29.144:8443/")
+        except Exception as ex:
+            print(f"Notice: Could not bind HTTPS companion on port 8443: {ex}")
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nShutting down server.")
         server.server_close()
+        if https_server:
+            https_server.server_close()
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8088
-    run_server(port)
+    args = sys.argv[1:]
+    use_ssl = "--ssl" in args or "--https" in args
+    clean_args = [a for a in args if not a.startswith("--")]
+    port = int(clean_args[0]) if len(clean_args) > 0 else (8443 if use_ssl else 8088)
+    run_server(port, use_ssl=use_ssl)

@@ -1018,7 +1018,45 @@ function initLiveCamera() {
     }
   });
 
+  function fallbackToNativeCamera(mode) {
+    if (mode === 'single') {
+      const cam = document.getElementById('singleBookCamera');
+      if (cam) cam.click();
+    } else if (mode === 'batchA') {
+      const cam = document.getElementById('batchCameraInput');
+      if (cam) cam.click();
+    } else if (mode === 'batchB') {
+      const cam = document.getElementById('multiBookCameraInput');
+      if (cam) cam.click();
+    } else if (mode === 'pos') {
+      const cam = document.getElementById('posCameraInput');
+      if (cam) cam.click();
+    } else if (mode === 'search') {
+      const cam = document.getElementById('cameraSearchInput');
+      if (cam) cam.click();
+    }
+  }
+
   async function startCameraStream() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const isSecure = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      let msg = '';
+      if (!isSecure) {
+        msg = '🔒 Camera Stream Requires HTTPS\n\n' +
+          'Web browsers strictly restrict live video streaming (getUserMedia) to Secure Contexts (HTTPS or localhost).\n\n' +
+          '👉 You have 3 easy solutions:\n' +
+          '1. Open the local HTTPS server: https://' + location.hostname + ':8443/\n' +
+          '2. Open the official cloud deployment: https://book-store-advanced.vercel.app\n' +
+          '3. Or use the "📱 Phone Camera" button, which opens your camera shutter directly over local HTTP!';
+      } else {
+        msg = 'Unable to access camera: Camera permissions are denied or no camera device is connected.';
+      }
+      alert(msg);
+      modal.style.display = 'none';
+      fallbackToNativeCamera(currentLiveCameraMode);
+      return;
+    }
+
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -1033,8 +1071,9 @@ function initLiveCamera() {
         startContinuousVideoScan();
       }
     } catch (err) {
-      alert('Unable to access camera: ' + err.message + '\n\nPlease ensure camera permissions are granted in your browser, or use the "Upload Book Photo" button.');
+      alert('Unable to access camera: ' + err.message + '\n\nPlease ensure camera permissions are granted in your browser, or use the "📱 Phone Camera" or "Upload Book Photo" button.');
       modal.style.display = 'none';
+      fallbackToNativeCamera(currentLiveCameraMode);
     }
   }
 
