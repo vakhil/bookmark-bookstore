@@ -1645,12 +1645,39 @@ async function processStackPhoto(base64Data, filename = 'stack.jpg') {
 
   previewWrap.style.display = 'block';
   previewImg.src = base64Data;
-  statusLbl.textContent = '🔍 Reading stack of books (detecting spines from top to bottom)...';
+  statusLbl.textContent = '🔍 Reading stack of books with AI Vision (spines top to bottom)...';
 
+  // 1. First attempt direct AI Vision segmentation (fastest & most accurate for stacks)
+  try {
+    const res = await fetch('/api/books/ocr-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        multiple: true,
+        spine_mode: true,
+        image_data: base64Data
+      })
+    });
+    const data = await res.json();
+    if (data.candidates && data.candidates.length > 0) {
+      batchCandidatesB = data.candidates.map((cand, idx) => ({
+        ...cand,
+        position: idx + 1, // Spine 1 is top of stack, Spine 2 is 2nd from top, etc.
+        skipped: false
+      }));
+      statusLbl.textContent = `✅ Successfully detected ${batchCandidatesB.length} books in stack (ordered top to bottom).`;
+      renderBatchTableB();
+      return;
+    }
+  } catch (apiErr) {
+    console.warn('Direct AI vision notice:', apiErr);
+  }
+
+  // 2. Fallback to client-side OCR if offline or AI returned no books
+  statusLbl.textContent = '🔍 Reading spine text with offline OCR fallback...';
   let ocrLines = [];
   if (window.Tesseract) {
     try {
-      statusLbl.textContent = '🔍 Extracting text lines from spines...';
       const ocrRes = await Tesseract.recognize(base64Data, 'eng');
       const text = ocrRes.data?.text || '';
       ocrLines = text.split('\n').map(l => l.trim()).filter(l => l.length >= 2);
@@ -1659,29 +1686,12 @@ async function processStackPhoto(base64Data, filename = 'stack.jpg') {
     }
   }
 
-  statusLbl.textContent = '📚 Segmenting individual book spines...';
-
-  // Group text into spine blocks (lines of text for each book spine in the stack)
-  let blocks = [];
-  if (ocrLines.length > 0) {
-    let curr = [];
-    for (let i = 0; i < ocrLines.length; i++) {
-      curr.push(ocrLines[i]);
-      if (curr.length >= 2 || i === ocrLines.length - 1) {
-        blocks.push(curr.join('\n'));
-        curr = [];
-      }
-    }
-  }
-
-  const rawPayload = blocks.length > 0 ? blocks.join('\n---\n') : (ocrLines.join('\n') || filename.replace(/\.[^/.]+$/, ""));
-
   try {
     const res = await fetch('/api/books/ocr-extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        raw_text: rawPayload,
+        raw_text: ocrLines.join('\n---\n'),
         multiple: true,
         spine_mode: true,
         image_data: base64Data
@@ -1690,14 +1700,14 @@ async function processStackPhoto(base64Data, filename = 'stack.jpg') {
     const data = await res.json();
     batchCandidatesB = (data.candidates || []).map((cand, idx) => ({
       ...cand,
-      position: idx + 1, // Spine 1 is top of stack, Spine 2 is 2nd from top, etc.
+      position: idx + 1,
       skipped: false
     }));
 
     if (batchCandidatesB.length === 0) {
-      statusLbl.textContent = '⚠️ No clear book spines detected in stack. Please verify or take a closer photo.';
+      statusLbl.textContent = '⚠️ Could not detect clear book spines. Please hold camera closer to the spines or enter titles.';
     } else {
-      statusLbl.textContent = `✅ Successfully detected ${batchCandidatesB.length} books in stack (ordered top to bottom).`;
+      statusLbl.textContent = `✅ Detected ${batchCandidatesB.length} books in stack (ordered top to bottom).`;
     }
     renderBatchTableB();
   } catch (err) {

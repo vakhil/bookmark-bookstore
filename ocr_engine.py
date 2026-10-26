@@ -166,7 +166,7 @@ def call_google_gemini_multimodal(image_b64: str, api_key: str) -> Optional[Dict
     else:
         mime_type = "image/jpeg"
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    models_to_try = ["gemini-3-flash-preview", "gemini-3.1-flash-lite", "gemini-flash-lite-latest"]
     prompt = """You are an automated bookstore scanner. Look at this book cover or spine photograph.
 Identify the exact:
 1. "title": The main book title.
@@ -186,22 +186,26 @@ Return strictly valid JSON with these keys, and no extra markdown or explanation
         "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
     }
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            # Clean markdown code blocks if any
-            if text.startswith("```"):
-                text = re.sub(r"^```[a-z]*\n|\n```$", "", text, flags=re.MULTILINE).strip()
-            parsed = json.loads(text)
-            return parsed
-    except Exception as e:
-        print(f"Google Gemini Multimodal notice (offline or unreachable): {e}")
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if text.startswith("```"):
+                    text = re.sub(r"^```[a-z]*\n|\n```$", "", text, flags=re.MULTILINE).strip()
+                parsed = json.loads(text)
+                if isinstance(parsed, dict) and parsed.get("title"):
+                    return parsed
+        except Exception as e:
+            print(f"Gemini single model {model} notice: {e}")
+            continue
+
     return None
 
 def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict[str, Any]]]:
@@ -216,21 +220,21 @@ def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict
     else:
         mime_type = "image/jpeg"
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    models_to_try = ["gemini-3-flash-preview", "gemini-3.1-flash-lite", "gemini-flash-lite-latest"]
     prompt = """You are an automated bookstore inventory scanner.
 Look at this photograph of books stacked one on top of each other (or a row of books on a shelf).
-Identify each individual book spine visible, ordered from the TOP of the stack to the BOTTOM.
-For each book, determine:
-- "title": Exact book title
-- "author": Primary author or editor name
-- "genre": Subject category (e.g. Fiction, Self-Help, Business, Science, History)
-- "language": Language (default "English")
-- "confidence": "high", "medium", or "low"
+Examine each individual book spine or cover from the TOP of the stack to the BOTTOM.
+For EVERY distinct book visible, extract:
+- "title": Clean, full book title as written on the spine.
+- "author": Author or editor name if visible or known.
+- "genre": Likely category (e.g. Fiction, Self-Help, Business, Science, Philosophy, History).
+- "language": Language (default "English").
+- "confidence": "high", "medium", or "low".
 
-Return strictly a valid JSON array of objects, e.g.:
+Return strictly a valid JSON array of objects:
 [
-  {"title": "Book Title 1", "author": "Author 1", "genre": "Fiction", "language": "English", "confidence": "high"},
-  {"title": "Book Title 2", "author": "Author 2", "genre": "Business", "language": "English", "confidence": "high"}
+  {"title": "Title 1", "author": "Author 1", "genre": "Fiction", "language": "English", "confidence": "high"},
+  {"title": "Title 2", "author": "Author 2", "genre": "Business", "language": "English", "confidence": "high"}
 ]
 Return only the JSON array with no extra text or markdown formatting."""
 
@@ -244,24 +248,28 @@ Return only the JSON array with no extra text or markdown formatting."""
         "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
     }
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
-        )
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            if text.startswith("```"):
-                text = re.sub(r"^```[a-z]*\n|\n```$", "", text, flags=re.MULTILINE).strip()
-            parsed = json.loads(text)
-            if isinstance(parsed, list):
-                return parsed
-            elif isinstance(parsed, dict) and "books" in parsed and isinstance(parsed["books"], list):
-                return parsed["books"]
-    except Exception as e:
-        print(f"Google Gemini Stack detection notice (offline or unreachable): {e}")
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if text.startswith("```"):
+                    text = re.sub(r"^```[a-z]*\n|\n```$", "", text, flags=re.MULTILINE).strip()
+                parsed = json.loads(text)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    return parsed
+                elif isinstance(parsed, dict) and "books" in parsed and isinstance(parsed["books"], list) and len(parsed["books"]) > 0:
+                    return parsed["books"]
+        except Exception as e:
+            print(f"Gemini stack model {model} notice: {e}")
+            continue
+
     return None
 
 def extract_candidates_from_text(
