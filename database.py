@@ -21,22 +21,38 @@ SEED_CSV_PATH = os.path.join(os.path.dirname(__file__), "initial_inventory.csv")
 # Vercel serverless environment support (ephemeral writable /tmp)
 if os.environ.get("VERCEL"):
     tmp_db = "/tmp/bookstore.db"
-    src_db = DB_PATH
-    if not os.path.exists(tmp_db) and os.path.exists(src_db):
-        try:
-            shutil.copyfile(src_db, tmp_db)
-        except Exception as e:
-            print(f"Notice copying DB to /tmp: {e}")
+    if not os.path.exists(tmp_db):
+        candidates = [
+            DB_PATH,
+            os.path.join(os.getcwd(), "bookstore.db"),
+            "/var/task/bookstore.db",
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "bookstore.db")
+        ]
+        for c in candidates:
+            if os.path.exists(c) and os.path.getsize(c) > 1000:
+                try:
+                    shutil.copyfile(c, tmp_db)
+                    break
+                except Exception as e:
+                    print(f"Notice copying DB candidate {c}: {e}")
     if os.path.exists(tmp_db):
         DB_PATH = tmp_db
 
     tmp_csv = "/tmp/initial_inventory.csv"
-    src_csv = SEED_CSV_PATH
-    if not os.path.exists(tmp_csv) and os.path.exists(src_csv):
-        try:
-            shutil.copyfile(src_csv, tmp_csv)
-        except Exception as e:
-            print(f"Notice copying CSV to /tmp: {e}")
+    if not os.path.exists(tmp_csv):
+        csv_candidates = [
+            SEED_CSV_PATH,
+            os.path.join(os.getcwd(), "initial_inventory.csv"),
+            "/var/task/initial_inventory.csv",
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "initial_inventory.csv")
+        ]
+        for c in csv_candidates:
+            if os.path.exists(c) and os.path.getsize(c) > 1000:
+                try:
+                    shutil.copyfile(c, tmp_csv)
+                    break
+                except Exception as e:
+                    print(f"Notice copying CSV candidate {c}: {e}")
     if os.path.exists(tmp_csv):
         SEED_CSV_PATH = tmp_csv
 
