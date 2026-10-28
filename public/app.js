@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   safeInit('initHistoryAndSync', initHistoryAndSync);
   safeInit('initCancelSaleReturnModal', initCancelSaleReturnModal);
   safeInit('initEditSalePaymentModal', initEditSalePaymentModal);
+  safeInit('initLiveCamera', initLiveCamera);
 
   // Initial load
   fetchStats();
@@ -1715,7 +1716,7 @@ function initPictureAdd() {
   const fileInput = document.getElementById('pictureFileInput') || document.getElementById('singleBookFile');
   const btnCamera = document.getElementById('btnPictureCamera');
   const btnFile = document.getElementById('btnPictureFile');
-  const liveCameraBtn = document.getElementById('btnPictureLiveCamera') || document.getElementById('btnOpenLiveCamera');
+  const liveCameraBtn = document.getElementById('btnPictureLiveCamera');
   const previewWrap = document.getElementById('picturePhotoPreviewWrap') || document.getElementById('singlePhotoPreview');
   const previewImg = document.getElementById('picturePhotoImg') || document.getElementById('singlePhotoImg');
   const ocrStatus = document.getElementById('pictureOcrStatus') || document.getElementById('singleOcrStatus');
@@ -2022,10 +2023,18 @@ function initLiveCamera() {
   const modalTitle = document.getElementById('liveCameraModalTitle');
   const doneBatchABtn = document.getElementById('btnDoneLiveBatchA');
   const countDoneSpan = document.getElementById('countDoneBatchA');
+  const doneBatchBBtn = document.getElementById('btnDoneLiveBatchB');
+  const countDoneSpanB = document.getElementById('countDoneBatchB');
   const wrapAutoScan = document.getElementById('wrapAutoScan');
 
   function updateBatchADoneCount() {
     if (countDoneSpan) countDoneSpan.textContent = batchBooksA.length;
+  }
+
+  function updateBatchBDoneCount() {
+    if (countDoneSpanB && typeof stackPhotosQueue !== 'undefined') {
+      countDoneSpanB.textContent = stackPhotosQueue.length;
+    }
   }
 
   window.openLiveCamera = async function(mode = 'single') {
@@ -2034,6 +2043,7 @@ function initLiveCamera() {
     hudBanner.style.display = 'none';
 
     if (doneBatchABtn) doneBatchABtn.style.display = (mode === 'batchA') ? 'inline-flex' : 'none';
+    if (doneBatchBBtn) doneBatchBBtn.style.display = (mode === 'batchB' || mode === 'stack') && (typeof stackPhotosQueue !== 'undefined' && stackPhotosQueue.length > 0) ? 'inline-flex' : 'none';
     if (wrapAutoScan) wrapAutoScan.style.display = (mode === 'single' || mode === 'picture') ? 'inline-flex' : 'none';
 
     if (mode === 'batchA') {
@@ -2042,9 +2052,11 @@ function initLiveCamera() {
       snapBtn.textContent = `📸 Snap Book #${batchBooksA.length + 1}`;
       updateBatchADoneCount();
     } else if (mode === 'batchB' || mode === 'stack') {
-      if (modalTitle) modalTitle.textContent = '📸 Stack Photo: Multiple Books';
-      guideStatus.textContent = 'Align entire stack of books (spines stacked vertically) in frame';
-      snapBtn.textContent = '📸 Snap Stack Photo';
+      if (modalTitle) modalTitle.textContent = '📸 Stack Close-up Viewfinder (Multiple Shots)';
+      guideStatus.textContent = 'Hold camera close to stack section & tap Snap. Take multiple shots of tall stacks!';
+      const currentQueueLen = (typeof stackPhotosQueue !== 'undefined') ? stackPhotosQueue.length : 0;
+      snapBtn.textContent = `📸 Snap Close-Up #${currentQueueLen + 1}`;
+      updateBatchBDoneCount();
     } else if (mode === 'picture' || mode === 'single') {
       if (modalTitle) modalTitle.textContent = '📸 Camera Viewfinder (Single Book)';
       guideStatus.textContent = 'Align Book Cover or Spine Here';
@@ -2057,12 +2069,6 @@ function initLiveCamera() {
       if (modalTitle) modalTitle.textContent = '📸 Sell Workflow B: Stack Photo Sell';
       guideStatus.textContent = 'Align entire stack of books to sell (spines stacked) in frame';
       snapBtn.textContent = '📸 Snap Stack to Sell';
-    } else if (mode === 'posBatchA') {
-      const cam = document.getElementById('posBatchACameraInput');
-      if (cam) cam.click();
-    } else if (mode === 'posBatchB') {
-      const cam = document.getElementById('posBatchBCameraInput');
-      if (cam) cam.click();
     } else if (mode === 'pos') {
       if (modalTitle) modalTitle.textContent = '📸 Quick Sell: Cover / Spine Scanner';
       guideStatus.textContent = 'Align book cover or spine to sell and tap Snap';
@@ -2095,10 +2101,23 @@ function initLiveCamera() {
     });
   }
 
+  if (doneBatchBBtn) {
+    doneBatchBBtn.addEventListener('click', () => {
+      stopCameraStream();
+      modal.style.display = 'none';
+      if (typeof processAllStackPhotos === 'function') {
+        processAllStackPhotos();
+      }
+    });
+  }
+
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       stopCameraStream();
       modal.style.display = 'none';
+      if (typeof renderStackPhotosQueue === 'function') {
+        renderStackPhotosQueue();
+      }
     });
   }
 
@@ -2156,9 +2175,16 @@ function initLiveCamera() {
         setTimeout(() => { video.style.filter = 'none'; }, 200);
         // Stays open for next photo
       } else if (currentLiveCameraMode === 'batchB' || currentLiveCameraMode === 'stack') {
-        stopCameraStream();
-        modal.style.display = 'none';
-        processStackPhoto(dataUrl, 'stack_photo.jpg');
+        addPhotoToStackQueue(dataUrl, `stack_shot_${stackPhotosQueue.length + 1}.jpg`);
+        video.style.filter = 'brightness(1.5)';
+        setTimeout(() => { video.style.filter = 'none'; }, 200);
+        if (doneBatchBBtn) {
+          doneBatchBBtn.style.display = 'inline-flex';
+          const cnt = document.getElementById('countDoneBatchB');
+          if (cnt) cnt.textContent = stackPhotosQueue.length;
+        }
+        snapBtn.textContent = `📸 Snap Next Section #${stackPhotosQueue.length + 1}`;
+        guideStatus.textContent = `✅ Shot #${stackPhotosQueue.length} captured! Move camera down to next section and Snap, or tap Done & Process.`;
       } else if (currentLiveCameraMode === 'posBatchA') {
         await processPosBatchAFile(dataUrl, `pos_snap_${posCart.length + 1}.jpg`);
         video.style.filter = 'brightness(1.5)';
@@ -2941,106 +2967,177 @@ function removeBatchItemA(index) {
    ========================================================================= */
 
 let stackCountB = 0;
+let stackPhotosQueue = [];
 
-async function processStackPhoto(base64Data, filename = 'stack.jpg') {
-  const previewWrap = document.getElementById('multiPhotoPreviewWrap');
-  const previewImg = document.getElementById('multiPhotoImg');
+function addPhotoToStackQueue(dataUrl, name = 'shot.jpg') {
+  const shotNum = stackPhotosQueue.length + 1;
+  stackPhotosQueue.push({
+    id: 'shot_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    dataUrl: dataUrl,
+    name: name,
+    label: `Shot #${shotNum}`
+  });
+  renderStackPhotosQueue();
+}
+
+function removePhotoFromStackQueue(id) {
+  stackPhotosQueue = stackPhotosQueue.filter(p => p.id !== id);
+  stackPhotosQueue.forEach((p, i) => { p.label = `Shot #${i + 1}`; });
+  renderStackPhotosQueue();
+}
+window.removePhotoFromStackQueue = removePhotoFromStackQueue;
+
+function clearStackPhotosQueue() {
+  stackPhotosQueue = [];
+  renderStackPhotosQueue();
+}
+
+function renderStackPhotosQueue() {
+  const wrap = document.getElementById('stackPhotosQueueWrap');
+  const countSpan = document.getElementById('stackQueueCount');
+  const btnProcessCount = document.getElementById('btnProcessStackCount');
+  const thumbsList = document.getElementById('stackThumbsList');
+  if (!wrap || !thumbsList) return;
+
+  if (countSpan) countSpan.textContent = stackPhotosQueue.length;
+  if (btnProcessCount) btnProcessCount.textContent = stackPhotosQueue.length;
+
+  if (stackPhotosQueue.length === 0) {
+    wrap.style.display = 'none';
+    thumbsList.innerHTML = '';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  thumbsList.innerHTML = stackPhotosQueue.map((item) => `
+    <div style="position: relative; display: inline-flex; flex-direction: column; align-items: center; min-width: 90px; max-width: 110px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+      <button type="button" onclick="window.removePhotoFromStackQueue('${item.id}')" style="position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: #fff; border: none; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="Remove this shot">✕</button>
+      <img src="${item.dataUrl}" alt="${item.label}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0;">
+      <span style="font-size: 0.75rem; font-weight: 600; color: #334155; margin-top: 0.3rem;">${item.label}</span>
+    </div>
+  `).join('');
+}
+
+async function processAllStackPhotos() {
+  if (stackPhotosQueue.length === 0) return;
   const statusLbl = document.getElementById('multiPhotoStatus');
+  const processBtn = document.getElementById('btnProcessAllStackPhotos');
+  if (processBtn) {
+    processBtn.disabled = true;
+    processBtn.textContent = '⏳ Processing Stack Photos with AI...';
+  }
 
-  previewWrap.style.display = 'block';
-  previewImg.src = base64Data;
-  stackCountB++;
-  statusLbl.textContent = `🔍 Reading Stack #${stackCountB} with AI Vision (spines top to bottom)...`;
+  const totalShots = stackPhotosQueue.length;
+  let accumulatedFromShots = [];
+  const seenTitlesInBatch = new Set();
 
-  // 1. First attempt direct AI Vision segmentation (fastest & most accurate for stacks)
+  // Helper to deduplicate books found in overlapping close-up photos of the same stack
+  function deduplicateCandidate(cand) {
+    const key = (cand.title || '').trim().toLowerCase().replace(/[^\w]/g, '');
+    if (!key) return false;
+    if (seenTitlesInBatch.has(key)) return false;
+    seenTitlesInBatch.add(key);
+    return true;
+  }
+
   try {
-    const res = await fetch('/api/books/ocr-extract', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        multiple: true,
-        spine_mode: true,
-        image_data: base64Data
-      })
-    });
-    const data = await res.json();
-    if (data.candidates && data.candidates.length > 0) {
-      const newItems = data.candidates.map((cand, idx) => ({
+    for (let i = 0; i < totalShots; i++) {
+      const shot = stackPhotosQueue[i];
+      if (statusLbl) statusLbl.textContent = `🔍 Reading Shot #${i + 1} of ${totalShots} with AI Vision...`;
+      stackCountB++;
+
+      let shotCandidates = [];
+      try {
+        const res = await fetch('/api/books/ocr-extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            multiple: true,
+            spine_mode: true,
+            image_data: shot.dataUrl
+          })
+        });
+        const data = await res.json();
+        if (data.candidates && data.candidates.length > 0) {
+          shotCandidates = data.candidates;
+        }
+      } catch (e) {
+        console.warn(`Error scanning shot #${i + 1}:`, e);
+      }
+
+      // If direct AI vision didn't catch anything, run local Tesseract OCR fallback
+      if (shotCandidates.length === 0 && window.Tesseract) {
+        try {
+          if (statusLbl) statusLbl.textContent = `🔍 Reading Shot #${i + 1} with local OCR fallback...`;
+          const ocrRes = await Tesseract.recognize(shot.dataUrl, 'eng');
+          const text = ocrRes.data?.text || '';
+          const ocrLines = text.split('\n').map(l => l.trim()).filter(l => l.length >= 2);
+          const fbRes = await fetch('/api/books/ocr-extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              raw_text: ocrLines.join('\n---\n'),
+              multiple: true,
+              spine_mode: true,
+              image_data: shot.dataUrl
+            })
+          });
+          const fbData = await fbRes.json();
+          if (fbData.candidates && fbData.candidates.length > 0) {
+            shotCandidates = fbData.candidates;
+          }
+        } catch (tErr) {
+          console.warn('Fallback OCR notice:', tErr);
+        }
+      }
+
+      // Filter duplicates and tag items
+      const uniqueFromShot = shotCandidates.filter(deduplicateCandidate);
+      const tagged = uniqueFromShot.map((cand, idx) => ({
         ...cand,
         stack_num: stackCountB,
         stack_index: idx,
-        stack_total: data.candidates.length,
+        stack_total: uniqueFromShot.length,
         rack: '',
         column_num: '',
         position: '',
         skipped: false
       }));
-      batchCandidatesB = batchCandidatesB.concat(newItems);
-      statusLbl.textContent = `✅ Stack #${stackCountB}: Detected ${newItems.length} books. Total candidates accumulated: ${batchCandidatesB.length}. You can photograph another stack or click "Save Candidates".`;
-      renderBatchTableB();
-      return;
+      accumulatedFromShots = accumulatedFromShots.concat(tagged);
     }
-  } catch (apiErr) {
-    console.warn('Direct AI vision notice:', apiErr);
-  }
 
-  // 2. Fallback to client-side OCR if offline or AI returned no books
-  statusLbl.textContent = `🔍 Reading Stack #${stackCountB} with offline OCR fallback...`;
-  let ocrLines = [];
-  if (window.Tesseract) {
-    try {
-      const ocrRes = await Tesseract.recognize(base64Data, 'eng');
-      const text = ocrRes.data?.text || '';
-      ocrLines = text.split('\n').map(l => l.trim()).filter(l => l.length >= 2);
-    } catch (err) {
-      console.warn('Tesseract stack OCR notice:', err);
-    }
-  }
-
-  try {
-    const res = await fetch('/api/books/ocr-extract', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        raw_text: ocrLines.join('\n---\n'),
-        multiple: true,
-        spine_mode: true,
-        image_data: base64Data
-      })
-    });
-    const data = await res.json();
-    const newItems = (data.candidates || []).map((cand, idx) => ({
-      ...cand,
-      stack_num: stackCountB,
-      stack_index: idx,
-      stack_total: (data.candidates || []).length,
-      rack: '',
-      column_num: '',
-      position: '',
-      skipped: false
-    }));
-    batchCandidatesB = batchCandidatesB.concat(newItems);
-
-    if (newItems.length === 0) {
-      statusLbl.textContent = `⚠️ Could not detect clear book spines in Stack #${stackCountB}. Total candidates: ${batchCandidatesB.length}.`;
-    } else {
-      statusLbl.textContent = `✅ Stack #${stackCountB}: Detected ${newItems.length} books. Total candidates accumulated: ${batchCandidatesB.length}.`;
-    }
+    batchCandidatesB = batchCandidatesB.concat(accumulatedFromShots);
     renderBatchTableB();
+
+    if (statusLbl) {
+      statusLbl.textContent = `🎉 Detected ${accumulatedFromShots.length} books across ${totalShots} close-up shot(s)! (Total candidates: ${batchCandidatesB.length})`;
+    }
+    stackPhotosQueue = [];
+    renderStackPhotosQueue();
   } catch (err) {
-    statusLbl.textContent = 'Error processing stack: ' + err.message;
+    if (statusLbl) statusLbl.textContent = 'Error processing stack photos: ' + err.message;
+  } finally {
+    if (processBtn) {
+      processBtn.disabled = false;
+      processBtn.innerHTML = `⚡ Get All Information at Once from <span id="btnProcessStackCount">0</span> Photos with AI`;
+    }
   }
+}
+
+async function processStackPhoto(base64Data, filename = 'stack.jpg') {
+  addPhotoToStackQueue(base64Data, filename);
+  await processAllStackPhotos();
 }
 
 function initBatchB() {
   const cameraInput = document.getElementById('multiBookCameraInput');
   const fileInput = document.getElementById('multiBookFileInput');
   const liveCameraBtn = document.getElementById('btnBatchBLiveCamera');
-  const previewWrap = document.getElementById('multiPhotoPreviewWrap');
-  const previewImg = document.getElementById('multiPhotoImg');
-  const statusLbl = document.getElementById('multiPhotoStatus');
   const saveBtn = document.getElementById('btnSaveBatchB');
   const clearBtn = document.getElementById('btnClearBatchB');
+  const btnAddAnother = document.getElementById('btnAddAnotherStackPhoto');
+  const btnClearQueue = document.getElementById('btnClearStackQueue');
+  const btnProcessStack = document.getElementById('btnProcessAllStackPhotos');
 
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
@@ -3062,10 +3159,31 @@ function initBatchB() {
     });
   }
 
+  if (btnAddAnother && cameraInput) {
+    btnAddAnother.addEventListener('click', (e) => {
+      e.preventDefault();
+      cameraInput.click();
+    });
+  }
+
   if (btnFileB && fileInput) {
     btnFileB.addEventListener('click', (e) => {
       e.preventDefault();
       fileInput.click();
+    });
+  }
+
+  if (btnClearQueue) {
+    btnClearQueue.addEventListener('click', () => {
+      if (confirm('Clear all queued close-up shots?')) {
+        clearStackPhotosQueue();
+      }
+    });
+  }
+
+  if (btnProcessStack) {
+    btnProcessStack.addEventListener('click', () => {
+      processAllStackPhotos();
     });
   }
 
@@ -3077,20 +3195,30 @@ function initBatchB() {
     });
   }
 
-  const handleBatchBFile = async (file) => {
-    if (!file) return;
-    try {
-      const downscaledB64 = await downscaleImage(file, 1600, 0.88);
-      await processStackPhoto(downscaledB64, file.name);
-      if (cameraInput) cameraInput.value = '';
-      if (fileInput) fileInput.value = '';
-    } catch (err) {
-      alert('Error reading stack photo: ' + err.message);
+  const handleBatchBFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    const statusLbl = document.getElementById('multiPhotoStatus');
+    if (statusLbl) statusLbl.textContent = `Optimizing ${files.length} close-up photo(s)...`;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const downscaledB64 = await downscaleImage(file, 1600, 0.88);
+        addPhotoToStackQueue(downscaledB64, file.name || `shot_${stackPhotosQueue.length + 1}.jpg`);
+      } catch (err) {
+        console.warn('Error reading photo:', err);
+      }
+    }
+    if (cameraInput) cameraInput.value = '';
+    if (fileInput) fileInput.value = '';
+
+    if (statusLbl) {
+      statusLbl.textContent = `📸 ${stackPhotosQueue.length} close-up shot(s) ready! Tap "+ Add Another Shot" for more sections, or tap "Get All Information at Once" below.`;
     }
   };
 
-  if (cameraInput) cameraInput.addEventListener('change', (e) => handleBatchBFile(e.target.files[0]));
-  if (fileInput) fileInput.addEventListener('change', (e) => handleBatchBFile(e.target.files[0]));
+  if (cameraInput) cameraInput.addEventListener('change', (e) => handleBatchBFiles(e.target.files));
+  if (fileInput) fileInput.addEventListener('change', (e) => handleBatchBFiles(e.target.files));
 
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
