@@ -541,6 +541,44 @@ input, select, textarea, button {
   color: #b45309 !important;
 }
 
+/* Inline book card editing */
+.edit-active-card {
+  border-left: 3px solid var(--primary, #0ea5e9);
+  background: var(--bg-hover, #f8fafc);
+  padding: 0.5rem;
+  border-radius: var(--radius);
+}
+
+.book-edit-form-wrap {
+  width: 100%;
+}
+
+.book-edit-form-wrap input {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  color: var(--text, #1e293b);
+  transition: border-color 0.15s ease;
+}
+
+.book-edit-form-wrap input:focus {
+  border-color: var(--primary, #0ea5e9);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+
+.edit-loc-preview-badge {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.65rem;
+  background: #f1f5f9;
+  border-radius: 4px;
+  color: #334155;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .sold-loc-chip {
   background: #fef2f2 !important;
   border-color: #fecaca !important;

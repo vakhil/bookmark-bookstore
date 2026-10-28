@@ -633,58 +633,251 @@ function getBookState(book, copy) {
 }
 
 /**
+ * Formats a user-friendly location string preview from rack, col, and pos.
+ */
+function formatLocationPreviewText(rack, col, pos) {
+  const r = (rack !== null && rack !== undefined) ? rack.toString().trim() : '';
+  const c = (col !== null && col !== undefined) ? col.toString().trim() : '';
+  const p = (pos !== null && pos !== undefined) ? pos.toString().trim() : '';
+  if (!r || !c || !p) {
+    return 'Location Unassigned';
+  }
+  let posText = p;
+  if (p === '1') posText = 'On top of the rack';
+  else if (p === '2') posText = '2nd book from top';
+  else if (p === '3') posText = '3rd book from top';
+  else if (!isNaN(p)) {
+    const n = parseInt(p, 10);
+    let sfx = 'th';
+    if (n % 100 < 11 || n % 100 > 13) {
+      if (n % 10 === 1) sfx = 'st';
+      else if (n % 10 === 2) sfx = 'nd';
+      else if (n % 10 === 3) sfx = 'rd';
+    }
+    posText = `${n}${sfx} book from top`;
+  }
+  return `Rack ${r} → Column ${c} → ${posText}`;
+}
+
+/**
  * Creates a single, independent tile for one physical book copy.
- * Each copy gets its own separate card with its own location and Sell button.
+ * Each copy gets its own separate card with editable fields and Sell button.
+ * When in edit mode, the Sell button is completely hidden.
  */
 function createBookTile(book, copy, matchType) {
   const card = document.createElement('div');
   card.className = 'book-card-item';
 
-  const state = getBookState(book, copy);
-  const cleanTitle = cleanBookTitle(book.title);
-  const cleanAuthor = escapeHtml(book.author || 'Author');
-  const coverHtml = getBookCoverHtml(cleanTitle, book.author, book.simple_genre || book.genre, book.image_url);
-  const locationText = copy.location_english || book.location_english || (copy.shelf_location ? `Shelf ${copy.shelf_location}` : '');
-  const bookId = copy.book_id || book.book_id || '';
-  const language = copy.language || book.language || 'English';
+  function renderView() {
+    const state = getBookState(book, copy);
+    const cleanTitle = cleanBookTitle(copy.title || book.title || '');
+    const cleanAuthor = escapeHtml(copy.author || book.author || 'Author');
+    const coverHtml = getBookCoverHtml(cleanTitle, copy.author || book.author, copy.simple_genre || book.simple_genre || book.genre, copy.image_url || book.image_url);
+    const locationText = copy.location_english || book.location_english || (copy.shelf_location ? `Shelf ${copy.shelf_location}` : '');
+    const bookId = copy.book_id || book.book_id || '';
+    const language = copy.language || book.language || 'English';
 
-  card.innerHTML = `
-    <div class="book-card-main">
-      <div class="book-card-header-left">
-        ${coverHtml}
-        <div class="book-info">
-          <div class="book-title">${escapeHtml(cleanTitle)}</div>
-          <div class="book-author">by <b>${cleanAuthor}</b></div>
-          <div class="book-meta-line">
-            <span class="state-chip state-${state.toLowerCase()}">${state}</span>
-            <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
-            ${book.simple_genre ? `<span class="chip simple-genre-chip">${escapeHtml(book.simple_genre)}</span>` : ''}
-            ${state === 'ASSIGNED' && locationText ? `<span class="book-loc-chip">📍 ${escapeHtml(locationText)}</span>` : ''}
-            ${state === 'UNASSIGNED' ? `<span class="book-loc-chip unassigned-loc-chip">📍 Location Unassigned</span>` : ''}
+    card.innerHTML = `
+      <div class="book-card-main">
+        <div class="book-card-header-left">
+          ${coverHtml}
+          <div class="book-info">
+            <div class="book-title">${escapeHtml(cleanTitle)}</div>
+            <div class="book-author">by <b>${cleanAuthor}</b></div>
+            <div class="book-meta-line">
+              <span class="state-chip state-${state.toLowerCase()}">${state}</span>
+              <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
+              ${book.simple_genre ? `<span class="chip simple-genre-chip">${escapeHtml(book.simple_genre)}</span>` : ''}
+              ${state === 'ASSIGNED' && locationText ? `<span class="book-loc-chip">📍 ${escapeHtml(locationText)}</span>` : ''}
+              ${state === 'UNASSIGNED' ? `<span class="book-loc-chip unassigned-loc-chip">📍 Location Unassigned</span>` : ''}
+            </div>
           </div>
         </div>
-      </div>
-      <div class="book-card-actions">
-        ${state === 'SOLD' ? `
-          <button class="btn btn-sm btn-outline" disabled style="opacity:0.6; font-weight:700;">SOLD</button>
-        ` : `
-          <button class="btn btn-sm btn-success btn-sell-copy" data-bid="${escapeHtml(bookId)}">
-            ⚡ Sell
+        <div class="book-card-actions">
+          <button class="btn btn-sm btn-outline btn-edit-tile" title="Edit book details">
+            ✏️ Edit
           </button>
-        `}
+          ${state === 'SOLD' ? `
+            <button class="btn btn-sm btn-outline" disabled style="opacity:0.6; font-weight:700;">SOLD</button>
+          ` : `
+            <button class="btn btn-sm btn-success btn-sell-copy" data-bid="${escapeHtml(bookId)}">
+              ⚡ Sell
+            </button>
+          `}
+        </div>
       </div>
-    </div>
-  `;
+    `;
 
-  // Attach direct event listener for selling this specific copy
-  const btnSell = card.querySelector('.btn-sell-copy');
-  if (btnSell) {
-    btnSell.addEventListener('click', (e) => {
+    // Hook up Edit button
+    const btnEdit = card.querySelector('.btn-edit-tile');
+    if (btnEdit) {
+      btnEdit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        renderEdit();
+      });
+    }
+
+    // Hook up Sell button (visible ONLY in View mode)
+    const btnSell = card.querySelector('.btn-sell-copy');
+    if (btnSell) {
+      btnSell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSaleModalForCopy(bookId, cleanTitle, copy.author || book.author, locationText);
+      });
+    }
+  }
+
+  function renderEdit() {
+    const bookId = copy.book_id || book.book_id || '';
+    const curTitle = copy.title || book.title || '';
+    const curAuthor = copy.author || book.author || '';
+    const curLang = copy.language || book.language || 'English';
+    const curRack = copy.rack !== null && copy.rack !== undefined ? copy.rack : '';
+    const curCol = copy.column_num !== null && copy.column_num !== undefined ? copy.column_num : '';
+    const curPos = copy.position !== null && copy.position !== undefined ? copy.position : '';
+    const initialPreview = formatLocationPreviewText(curRack, curCol, curPos);
+
+    card.innerHTML = `
+      <div class="book-card-main edit-active-card">
+        <div class="book-card-header-left" style="width:100%;">
+          <div class="book-edit-form-wrap" style="width:100%; display:flex; flex-direction:column; gap:0.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.15rem;">
+              <span class="copy-id-box" style="font-weight:700;">✏️ Editing: ${escapeHtml(bookId)}</span>
+              <span style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">(Sell option hidden during edit)</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Book's Title</label>
+                <input type="text" class="form-control form-control-sm inp-edit-title" value="${escapeHtml(curTitle)}" placeholder="Book title..." style="width:100%; padding:0.4rem 0.6rem; font-size:0.88rem; font-weight:600;">
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Author's Name</label>
+                <input type="text" class="form-control form-control-sm inp-edit-author" value="${escapeHtml(curAuthor)}" placeholder="Author name..." style="width:100%; padding:0.4rem 0.6rem; font-size:0.88rem;">
+              </div>
+            </div>
+
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end;">
+              <div style="flex:1; min-width:110px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Language</label>
+                <input type="text" class="form-control form-control-sm inp-edit-lang" value="${escapeHtml(curLang)}" placeholder="Language" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              </div>
+              <div style="width:100px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Rack</label>
+                <input type="text" class="form-control form-control-sm inp-edit-rack" value="${escapeHtml(curRack.toString())}" placeholder="e.g. 36" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              </div>
+              <div style="width:75px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Column</label>
+                <input type="text" class="form-control form-control-sm inp-edit-col" value="${escapeHtml(curCol.toString())}" placeholder="e.g. 4" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              </div>
+              <div style="width:75px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Position</label>
+                <input type="text" class="form-control form-control-sm inp-edit-pos" value="${escapeHtml(curPos.toString())}" placeholder="e.g. 8" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              </div>
+            </div>
+
+            <div class="edit-loc-preview-badge" style="margin-top:0.2rem;">
+              <span>📍</span> <span class="lbl-loc-preview" style="font-weight:600;">${escapeHtml(initialPreview)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="book-card-actions" style="justify-content:flex-start; min-width:90px;">
+          <button class="btn btn-sm btn-primary btn-save-edit" style="width:100%; white-space:nowrap; margin-bottom:0.35rem;">
+            💾 Save
+          </button>
+          <button class="btn btn-sm btn-outline btn-cancel-edit" style="width:100%; white-space:nowrap;">
+            ✖ Cancel
+          </button>
+        </div>
+      </div>
+    `;
+
+    const inpRack = card.querySelector('.inp-edit-rack');
+    const inpCol = card.querySelector('.inp-edit-col');
+    const inpPos = card.querySelector('.inp-edit-pos');
+    const lblPreview = card.querySelector('.lbl-loc-preview');
+
+    function syncLocPreview() {
+      if (lblPreview) {
+        lblPreview.textContent = formatLocationPreviewText(inpRack.value, inpCol.value, inpPos.value);
+      }
+    }
+
+    inpRack.addEventListener('input', syncLocPreview);
+    inpCol.addEventListener('input', syncLocPreview);
+    inpPos.addEventListener('input', syncLocPreview);
+
+    // Cancel action
+    card.querySelector('.btn-cancel-edit').addEventListener('click', (e) => {
       e.stopPropagation();
-      openSaleModalForCopy(bookId, cleanTitle, book.author, locationText);
+      renderView();
+    });
+
+    // Save action
+    const btnSave = card.querySelector('.btn-save-edit');
+    btnSave.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const newTitle = card.querySelector('.inp-edit-title').value.trim();
+      const newAuthor = card.querySelector('.inp-edit-author').value.trim();
+      const newLang = card.querySelector('.inp-edit-lang').value.trim() || 'English';
+      const newRack = inpRack.value.trim();
+      const newCol = inpCol.value.trim();
+      const newPos = inpPos.value.trim();
+
+      if (!newTitle) {
+        alert('Book Title cannot be empty.');
+        return;
+      }
+
+      btnSave.disabled = true;
+      btnSave.textContent = 'Saving...';
+
+      try {
+        const res = await fetch('/api/books/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            book_id: bookId,
+            title: newTitle,
+            author: newAuthor,
+            language: newLang,
+            rack: newRack,
+            column_num: newCol,
+            position: newPos
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.book) {
+          // Update in-memory copy & book
+          copy.title = data.book.title;
+          book.title = data.book.title;
+          copy.author = data.book.author;
+          book.author = data.book.author;
+          copy.language = data.book.language;
+          book.language = data.book.language;
+          copy.rack = data.book.rack;
+          copy.column_num = data.book.column_num;
+          copy.position = data.book.position;
+          copy.location_english = data.book.location_english;
+          book.location_english = data.book.location_english;
+          renderView();
+          fetchStats();
+        } else {
+          alert('Failed to update book: ' + (data.error || 'Unknown error'));
+          btnSave.disabled = false;
+          btnSave.textContent = '💾 Save';
+        }
+      } catch (err) {
+        alert('Network error while saving: ' + err.message);
+        btnSave.disabled = false;
+        btnSave.textContent = '💾 Save';
+      }
     });
   }
 
+  // Initial render in View mode
+  renderView();
   return card;
 }
 

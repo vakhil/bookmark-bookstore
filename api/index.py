@@ -309,6 +309,9 @@ def app(environ, start_response):
                 author=body.get("author"),
                 genre=body.get("genre"),
                 language=body.get("language"),
+                rack=body.get("rack"),
+                column_num=body.get("column_num"),
+                position=body.get("position"),
                 notes=body.get("notes"),
                 status=body.get("status")
             )

@@ -384,7 +384,7 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json(res)
             return
 
-        # 7. Update Metadata (Req 1.8)
+        # 7. Update Metadata & Location (Req 1.8)
         elif path == "/api/books/update":
             book_id = body.get("book_id", "")
             if not book_id:
@@ -397,6 +397,9 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
                 author=body.get("author"),
                 genre=body.get("genre"),
                 language=body.get("language"),
+                rack=body.get("rack"),
+                column_num=body.get("column_num"),
+                position=body.get("position"),
                 notes=body.get("notes"),
                 status=body.get("status")
             )

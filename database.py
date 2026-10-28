@@ -1311,6 +1311,9 @@ def update_book_metadata(
     author: Optional[str] = None,
     genre: Optional[str] = None,
     language: Optional[str] = None,
+    rack: Any = None,
+    column_num: Any = None,
+    position: Any = None,
     notes: Optional[str] = None,
     status: Optional[str] = None,
     user: str = "Staff"
@@ -1330,10 +1333,28 @@ def update_book_metadata(
         new_title = title.strip() if title is not None else existing["title"]
         new_author = author.strip() if author is not None else existing["author"]
         new_genre = genre.strip() if genre is not None else existing["genre"]
-        new_lang = language.strip() if language is not None else existing["language"]
-        new_notes = notes.strip() if notes is not None else existing["notes"]
+        new_lang = language.strip() if language is not None else (existing["language"] or "English")
+        new_notes = notes.strip() if notes is not None else (existing["notes"] or "")
         new_status = status.strip() if status is not None else existing["status"]
         new_simple_genre = genre_classifier.classify_common_genre(new_genre, new_title)
+
+        # Location parsing & formatting if any location attribute is supplied
+        if rack is not None or column_num is not None or position is not None:
+            r_val = rack if rack is not None else existing["rack"]
+            c_val = column_num if column_num is not None else existing["column_num"]
+            p_val = position if position is not None else existing["position"]
+            new_r_int = parse_rack_value(r_val)
+            new_c_int = parse_column_value(c_val)
+            new_p_int = parse_position_value(p_val)
+            new_loc_eng = format_location_english(new_r_int, new_c_int, new_p_int, new_notes)
+            is_unassigned = new_r_int is None or new_c_int is None or new_p_int is None
+            new_unassigned_since = now_iso if is_unassigned and not existing["unassigned_since"] else (None if not is_unassigned else existing["unassigned_since"])
+        else:
+            new_r_int = existing["rack"]
+            new_c_int = existing["column_num"]
+            new_p_int = existing["position"]
+            new_loc_eng = existing["location_english"]
+            new_unassigned_since = existing["unassigned_since"]
 
         cursor.execute("""
             UPDATE books SET
@@ -1342,11 +1363,20 @@ def update_book_metadata(
                 genre = ?,
                 simple_genre = ?,
                 language = ?,
+                rack = ?,
+                column_num = ?,
+                position = ?,
+                location_english = ?,
                 notes = ?,
                 status = ?,
-                updated_at = ?
+                updated_at = ?,
+                unassigned_since = ?
             WHERE book_id = ?
-        """, (new_title, new_author, new_genre, new_simple_genre, new_lang, new_notes, new_status, now_iso, book_id))
+        """, (
+            new_title, new_author, new_genre, new_simple_genre, new_lang,
+            new_r_int, new_c_int, new_p_int, new_loc_eng, new_notes, new_status,
+            now_iso, new_unassigned_since, book_id
+        ))
 
         cursor.execute("""
             INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
@@ -1354,8 +1384,12 @@ def update_book_metadata(
         """, (
             "EDIT_METADATA", book_id,
             json.dumps(dict(existing)),
-            json.dumps({"title": new_title, "author": new_author, "genre": new_genre, "status": new_status}),
-            now_iso, user, "Metadata updated"
+            json.dumps({
+                "title": new_title, "author": new_author, "genre": new_genre,
+                "language": new_lang, "rack": new_r_int, "column": new_c_int,
+                "position": new_p_int, "location_english": new_loc_eng, "status": new_status
+            }),
+            now_iso, user, "Metadata and location updated"
         ))
 
         cursor.execute("""
@@ -1365,7 +1399,9 @@ def update_book_metadata(
             "UPDATE_METADATA",
             json.dumps({
                 "book_id": book_id, "title": new_title, "author": new_author,
-                "genre": new_genre, "notes": new_notes, "status": new_status
+                "genre": new_genre, "language": new_lang, "rack": new_r_int,
+                "column": new_c_int, "position": new_p_int, "location_english": new_loc_eng,
+                "notes": new_notes, "status": new_status
             }),
             now_iso
         ))
@@ -1374,6 +1410,7 @@ def update_book_metadata(
         cursor.execute("SELECT * FROM books WHERE book_id = ?", (book_id,))
         res = dict(cursor.fetchone())
         conn.close()
+        sync_csv_update_location(book_id, str(new_r_int if new_r_int is not None else ""), str(new_c_int if new_c_int is not None else ""), str(new_p_int if new_p_int is not None else ""))
         return res
 
 def get_unassigned_books(query: str = "", limit: int = 200, offset: int = 0) -> Dict[str, Any]:
