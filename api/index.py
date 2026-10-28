@@ -313,6 +313,19 @@ def app(environ, start_response):
             )
             return json_response(start_response, res)
 
+        elif path == "/api/books/update-payment":
+            book_id = body.get("book_id", "")
+            selling_price = body.get("selling_price")
+            if not book_id:
+                return json_response(start_response, {"error": "Book ID is required."}, 400)
+            if selling_price is None or selling_price == "":
+                return json_response(start_response, {"error": "Selling price is required."}, 400)
+            notes = body.get("notes", "")
+            res = database.update_sale_payment(book_id, selling_price=selling_price, notes=notes)
+            if "error" in res:
+                return json_response(start_response, res, 400)
+            return json_response(start_response, res)
+
         elif path == "/api/books/update":
             book_id = body.get("book_id", "")
             if not book_id:

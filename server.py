@@ -398,6 +398,23 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json(res)
             return
 
+        elif path == "/api/books/update-payment":
+            book_id = body.get("book_id", "")
+            selling_price = body.get("selling_price")
+            if not book_id:
+                self._send_json({"error": "Book ID is required."}, 400)
+                return
+            if selling_price is None or selling_price == "":
+                self._send_json({"error": "Selling price is required."}, 400)
+                return
+            notes = body.get("notes", "")
+            res = database.update_sale_payment(book_id, selling_price=selling_price, notes=notes)
+            if "error" in res:
+                self._send_json(res, 400)
+            else:
+                self._send_json(res)
+            return
+
         # 7. Update Metadata & Location (Req 1.8)
         elif path == "/api/books/update":
             book_id = body.get("book_id", "")

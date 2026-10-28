@@ -643,6 +643,14 @@
       </div>
 
       <div class="modal-body" style="padding-top: 0.5rem;">
+        <!-- Switcher tip for users who only want to edit payment -->
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.85rem; font-size: 0.76rem; color: #1e40af; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+          <span>💡 Only want to correct recorded payment (e.g. ₹200 → ₹300) without returning?</span>
+          <button type="button" id="btnSwitchToEditPayFromReturn" class="btn btn-sm btn-outline" style="font-size: 0.72rem; padding: 0.22rem 0.55rem; background: #ffffff; border-color: #3b82f6; color: #1d4ed8; font-weight: 700; cursor: pointer; white-space: nowrap;">
+            💳 Edit Payment Only
+          </button>
+        </div>
+
         <!-- Book Summary Mini Card -->
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 0.95rem; margin-bottom: 0.9rem;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
@@ -742,6 +750,72 @@
           </button>
           <button type="button" class="btn btn-danger" id="btnConfirmReturnToShelf" style="background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); border: none; font-weight: 700; padding: 0.5rem 1.1rem; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3);">
             ↩️ Confirm Return to Shelf
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Recorded Sale Payment Modal -->
+  <div id="modalEditSalePayment" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 460px;">
+      <div class="bottom-sheet-handle"></div>
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.35rem;">💳</span>
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">Correct Payment Received</h3>
+            <span style="font-size: 0.76rem; color: var(--text-muted);">Adjust sale amount without returning book to shelf</span>
+          </div>
+        </div>
+        <button class="btn-close" id="btnCloseEditPaymentModal">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding-top: 0.5rem;">
+        <!-- Book Details Mini Header -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 0.95rem; margin-bottom: 0.9rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+            <div>
+              <div id="editPayBookTitle" style="font-size: 1rem; font-weight: 700; color: #1e293b;">-</div>
+              <div id="editPayBookAuthor" style="font-size: 0.82rem; color: #64748b; font-weight: 500;">-</div>
+            </div>
+            <span id="editPayBookId" class="copy-id-box" style="font-size: 0.75rem;">-</span>
+          </div>
+          <div style="margin-top: 0.45rem; font-size: 0.78rem; color: #64748b; display: flex; align-items: center; gap: 0.4rem;">
+            <span>Current Recorded Payment:</span>
+            <span id="editPayCurrentPaidBadge" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; font-weight: 700; border-radius: 6px; padding: 0.15rem 0.45rem;">₹0.00</span>
+          </div>
+        </div>
+
+        <!-- New Payment Input Form -->
+        <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 12px; padding: 0.95rem; margin-bottom: 0.9rem;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #1e40af; margin-bottom: 0.4rem;">
+            Correct Payment Received (₹)
+          </label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 0.75rem; font-weight: 800; font-size: 1.15rem; color: #2563eb;">₹</span>
+            <input type="number" step="any" min="0" id="inpEditPayNewPrice" class="form-control" placeholder="0.00" style="padding-left: 1.85rem; font-size: 1.2rem; font-weight: 800; color: #1e3a8a; border: 2px solid #3b82f6; background: #ffffff; border-radius: 8px;">
+          </div>
+
+          <!-- Dynamic Adjustment Banner -->
+          <div id="editPayAdjustmentBanner" style="margin-top: 0.6rem; font-size: 0.78rem; font-weight: 600; padding: 0.4rem 0.65rem; border-radius: 6px; background: #ffffff; border: 1px solid #dbeafe; color: #1d4ed8; display: flex; align-items: center; gap: 0.35rem;">
+            <span>ℹ️</span> <span id="editPayAdjustmentText">Enter new amount to calculate store revenue adjustment</span>
+          </div>
+        </div>
+
+        <!-- Optional Staff Note -->
+        <div class="form-field" style="margin-bottom: 1.25rem;">
+          <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #64748b; margin-bottom: 0.25rem;">Reason for Adjustment (Optional)</label>
+          <input type="text" id="inpEditPayNotes" class="form-control form-control-sm" placeholder="e.g. Typed 200 instead of 300 during checkout">
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 0.6rem; justify-content: flex-end;">
+          <button type="button" class="btn btn-outline" id="btnCancelEditPaymentModal" style="padding: 0.5rem 0.9rem;">
+            ✖ Cancel
+          </button>
+          <button type="button" class="btn btn-primary" id="btnConfirmEditPayment" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); font-weight: 700; padding: 0.5rem 1.15rem; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
+            💾 Save Corrected Payment
           </button>
         </div>
       </div>

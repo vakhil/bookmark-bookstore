@@ -273,6 +273,39 @@ class TestBookstoreSystem(unittest.TestCase):
         self.assertIn("Column 3", return_new["book"]["location_english"])
         self.assertIn("7th book from top", return_new["book"]["location_english"])
 
+    def test_05d_update_sale_payment_without_returning(self):
+        """Test correcting recorded sale payment (e.g. from 200 to 300) without returning to shelf."""
+        # Add book and sell for 200
+        book = database.add_book(title="Awaken the Giant Within", author="Anthony Robbins")
+        book_id = book["book_id"]
+        sell_res = database.sell_book(book_id, selling_price=200.0, notes="Cash sale")
+        self.assertTrue(sell_res["success"])
+        self.assertEqual(sell_res["book"]["status"], "SOLD OUT")
+        self.assertEqual(sell_res["book"]["selling_price"], 200.0)
+
+        # Update payment to 300
+        up_res = database.update_sale_payment(book_id, selling_price=300.0, notes="Corrected price from 200 to 300")
+        self.assertTrue(up_res["success"])
+        self.assertEqual(up_res["old_price"], 200.0)
+        self.assertEqual(up_res["new_price"], 300.0)
+        self.assertEqual(up_res["adjustment"], 100.0)
+        self.assertEqual(up_res["book"]["status"], "SOLD OUT")
+        self.assertEqual(up_res["book"]["selling_price"], 300.0)
+
+        # Verify transaction table
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT selling_price FROM sales_transactions WHERE book_id = ?", (book_id,))
+        tx_row = c.fetchone()
+        self.assertEqual(tx_row["selling_price"], 300.0)
+
+        # Verify audit log
+        c.execute("SELECT action, notes FROM audit_log WHERE book_id = ? AND action = 'UPDATE_SALE_PAYMENT'", (book_id,))
+        audit_row = c.fetchone()
+        self.assertIsNotNone(audit_row)
+        self.assertIn("Sale payment adjusted from ₹200 to ₹300", audit_row["notes"])
+        conn.close()
+
     def test_06_unassigned_books_and_bulk_assignment_req1_7(self):
         """Req 1.7: Unassigned books section and bulk location assignment."""
         # Add 2 books with unassigned locations

@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   safeInit('initUnassigned', initUnassigned);
   safeInit('initHistoryAndSync', initHistoryAndSync);
   safeInit('initCancelSaleReturnModal', initCancelSaleReturnModal);
+  safeInit('initEditSalePaymentModal', initEditSalePaymentModal);
 
   // Initial load
   fetchStats();
@@ -776,8 +777,8 @@ function createBookTile(book, copy, matchType) {
             <div class="book-meta-line">
               <span class="state-chip state-${state.toLowerCase()}"><span class="chip-dot"></span> ${state === 'SOLD' ? 'SOLD OUT' : (state === 'ASSIGNED' ? 'IN STOCK' : 'UNASSIGNED')}</span>
               ${(state === 'SOLD' && sellingPrice !== '') ? `
-                <span class="chip sold-price-chip" style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-weight:700; border-radius:9999px; padding:0.26rem 0.75rem; font-size:0.78rem;">
-                  💳 Paid: ₹${escapeHtml(sellingPrice.toString())}
+                <span class="chip sold-price-chip btn-edit-paid-chip" data-bid="${escapeHtml(bookId)}" style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-weight:700; border-radius:9999px; padding:0.26rem 0.75rem; font-size:0.78rem; cursor:pointer;" title="Click to correct payment received">
+                  💳 Paid: ₹${escapeHtml(sellingPrice.toString())} <span style="font-size:0.72rem; opacity:0.8;">✏️</span>
                 </span>
               ` : ''}
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
@@ -788,8 +789,11 @@ function createBookTile(book, copy, matchType) {
         </div>
         <div class="book-card-actions">
           ${state === 'SOLD' ? `
-            <button class="btn btn-sm btn-return-copy" data-bid="${escapeHtml(bookId)}" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.4rem 0.8rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; box-shadow:0 2px 8px rgba(225,29,72,0.3); transition:all 0.15s ease;" title="Cancel sale & return this book to shelf (previous or new position)">
+            <button class="btn btn-sm btn-return-copy" data-bid="${escapeHtml(bookId)}" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; box-shadow:0 2px 8px rgba(225,29,72,0.3); transition:all 0.15s ease;" title="Cancel sale & return this book to shelf (previous or new position)">
               <span>↩️</span> Return Book
+            </button>
+            <button class="btn btn-sm btn-edit-payment-copy" data-bid="${escapeHtml(bookId)}" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="Change payment received for this sale (e.g. correct ₹200 to ₹300) without returning">
+              <span>💳</span> Edit Payment
             </button>
           ` : `
             <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy">
@@ -847,6 +851,22 @@ function createBookTile(book, copy, matchType) {
       btnReturn.addEventListener('click', (e) => {
         e.stopPropagation();
         openCancelSaleReturnModal(copy, book, renderView);
+      });
+    }
+
+    // Hook up Edit Payment button & Clickable Paid badge (for SOLD books)
+    const btnEditPay = card.querySelector('.btn-edit-payment-copy');
+    if (btnEditPay) {
+      btnEditPay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditSalePaymentModal(copy, book, renderView);
+      });
+    }
+    const chipPaid = card.querySelector('.btn-edit-paid-chip');
+    if (chipPaid) {
+      chipPaid.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditSalePaymentModal(copy, book, renderView);
       });
     }
 
@@ -1012,6 +1032,9 @@ function createBookTile(book, copy, matchType) {
                 </div>
 
                 ${state === 'SOLD' ? `
+                  <button type="button" class="btn btn-sm btn-save-payment-only" style="background:#2563eb; color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 0.95rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(37,99,235,0.3); transition:all 0.15s ease;" title="Update recorded payment without returning book to shelf">
+                    <span>💾</span> Update Payment
+                  </button>
                   <button type="button" class="btn btn-sm btn-repay-copy" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 1.05rem; display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(225, 29, 72, 0.35); transition:all 0.15s ease;" title="Repay/Refund this amount to customer and return book back to Available inventory on shelf">
                     <span>💸</span> Repay &amp; Return to Shelf
                   </button>
@@ -1020,7 +1043,7 @@ function createBookTile(book, copy, matchType) {
 
               ${state === 'SOLD' ? `
                 <div style="font-size:0.72rem; color:#9f1239; margin-top:0.45rem; line-height:1.35;">
-                  💡 <b>Repay &amp; Return</b>: Refunds the customer, marks the copy <b>Available</b>, restores it to its shelf rack/column, and adjusts sales revenue.
+                  💡 <b>Correct Payment Received</b>: Enter the actual amount paid above (e.g. 300) and click <b>Update Payment</b>. <b>Repay &amp; Return</b> refunds the customer and restores the book back to the shelf.
                 </div>
               ` : ''}
             </div>
@@ -1069,6 +1092,48 @@ function createBookTile(book, copy, matchType) {
           defaultNewCol: inpCol.value.trim(),
           defaultNewPos: inpPos.value.trim()
         });
+      });
+    }
+
+    // Update Payment Only action (for sold books)
+    const btnSavePaymentOnly = card.querySelector('.btn-save-payment-only');
+    if (btnSavePaymentOnly) {
+      btnSavePaymentOnly.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const priceVal = card.querySelector('.inp-edit-price') ? card.querySelector('.inp-edit-price').value.trim() : '';
+        if (priceVal === '') {
+          alert('Please enter a valid payment amount.');
+          return;
+        }
+        btnSavePaymentOnly.disabled = true;
+        btnSavePaymentOnly.innerHTML = `<span>⏳</span> Updating...`;
+        try {
+          const res = await fetch('/api/books/update-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ book_id: bookId, selling_price: priceVal })
+          });
+          const data = await res.json();
+          if (data.success && data.book) {
+            copy.selling_price = data.book.selling_price;
+            if (book.copies) {
+              const bCopy = book.copies.find(c => c.book_id === bookId);
+              if (bCopy) bCopy.selling_price = data.book.selling_price;
+            }
+            if (book.book_id === bookId) book.selling_price = data.book.selling_price;
+            fetchStats();
+            renderView();
+            alert(`✅ Payment updated to ₹${data.new_price}! (Difference: ${data.adjustment >= 0 ? '+' : ''}₹${data.adjustment})`);
+          } else {
+            alert('Failed to update payment: ' + (data.error || 'Unknown error'));
+            btnSavePaymentOnly.disabled = false;
+            btnSavePaymentOnly.innerHTML = `<span>💾</span> Update Payment`;
+          }
+        } catch (err) {
+          alert('Network error while updating payment: ' + err.message);
+          btnSavePaymentOnly.disabled = false;
+          btnSavePaymentOnly.innerHTML = `<span>💾</span> Update Payment`;
+        }
       });
     }
 
@@ -4069,6 +4134,16 @@ function initCancelSaleReturnModal() {
     if (e.target === modal) hideModal();
   });
 
+  const btnSwitchToEditPay = document.getElementById('btnSwitchToEditPayFromReturn');
+  if (btnSwitchToEditPay) {
+    btnSwitchToEditPay.addEventListener('click', () => {
+      if (!activeReturnContext) return;
+      const { copy, book, onRestored } = activeReturnContext;
+      hideModal();
+      openEditSalePaymentModal(copy, book, onRestored);
+    });
+  }
+
   if (btnConfirm) {
     btnConfirm.addEventListener('click', async () => {
       if (!activeReturnContext) return;
@@ -4223,6 +4298,188 @@ function openCancelSaleReturnModal(copy, book, onRestored, options = {}) {
   }
 
   modal.style.display = 'flex';
+}
+
+let activeEditPayContext = null;
+
+function initEditSalePaymentModal() {
+  const modal = document.getElementById('modalEditSalePayment');
+  if (!modal) return;
+
+  const btnClose = document.getElementById('btnCloseEditPaymentModal');
+  const btnCancel = document.getElementById('btnCancelEditPaymentModal');
+  const btnConfirm = document.getElementById('btnConfirmEditPayment');
+  const inpPrice = document.getElementById('inpEditPayNewPrice');
+  const inpNotes = document.getElementById('inpEditPayNotes');
+  const adjustmentText = document.getElementById('editPayAdjustmentText');
+  const adjustmentBanner = document.getElementById('editPayAdjustmentBanner');
+
+  function updateAdjustmentBanner() {
+    if (!activeEditPayContext) return;
+    const oldPrice = parseFloat(activeEditPayContext.oldPrice) || 0;
+    const valStr = inpPrice ? inpPrice.value.trim() : '';
+    if (valStr === '' || isNaN(valStr)) {
+      if (adjustmentText) adjustmentText.textContent = 'Enter new amount to calculate store revenue adjustment';
+      if (adjustmentBanner) {
+        adjustmentBanner.style.background = '#ffffff';
+        adjustmentBanner.style.borderColor = '#dbeafe';
+        adjustmentBanner.style.color = '#1d4ed8';
+      }
+      if (btnConfirm) btnConfirm.textContent = '💾 Save Corrected Payment';
+      return;
+    }
+    const newPrice = parseFloat(valStr) || 0;
+    const diff = newPrice - oldPrice;
+    if (diff > 0) {
+      if (adjustmentText) adjustmentText.innerHTML = `🟢 <b>Revenue increase: +₹${diff.toFixed(2)}</b> (Total store revenue will increase by ₹${diff.toFixed(2)})`;
+      if (adjustmentBanner) {
+        adjustmentBanner.style.background = '#ecfdf5';
+        adjustmentBanner.style.borderColor = '#a7f3d0';
+        adjustmentBanner.style.color = '#065f46';
+      }
+    } else if (diff < 0) {
+      if (adjustmentText) adjustmentText.innerHTML = `🔻 <b>Revenue decrease: -₹${Math.abs(diff).toFixed(2)}</b> (Total store revenue will decrease by ₹${Math.abs(diff).toFixed(2)})`;
+      if (adjustmentBanner) {
+        adjustmentBanner.style.background = '#fff1f2';
+        adjustmentBanner.style.borderColor = '#fecdd3';
+        adjustmentBanner.style.color = '#9f1239';
+      }
+    } else {
+      if (adjustmentText) adjustmentText.innerHTML = `<b>No change: ₹${oldPrice.toFixed(2)}</b> (Same as currently recorded payment)`;
+      if (adjustmentBanner) {
+        adjustmentBanner.style.background = '#f8fafc';
+        adjustmentBanner.style.borderColor = '#e2e8f0';
+        adjustmentBanner.style.color = '#475569';
+      }
+    }
+    if (btnConfirm) btnConfirm.textContent = `💾 Save Payment as ₹${newPrice}`;
+  }
+
+  if (inpPrice) {
+    inpPrice.addEventListener('input', updateAdjustmentBanner);
+    inpPrice.addEventListener('change', updateAdjustmentBanner);
+  }
+
+  const hideModal = () => {
+    modal.style.display = 'none';
+    activeEditPayContext = null;
+  };
+
+  if (btnClose) btnClose.addEventListener('click', hideModal);
+  if (btnCancel) btnCancel.addEventListener('click', hideModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) hideModal();
+  });
+
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', async () => {
+      if (!activeEditPayContext) return;
+      const { copy, book, onUpdated } = activeEditPayContext;
+      const bookId = copy.book_id || book.book_id;
+      const valStr = inpPrice ? inpPrice.value.trim() : '';
+
+      if (valStr === '' || isNaN(valStr) || parseFloat(valStr) < 0) {
+        alert('Please enter a valid, non-negative payment amount (e.g. 300).');
+        if (inpPrice) inpPrice.focus();
+        return;
+      }
+
+      const notesVal = inpNotes ? inpNotes.value.trim() : '';
+
+      btnConfirm.disabled = true;
+      btnConfirm.innerHTML = `<span>⏳</span> Saving...`;
+
+      try {
+        const res = await fetch('/api/books/update-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            book_id: bookId,
+            selling_price: valStr,
+            notes: notesVal
+          })
+        });
+        const data = await res.json();
+
+        if (data.success && data.book) {
+          copy.selling_price = data.book.selling_price;
+          if (book.copies) {
+            const bCopy = book.copies.find(c => c.book_id === bookId);
+            if (bCopy) bCopy.selling_price = data.book.selling_price;
+          }
+          if (book.book_id === bookId) {
+            book.selling_price = data.book.selling_price;
+          }
+
+          hideModal();
+          fetchStats();
+          if (typeof onUpdated === 'function') {
+            onUpdated();
+          }
+
+          const diffMsg = data.adjustment !== 0 ? ` (Store revenue adjusted by ${data.adjustment >= 0 ? '+' : ''}₹${data.adjustment})` : '';
+          alert(`✅ Payment corrected successfully!\n\n"${book.title || copy.title}" is now recorded as sold for ₹${data.new_price}.${diffMsg}`);
+        } else {
+          alert('Failed to update payment: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error while updating payment: ' + err.message);
+      } finally {
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = `💾 Save Corrected Payment`;
+      }
+    });
+  }
+}
+
+function openEditSalePaymentModal(copy, book, onUpdated) {
+  const modal = document.getElementById('modalEditSalePayment');
+  if (!modal) return;
+
+  const bookId = copy.book_id || book.book_id || '';
+  const title = copy.title || book.title || 'Untitled Book';
+  const author = copy.author || book.author || '';
+  const currentPaid = (copy.selling_price !== null && copy.selling_price !== undefined && copy.selling_price !== '') 
+    ? copy.selling_price 
+    : (book.selling_price || 0);
+
+  activeEditPayContext = { copy, book, onUpdated, oldPrice: currentPaid };
+
+  document.getElementById('editPayBookTitle').textContent = title;
+  document.getElementById('editPayBookAuthor').textContent = author ? `by ${author}` : '';
+  document.getElementById('editPayBookId').textContent = bookId;
+  document.getElementById('editPayCurrentPaidBadge').textContent = `₹${parseFloat(currentPaid || 0).toFixed(2)}`;
+
+  const inpPrice = document.getElementById('inpEditPayNewPrice');
+  const inpNotes = document.getElementById('inpEditPayNotes');
+  const btnConfirm = document.getElementById('btnConfirmEditPayment');
+  const adjustmentText = document.getElementById('editPayAdjustmentText');
+  const adjustmentBanner = document.getElementById('editPayAdjustmentBanner');
+
+  if (inpPrice) {
+    inpPrice.value = (currentPaid || '').toString();
+  }
+  if (inpNotes) {
+    inpNotes.value = '';
+  }
+
+  if (adjustmentText) adjustmentText.textContent = `Current payment recorded: ₹${parseFloat(currentPaid || 0).toFixed(2)}. Type new amount above.`;
+  if (adjustmentBanner) {
+    adjustmentBanner.style.background = '#ffffff';
+    adjustmentBanner.style.borderColor = '#dbeafe';
+    adjustmentBanner.style.color = '#1d4ed8';
+  }
+  if (btnConfirm) {
+    btnConfirm.textContent = `💾 Save Corrected Payment`;
+  }
+
+  modal.style.display = 'flex';
+  setTimeout(() => {
+    if (inpPrice) {
+      inpPrice.focus();
+      inpPrice.select();
+    }
+  }, 100);
 }
 
 function openSaleModalForCopy(bookId, title, author, locationEnglish) {

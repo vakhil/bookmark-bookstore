@@ -1429,6 +1429,107 @@ def revert_sale(
             "message": f"Successfully cancelled sale for {updated_book['title']} ({book_id}) and returned to shelf ({new_loc_eng or 'Unassigned'}). Repaid ₹{final_refund:g}."
         }
 
+def update_sale_payment(
+    book_id: str,
+    selling_price: Any,
+    notes: str = "",
+    user: str = "Staff"
+) -> Dict[str, Any]:
+    """Updates the recorded sale payment for a sold book, synchronizing transactions, audit logs, and revenue."""
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+
+        cursor.execute("SELECT * FROM books WHERE book_id = ?", (book_id,))
+        book = cursor.fetchone()
+        if not book:
+            conn.close()
+            return {"error": f"Book with ID {book_id} not found."}
+
+        cursor.execute("SELECT * FROM sales_transactions WHERE book_id = ? ORDER BY id DESC LIMIT 1", (book_id,))
+        tx = cursor.fetchone()
+
+        old_price = (tx["selling_price"] if tx and tx["selling_price"] is not None else book["selling_price"]) or 0.0
+
+        try:
+            new_price = round(float(selling_price), 2)
+            if new_price < 0:
+                conn.close()
+                return {"error": "Payment amount cannot be negative."}
+        except (ValueError, TypeError):
+            conn.close()
+            return {"error": "Invalid payment amount."}
+
+        diff = new_price - old_price
+
+        cursor.execute("""
+            UPDATE books
+            SET selling_price = ?, updated_at = ?
+            WHERE book_id = ?
+        """, (new_price, now_iso, book_id))
+
+        if tx:
+            cursor.execute("""
+                UPDATE sales_transactions
+                SET selling_price = ?
+                WHERE book_id = ?
+            """, (new_price, book_id))
+        else:
+            today_code = datetime.now().strftime("%Y%m%d")
+            cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
+            daily_count = cursor.fetchone()[0] + 1
+            tx_ref = f"TX-{today_code}-{daily_count:04d}"
+            cursor.execute("""
+                INSERT INTO sales_transactions (
+                    transaction_ref, book_id, title, author,
+                    selling_price, sold_at, sold_by, notes, synced_to_sheets
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """, (
+                tx_ref, book_id, book["title"], book["author"],
+                new_price, now_iso, user, notes or "Payment updated"
+            ))
+
+        cursor.execute("""
+            INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "UPDATE_SALE_PAYMENT", book_id,
+            json.dumps({"status": book["status"], "selling_price": old_price}),
+            json.dumps({"status": book["status"], "selling_price": new_price, "adjustment": diff}),
+            now_iso, user, f"Sale payment adjusted from ₹{old_price:g} to ₹{new_price:g} ({'+' if diff >= 0 else ''}₹{diff:g}). {notes}".strip()
+        ))
+
+        cursor.execute("""
+            INSERT INTO sync_queue (operation, payload, created_at)
+            VALUES (?, ?, ?)
+        """, (
+            "UPDATE_STATUS",
+            json.dumps({
+                "book_id": book_id,
+                "status": book["status"],
+                "selling_price": new_price,
+                "previous_price": old_price
+            }),
+            now_iso
+        ))
+
+        cursor.execute("SELECT * FROM books WHERE book_id = ?", (book_id,))
+        updated_book = dict(cursor.fetchone())
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "success": True,
+            "book": updated_book,
+            "book_id": book_id,
+            "old_price": old_price,
+            "new_price": new_price,
+            "adjustment": diff,
+            "message": f"Successfully updated sale payment from ₹{old_price:g} to ₹{new_price:g} ({'+' if diff >= 0 else ''}₹{diff:g})."
+        }
+
 def update_book_metadata(
     book_id: str,
     title: Optional[str] = None,
