@@ -68,9 +68,6 @@ def read_json_body(environ):
 
 def app(environ, start_response):
     """Main WSGI entry point for Vercel Serverless Functions."""
-    # Ensure database is primed for every request
-    database.ensure_database_ready()
-
     method = environ.get("REQUEST_METHOD", "GET").upper()
     query_string = environ.get("QUERY_STRING", "")
     query_params = urllib.parse.parse_qs(query_string)

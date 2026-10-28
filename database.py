@@ -444,8 +444,13 @@ def migrate_database_schema(conn: sqlite3.Connection):
     """)
     conn.commit()
 
+_DB_IS_VERIFIED = False
+
 def ensure_database_ready():
     """Verifies books exist; if empty or missing, initializes and seeds from CSV or Google Sheet."""
+    global _DB_IS_VERIFIED
+    if _DB_IS_VERIFIED:
+        return
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -453,12 +458,14 @@ def ensure_database_ready():
         if not cursor.fetchone():
             conn.close()
             init_database(force_reseed=True)
+            _DB_IS_VERIFIED = True
             return
         cursor.execute("SELECT COUNT(*) FROM books")
         cnt = cursor.fetchone()[0]
         if cnt == 0:
             conn.close()
             init_database(force_reseed=True)
+            _DB_IS_VERIFIED = True
             return
 
         # Sanitize any legacy copy suffixes on warm containers
@@ -478,6 +485,7 @@ def ensure_database_ready():
         if to_clean:
             conn.commit()
         conn.close()
+        _DB_IS_VERIFIED = True
     except Exception as e:
         print(f"Notice initializing database: {e}")
         try:
