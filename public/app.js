@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   safeInit('initPOS', initPOS);
   safeInit('initUnassigned', initUnassigned);
   safeInit('initHistoryAndSync', initHistoryAndSync);
+  safeInit('initCancelSaleReturnModal', initCancelSaleReturnModal);
 
   // Initial load
   fetchStats();
@@ -787,8 +788,8 @@ function createBookTile(book, copy, matchType) {
         </div>
         <div class="book-card-actions">
           ${state === 'SOLD' ? `
-            <button class="btn btn-sm btn-sold-disabled" disabled title="Sold copy${sellingPrice ? ` (Paid: ₹${sellingPrice})` : ''}">
-              ❌ SOLD${sellingPrice ? ` (₹${sellingPrice})` : ''}
+            <button class="btn btn-sm btn-return-copy" data-bid="${escapeHtml(bookId)}" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.4rem 0.8rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; box-shadow:0 2px 8px rgba(225,29,72,0.3); transition:all 0.15s ease;" title="Cancel sale & return this book to shelf (previous or new position)">
+              <span>↩️</span> Return Book
             </button>
           ` : `
             <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy">
@@ -837,6 +838,15 @@ function createBookTile(book, copy, matchType) {
       btnEdit.addEventListener('click', (e) => {
         e.stopPropagation();
         renderEdit();
+      });
+    }
+
+    // Hook up Return Book button (visible on SOLD books)
+    const btnReturn = card.querySelector('.btn-return-copy');
+    if (btnReturn) {
+      btnReturn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openCancelSaleReturnModal(copy, book, renderView);
       });
     }
 
@@ -1052,50 +1062,13 @@ function createBookTile(book, copy, matchType) {
     // Repay & Return action (for sold books)
     const btnRepay = card.querySelector('.btn-repay-copy');
     if (btnRepay) {
-      btnRepay.addEventListener('click', async (e) => {
+      btnRepay.addEventListener('click', (e) => {
         e.stopPropagation();
-        const priceInputVal = card.querySelector('.inp-edit-price') ? card.querySelector('.inp-edit-price').value.trim() : '';
-        const repayAmount = priceInputVal !== '' ? priceInputVal : (curPrice || '0');
-        const confirmMsg = `💸 REPAY & RETURN BOOK TO SHELF\n\nAre you sure you want to repay ₹${repayAmount} to the customer and return "${cleanTitle}" (${bookId}) back to Available inventory on shelf?\n\nThis will restore the book to Available status on ${copy.location_english || 'its shelf'} and adjust total store revenue.`;
-        if (!confirm(confirmMsg)) return;
-
-        btnRepay.disabled = true;
-        btnRepay.innerHTML = `<span>⏳</span> Repaying...`;
-
-        try {
-          const res = await fetch('/api/books/repay', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ book_id: bookId })
-          });
-          const data = await res.json();
-          if (data.success || !data.error) {
-            copy.status = 'Available';
-            copy.selling_price = null;
-            if (book.copies) {
-              const bCopy = book.copies.find(c => c.book_id === bookId);
-              if (bCopy) {
-                bCopy.status = 'Available';
-                bCopy.selling_price = null;
-              }
-            }
-            if (book.book_id === bookId) {
-              book.status = 'Available';
-              book.selling_price = null;
-            }
-            fetchStats();
-            renderView();
-            alert(`✅ Repaid ₹${repayAmount} successfully!\n\n"${cleanTitle}" is now back in stock on shelf.`);
-          } else {
-            alert('Failed to repay sale: ' + (data.error || 'Unknown error'));
-            btnRepay.disabled = false;
-            btnRepay.innerHTML = `<span>💸</span> Repay &amp; Return to Shelf`;
-          }
-        } catch (err) {
-          alert('Network error while repaying: ' + err.message);
-          btnRepay.disabled = false;
-          btnRepay.innerHTML = `<span>💸</span> Repay &amp; Return to Shelf`;
-        }
+        openCancelSaleReturnModal(copy, book, renderView, {
+          defaultNewRack: inpRack.value.trim(),
+          defaultNewCol: inpCol.value.trim(),
+          defaultNewPos: inpPos.value.trim()
+        });
       });
     }
 
@@ -3823,16 +3796,21 @@ function initPOS() {
   if (cameraInput) cameraInput.addEventListener('change', (e) => handlePosFile(e.target.files[0]));
   if (fileInput) fileInput.addEventListener('change', (e) => handlePosFile(e.target.files[0]));
 
-  closeBtn.addEventListener('click', () => {
+  const hideSaleDrawer = () => {
     drawer.style.display = 'none';
     activeSaleCopy = null;
-  });
+  };
+
+  closeBtn.addEventListener('click', hideSaleDrawer);
+  const btnCancelSaleDrawer = document.getElementById('btnCancelSaleDrawer');
+  if (btnCancelSaleDrawer) {
+    btnCancelSaleDrawer.addEventListener('click', hideSaleDrawer);
+  }
 
   // Also close when clicking outside modal card on backdrop
   drawer.addEventListener('click', (e) => {
     if (e.target === drawer) {
-      drawer.style.display = 'none';
-      activeSaleCopy = null;
+      hideSaleDrawer();
     }
   });
 
@@ -4003,6 +3981,248 @@ async function searchPOS(query) {
   } catch (err) {
     container.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
   }
+}
+
+let activeReturnContext = null;
+
+function initCancelSaleReturnModal() {
+  const modal = document.getElementById('modalCancelSaleReturn');
+  if (!modal) return;
+
+  const btnClose = document.getElementById('btnCloseCancelSaleModal');
+  const btnCancel = document.getElementById('btnCancelReturnModal');
+  const btnZero = document.getElementById('btnReturnSetZeroRefund');
+  const btnConfirm = document.getElementById('btnConfirmReturnToShelf');
+
+  const radioPrev = document.getElementById('radioReturnPrev');
+  const radioNew = document.getElementById('radioReturnNew');
+  const lblPrev = document.getElementById('lblReturnPrev');
+  const lblNew = document.getElementById('lblReturnNew');
+  const secNew = document.getElementById('returnNewPosSection');
+
+  const inpRack = document.getElementById('returnInpRack');
+  const inpCol = document.getElementById('returnInpCol');
+  const inpPos = document.getElementById('returnInpPos');
+  const previewNew = document.getElementById('returnNewPosPreview');
+
+  function updatePosModeUI() {
+    if (radioNew && radioNew.checked) {
+      if (lblPrev) {
+        lblPrev.classList.remove('selected');
+        lblPrev.style.borderColor = '#e2e8f0';
+        lblPrev.style.background = '#ffffff';
+      }
+      if (lblNew) {
+        lblNew.classList.add('selected');
+        lblNew.style.borderColor = '#2563eb';
+        lblNew.style.background = '#eff6ff';
+      }
+      if (secNew) secNew.style.display = 'block';
+    } else {
+      if (lblPrev) {
+        lblPrev.classList.add('selected');
+        lblPrev.style.borderColor = '#2563eb';
+        lblPrev.style.background = '#eff6ff';
+      }
+      if (lblNew) {
+        lblNew.classList.remove('selected');
+        lblNew.style.borderColor = '#e2e8f0';
+        lblNew.style.background = '#ffffff';
+      }
+      if (secNew) secNew.style.display = 'none';
+    }
+  }
+
+  function updateNewPosPreview() {
+    if (previewNew && inpRack && inpCol && inpPos) {
+      previewNew.textContent = formatLocationPreviewText(inpRack.value, inpCol.value, inpPos.value);
+    }
+  }
+
+  if (radioPrev) radioPrev.addEventListener('change', updatePosModeUI);
+  if (radioNew) radioNew.addEventListener('change', updatePosModeUI);
+  if (lblPrev) lblPrev.addEventListener('click', () => { if (radioPrev) { radioPrev.checked = true; updatePosModeUI(); } });
+  if (lblNew) lblNew.addEventListener('click', () => { if (radioNew) { radioNew.checked = true; updatePosModeUI(); } });
+
+  [inpRack, inpCol, inpPos].forEach(inp => {
+    if (inp) {
+      inp.addEventListener('input', updateNewPosPreview);
+      inp.addEventListener('change', updateNewPosPreview);
+    }
+  });
+
+  if (btnZero) {
+    btnZero.addEventListener('click', () => {
+      const inpRefund = document.getElementById('returnRefundAmount');
+      if (inpRefund) inpRefund.value = '0';
+    });
+  }
+
+  const hideModal = () => {
+    modal.style.display = 'none';
+    activeReturnContext = null;
+  };
+
+  if (btnClose) btnClose.addEventListener('click', hideModal);
+  if (btnCancel) btnCancel.addEventListener('click', hideModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) hideModal();
+  });
+
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', async () => {
+      if (!activeReturnContext) return;
+      const { copy, book, onRestored } = activeReturnContext;
+      const bookId = copy.book_id || book.book_id;
+      const posMode = radioNew && radioNew.checked ? 'new' : 'previous';
+      const newRack = inpRack ? inpRack.value.trim() : '';
+      const newCol = inpCol ? inpCol.value.trim() : '';
+      const newPos = inpPos ? inpPos.value.trim() : '';
+      const refundVal = document.getElementById('returnRefundAmount') ? document.getElementById('returnRefundAmount').value.trim() : '';
+      const notesVal = document.getElementById('returnNotes') ? document.getElementById('returnNotes').value.trim() : '';
+
+      if (posMode === 'new' && (!newRack || !newCol || !newPos)) {
+        alert('Please specify Rack, Column, and Position for the new position, or select "Previous Position".');
+        return;
+      }
+
+      btnConfirm.disabled = true;
+      btnConfirm.innerHTML = `<span>⏳</span> Restoring...`;
+
+      try {
+        const payload = {
+          book_id: bookId,
+          position_mode: posMode,
+          rack: posMode === 'new' ? newRack : undefined,
+          column_num: posMode === 'new' ? newCol : undefined,
+          position: posMode === 'new' ? newPos : undefined,
+          refund_amount: refundVal !== '' ? refundVal : undefined,
+          notes: notesVal
+        };
+
+        const res = await fetch('/api/books/return', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.success || !data.error) {
+          const updatedBook = data.book || {};
+          copy.status = 'Available';
+          copy.selling_price = null;
+          copy.rack = updatedBook.rack !== undefined ? updatedBook.rack : copy.rack;
+          copy.column_num = updatedBook.column_num !== undefined ? updatedBook.column_num : copy.column_num;
+          copy.position = updatedBook.position !== undefined ? updatedBook.position : copy.position;
+          copy.location_english = updatedBook.location_english || copy.location_english;
+
+          if (book.copies) {
+            const bCopy = book.copies.find(c => c.book_id === bookId);
+            if (bCopy) {
+              bCopy.status = 'Available';
+              bCopy.selling_price = null;
+              bCopy.rack = copy.rack;
+              bCopy.column_num = copy.column_num;
+              bCopy.position = copy.position;
+              bCopy.location_english = copy.location_english;
+            }
+          }
+          if (book.book_id === bookId) {
+            book.status = 'Available';
+            book.selling_price = null;
+            book.rack = copy.rack;
+            book.column_num = copy.column_num;
+            book.position = copy.position;
+            book.location_english = copy.location_english;
+          }
+
+          hideModal();
+          fetchStats();
+          if (typeof onRestored === 'function') {
+            onRestored();
+          }
+
+          const targetLoc = updatedBook.location_english || 'its shelf';
+          const refundText = data.refunded_amount > 0 ? ` Refunded ₹${data.refunded_amount}.` : '';
+          alert(`✅ Returned to Shelf!\n\n"${book.title || copy.title}" is now back in stock at:\n📍 ${targetLoc}.${refundText}`);
+        } else {
+          alert('Failed to return book: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error while returning book: ' + err.message);
+      } finally {
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = `↩️ Confirm Return to Shelf`;
+      }
+    });
+  }
+}
+
+function openCancelSaleReturnModal(copy, book, onRestored, options = {}) {
+  const modal = document.getElementById('modalCancelSaleReturn');
+  if (!modal) return;
+
+  activeReturnContext = { copy, book, onRestored };
+
+  const bookId = copy.book_id || book.book_id || '';
+  const title = copy.title || book.title || 'Untitled Book';
+  const author = copy.author || book.author || '';
+  const sellingPrice = (copy.selling_price !== null && copy.selling_price !== undefined && copy.selling_price !== '') 
+    ? copy.selling_price 
+    : (book.selling_price || 0);
+
+  const prevLoc = copy.location_english || book.location_english || (copy.shelf_location ? `Shelf ${copy.shelf_location}` : 'Unassigned Shelf');
+
+  document.getElementById('returnModalBookTitle').textContent = title;
+  document.getElementById('returnModalBookAuthor').textContent = author ? `by ${author}` : '';
+  document.getElementById('returnModalBookId').textContent = bookId;
+  document.getElementById('returnModalPaidBadge').textContent = `💳 Paid: ₹${sellingPrice || '0'}`;
+  document.getElementById('returnModalCurrentLoc').textContent = `📍 Previous: ${prevLoc}`;
+  document.getElementById('returnPrevLocationDesc').textContent = `📍 ${prevLoc}`;
+
+  const radioPrev = document.getElementById('radioReturnPrev');
+  const radioNew = document.getElementById('radioReturnNew');
+  const lblPrev = document.getElementById('lblReturnPrev');
+  const lblNew = document.getElementById('lblReturnNew');
+  const secNew = document.getElementById('returnNewPosSection');
+  const inpRefund = document.getElementById('returnRefundAmount');
+  const inpNotes = document.getElementById('returnNotes');
+  const inpRack = document.getElementById('returnInpRack');
+  const inpCol = document.getElementById('returnInpCol');
+  const inpPos = document.getElementById('returnInpPos');
+
+  if (inpRefund) inpRefund.value = (sellingPrice || '0').toString();
+  if (inpNotes) inpNotes.value = '';
+
+  if (options.defaultNewRack || options.defaultNewCol || options.defaultNewPos) {
+    if (radioNew) radioNew.checked = true;
+    if (inpRack) inpRack.value = options.defaultNewRack || '';
+    if (inpCol) inpCol.value = options.defaultNewCol || '';
+    if (inpPos) inpPos.value = options.defaultNewPos || '';
+  } else {
+    if (radioPrev) radioPrev.checked = true;
+    if (inpRack) inpRack.value = (copy.rack !== null && copy.rack !== undefined) ? copy.rack.toString() : '';
+    if (inpCol) inpCol.value = (copy.column_num !== null && copy.column_num !== undefined) ? copy.column_num.toString() : '';
+    if (inpPos) inpPos.value = (copy.position !== null && copy.position !== undefined) ? copy.position.toString() : '';
+  }
+
+  // Trigger UI state
+  if (radioNew && radioNew.checked) {
+    if (lblPrev) { lblPrev.classList.remove('selected'); lblPrev.style.borderColor = '#e2e8f0'; lblPrev.style.background = '#ffffff'; }
+    if (lblNew) { lblNew.classList.add('selected'); lblNew.style.borderColor = '#2563eb'; lblNew.style.background = '#eff6ff'; }
+    if (secNew) secNew.style.display = 'block';
+  } else {
+    if (lblPrev) { lblPrev.classList.add('selected'); lblPrev.style.borderColor = '#2563eb'; lblPrev.style.background = '#eff6ff'; }
+    if (lblNew) { lblNew.classList.remove('selected'); lblNew.style.borderColor = '#e2e8f0'; lblNew.style.background = '#ffffff'; }
+    if (secNew) secNew.style.display = 'none';
+  }
+
+  const previewNew = document.getElementById('returnNewPosPreview');
+  if (previewNew && inpRack && inpCol && inpPos) {
+    previewNew.textContent = formatLocationPreviewText(inpRack.value, inpCol.value, inpPos.value);
+  }
+
+  modal.style.display = 'flex';
 }
 
 function openSaleModalForCopy(bookId, title, author, locationEnglish) {

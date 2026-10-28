@@ -216,6 +216,63 @@ class TestBookstoreSystem(unittest.TestCase):
         for r in rows:
             self.assertEqual(r["status"], "SOLD OUT")
 
+    def test_05c_cancel_sale_and_return_to_shelf(self):
+        """Test cancelling a sale and returning book to previous position or new position."""
+        # 1. Add a book at a known location
+        book = database.add_book(
+            title="Returnable Novel",
+            author="Author R",
+            rack=15,
+            column_num=2,
+            position=4
+        )
+        book_id = book["book_id"]
+        self.assertEqual(book["status"], "Available")
+        self.assertEqual(book["rack"], 15)
+        self.assertEqual(book["column_num"], 2)
+        self.assertEqual(book["position"], 4)
+        self.assertIn("Rack 15", book["location_english"])
+
+        # 2. Sell the book
+        sell_res = database.sell_book(book_id, selling_price=120.0, notes="Sold to customer")
+        self.assertTrue(sell_res["success"])
+        self.assertEqual(sell_res["book"]["status"], "SOLD OUT")
+        self.assertEqual(sell_res["book"]["selling_price"], 120.0)
+
+        # 3. Cancel sale & return to previous position
+        return_prev = database.revert_sale(book_id, position_mode="previous", notes="Customer changed mind")
+        self.assertTrue(return_prev["success"])
+        self.assertEqual(return_prev["status"], "Available")
+        self.assertEqual(return_prev["book"]["status"], "Available")
+        self.assertIsNone(return_prev["book"]["selling_price"])
+        self.assertEqual(return_prev["book"]["rack"], 15)
+        self.assertEqual(return_prev["book"]["column_num"], 2)
+        self.assertEqual(return_prev["book"]["position"], 4)
+        self.assertIn("Rack 15", return_prev["book"]["location_english"])
+
+        # 4. Sell the book again
+        database.sell_book(book_id, selling_price=150.0, notes="Second sale")
+
+        # 5. Cancel sale & return to a NEW position (e.g. Rack 42, Column 3, Position 7)
+        return_new = database.revert_sale(
+            book_id,
+            position_mode="new",
+            rack=42,
+            column_num=3,
+            position=7,
+            refund_amount=150.0,
+            notes="Relocated after return"
+        )
+        self.assertTrue(return_new["success"])
+        self.assertEqual(return_new["book"]["status"], "Available")
+        self.assertIsNone(return_new["book"]["selling_price"])
+        self.assertEqual(return_new["book"]["rack"], 42)
+        self.assertEqual(return_new["book"]["column_num"], 3)
+        self.assertEqual(return_new["book"]["position"], 7)
+        self.assertIn("Rack 42", return_new["book"]["location_english"])
+        self.assertIn("Column 3", return_new["book"]["location_english"])
+        self.assertIn("7th book from top", return_new["book"]["location_english"])
+
     def test_06_unassigned_books_and_bulk_assignment_req1_7(self):
         """Req 1.7: Unassigned books section and bulk location assignment."""
         # Add 2 books with unassigned locations

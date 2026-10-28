@@ -1292,8 +1292,17 @@ def sell_books_bulk(
             "message": f"Successfully completed sale for {len(successful_sales)} books."
         }
 
-def revert_sale(book_id: str, user: str = "Staff", notes: str = "") -> Dict[str, Any]:
-    """Reverts a sold book back to 'Available' status, refunds/repays customer, and updates audit/sales logs."""
+def revert_sale(
+    book_id: str,
+    user: str = "Staff",
+    notes: str = "",
+    position_mode: str = "previous",
+    rack: Any = None,
+    column_num: Any = None,
+    position: Any = None,
+    refund_amount: Any = None
+) -> Dict[str, Any]:
+    """Reverts a sold book back to 'Available' status, refunds/repays customer, and returns to previous or new shelf position."""
     with db_lock:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1308,7 +1317,58 @@ def revert_sale(book_id: str, user: str = "Staff", notes: str = "") -> Dict[str,
         tx = cursor.fetchone()
         amount_paid = (tx["selling_price"] if tx and tx["selling_price"] is not None else book["selling_price"]) or 0.0
 
-        cursor.execute("UPDATE books SET status = 'Available', selling_price = NULL, updated_at = ? WHERE book_id = ?", (now_iso, book_id))
+        if refund_amount is not None and refund_amount != "":
+            try:
+                final_refund = round(float(refund_amount), 2)
+            except (ValueError, TypeError):
+                final_refund = amount_paid
+        else:
+            final_refund = amount_paid
+
+        new_rack = book["rack"]
+        new_col = book["column_num"]
+        new_pos = book["position"]
+        new_loc_eng = book["location_english"]
+        new_unassigned_since = book["unassigned_since"]
+
+        mode_clean = (position_mode or "previous").strip().lower()
+        if mode_clean == "new":
+            new_r_int = parse_rack_value(rack)
+            new_c_int = parse_column_value(column_num)
+            new_p_int = parse_position_value(position)
+            new_rack = new_r_int
+            new_col = new_c_int
+            new_pos = new_p_int
+            if new_r_int is not None:
+                new_loc_eng = format_location_english(new_r_int, new_c_int, new_p_int)
+                new_unassigned_since = None
+            else:
+                new_loc_eng = None
+                new_unassigned_since = now_iso
+        elif mode_clean == "unassigned":
+            new_rack = None
+            new_col = None
+            new_pos = None
+            new_loc_eng = None
+            new_unassigned_since = now_iso
+        else:
+            # Previous position: keep book's recorded rack, column, position
+            if new_rack is not None and not new_loc_eng:
+                new_loc_eng = format_location_english(new_rack, new_col, new_pos)
+
+        cursor.execute("""
+            UPDATE books SET
+                status = 'Available',
+                selling_price = NULL,
+                rack = ?,
+                column_num = ?,
+                position = ?,
+                location_english = ?,
+                updated_at = ?,
+                unassigned_since = ?
+            WHERE book_id = ?
+        """, (new_rack, new_col, new_pos, new_loc_eng, now_iso, new_unassigned_since, book_id))
+
         cursor.execute("DELETE FROM sales_transactions WHERE book_id = ?", (book_id,))
         cursor.execute("DELETE FROM sync_queue WHERE payload LIKE ?", (f'%"{book_id}"%',))
 
@@ -1316,10 +1376,19 @@ def revert_sale(book_id: str, user: str = "Staff", notes: str = "") -> Dict[str,
             INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            "REPAY_REFUND", book_id,
-            json.dumps({"status": book["status"], "selling_price": amount_paid}),
-            json.dumps({"status": "Available", "selling_price": None, "repaid_amount": amount_paid}),
-            now_iso, user, f"Sale repaid/refunded (₹{amount_paid:g}). Restored to shelf. {notes}".strip()
+            "CANCEL_SALE_RETURN", book_id,
+            json.dumps({"status": book["status"], "selling_price": amount_paid, "location_english": book["location_english"]}),
+            json.dumps({
+                "status": "Available",
+                "selling_price": None,
+                "refunded_amount": final_refund,
+                "position_mode": mode_clean,
+                "rack": new_rack,
+                "column_num": new_col,
+                "position": new_pos,
+                "location_english": new_loc_eng
+            }),
+            now_iso, user, f"Sale cancelled & returned to shelf ({'New position' if mode_clean == 'new' else 'Previous position'}: {new_loc_eng or 'Unassigned'}). Repaid ₹{final_refund:g}. {notes}".strip()
         ))
 
         cursor.execute("""
@@ -1327,19 +1396,37 @@ def revert_sale(book_id: str, user: str = "Staff", notes: str = "") -> Dict[str,
             VALUES (?, ?, ?)
         """, (
             "UPDATE_STATUS",
-            json.dumps({"book_id": book_id, "status": "Available", "repaid_amount": amount_paid}),
+            json.dumps({
+                "book_id": book_id,
+                "status": "Available",
+                "rack": new_rack,
+                "column_num": new_col,
+                "position": new_pos,
+                "location_english": new_loc_eng,
+                "refunded_amount": final_refund
+            }),
             now_iso
         ))
 
+        cursor.execute("SELECT * FROM books WHERE book_id = ?", (book_id,))
+        updated_book = dict(cursor.fetchone())
+
         conn.commit()
         conn.close()
+
         sync_csv_update_status(book_id, "")
+        if mode_clean == "new":
+            sync_csv_update_location(book_id, str(new_rack or ""), str(new_col or ""), str(new_pos or ""))
+
         return {
             "success": True,
+            "book": updated_book,
             "book_id": book_id,
             "status": "Available",
-            "repaid_amount": amount_paid,
-            "message": f"Successfully repaid ₹{amount_paid:g} and returned {book['title']} ({book_id}) to shelf."
+            "refunded_amount": final_refund,
+            "position_mode": mode_clean,
+            "location_english": new_loc_eng,
+            "message": f"Successfully cancelled sale for {updated_book['title']} ({book_id}) and returned to shelf ({new_loc_eng or 'Unassigned'}). Repaid ₹{final_refund:g}."
         }
 
 def update_book_metadata(

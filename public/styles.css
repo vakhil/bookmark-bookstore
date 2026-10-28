@@ -2559,5 +2559,28 @@ input, select, textarea, button {
   border-color: #a7f3d0;
 }
 
+/* Return to Shelf Modal & Actions */
+.return-pos-card {
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.return-pos-card:hover {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+}
+.return-pos-card.selected {
+  border-color: #2563eb !important;
+  background: #eff6ff !important;
+}
+.btn-return-copy:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.45) !important;
+  filter: brightness(1.08);
+}
+.btn-return-copy:active {
+  transform: translateY(0);
+}
+
+
 
 

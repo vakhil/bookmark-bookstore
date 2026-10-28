@@ -615,9 +615,135 @@
           <input type="text" id="saleNotes" placeholder="e.g. Cash, Card, UPI">
         </div>
 
-        <button class="btn btn-success btn-block btn-lg" id="btnConfirmSale">
-          ✅ Complete Sale & Mark SOLD OUT
-        </button>
+        <div style="display: flex; gap: 0.6rem; margin-top: 0.75rem;">
+          <button type="button" class="btn btn-outline" id="btnCancelSaleDrawer" style="flex: 1; padding: 0.7rem; font-weight: 600;">
+            ✖ Cancel
+          </button>
+          <button class="btn btn-success btn-lg" id="btnConfirmSale" style="flex: 2; margin-top: 0; font-weight: 700;">
+            ✅ Complete Sale
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Sale & Return to Shelf Modal -->
+  <div id="modalCancelSaleReturn" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="bottom-sheet-handle"></div>
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.35rem;">↩️</span>
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-main);">Cancel Sale & Return to Shelf</h3>
+            <span style="font-size: 0.76rem; color: var(--text-muted);">Restore book to active inventory & refund customer</span>
+          </div>
+        </div>
+        <button class="btn-close" id="btnCloseCancelSaleModal">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding-top: 0.5rem;">
+        <!-- Book Summary Mini Card -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 0.95rem; margin-bottom: 0.9rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+            <div>
+              <div id="returnModalBookTitle" style="font-size: 1rem; font-weight: 700; color: #1e293b;">-</div>
+              <div id="returnModalBookAuthor" style="font-size: 0.82rem; color: #64748b; font-weight: 500;">-</div>
+            </div>
+            <span id="returnModalBookId" class="copy-id-box" style="font-size: 0.75rem;">-</span>
+          </div>
+          <div style="margin-top: 0.45rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; font-size: 0.78rem;">
+            <span id="returnModalPaidBadge" style="background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; font-weight: 700; border-radius: 6px; padding: 0.2rem 0.5rem;">💳 Paid: ₹0</span>
+            <span id="returnModalCurrentLoc" style="color: #475569; font-weight: 600;">📍 Previous: -</span>
+          </div>
+        </div>
+
+        <!-- Position Option Selection -->
+        <div style="margin-bottom: 0.9rem;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 0.45rem;">
+            Return Destination:
+          </label>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.65rem;">
+            <!-- Option 1: Previous Position Card -->
+            <label id="lblReturnPrev" class="return-pos-card selected" style="cursor: pointer; border: 2px solid #2563eb; background: #eff6ff; border-radius: 10px; padding: 0.65rem 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; transition: all 0.2s ease;">
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <input type="radio" name="returnPosMode" value="previous" checked id="radioReturnPrev" style="accent-color: #2563eb;">
+                <span style="font-size: 0.82rem; font-weight: 700; color: #1e40af;">Previous Position</span>
+              </div>
+              <div id="returnPrevLocationDesc" style="font-size: 0.74rem; color: #3b82f6; font-weight: 600; line-height: 1.3; margin-top: 0.15rem;">
+                📍 Loading...
+              </div>
+            </label>
+
+            <!-- Option 2: New Position Card -->
+            <label id="lblReturnNew" class="return-pos-card" style="cursor: pointer; border: 2px solid #e2e8f0; background: #ffffff; border-radius: 10px; padding: 0.65rem 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; transition: all 0.2s ease;">
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <input type="radio" name="returnPosMode" value="new" id="radioReturnNew" style="accent-color: #2563eb;">
+                <span style="font-size: 0.82rem; font-weight: 700; color: #334155;">New Position</span>
+              </div>
+              <div style="font-size: 0.74rem; color: #64748b; line-height: 1.3; margin-top: 0.15rem;">
+                Assign to custom rack &amp; column
+              </div>
+            </label>
+          </div>
+
+          <!-- New Position Inputs (visible when radioReturnNew is selected) -->
+          <div id="returnNewPosSection" style="display: none; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; padding: 0.75rem; margin-bottom: 0.75rem;">
+            <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+              <div style="flex: 1;">
+                <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 0.2rem;">Rack</label>
+                <input type="text" id="returnInpRack" class="form-control form-control-sm" placeholder="e.g. 36" style="width: 100%; font-size: 0.85rem; font-weight: 600;">
+              </div>
+              <div style="width: 80px;">
+                <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 0.2rem;">Column</label>
+                <input type="text" id="returnInpCol" class="form-control form-control-sm" placeholder="e.g. 4" style="width: 100%; font-size: 0.85rem; font-weight: 600;">
+              </div>
+              <div style="width: 80px;">
+                <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 0.2rem;">Position</label>
+                <input type="text" id="returnInpPos" class="form-control form-control-sm" placeholder="e.g. 8" style="width: 100%; font-size: 0.85rem; font-weight: 600;">
+              </div>
+            </div>
+            <div style="margin-top: 0.45rem; font-size: 0.76rem; color: #0284c7; font-weight: 600; display: flex; align-items: center; gap: 0.3rem;">
+              <span>📍</span> <span id="returnNewPosPreview">Rack - → Column - → -</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Repayment / Refund Amount -->
+        <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 10px; padding: 0.75rem; margin-bottom: 0.85rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #9f1239; margin: 0; display: flex; align-items: center; gap: 0.35rem;">
+              <span>💸</span> Refund / Repay Customer (₹)
+            </label>
+            <span style="font-size: 0.72rem; color: #be123c;">Adjusts store revenue</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <div style="position: relative; flex: 1;">
+              <span style="position: absolute; left: 0.55rem; top: 50%; transform: translateY(-50%); font-weight: 700; color: #be123c;">₹</span>
+              <input type="number" step="any" min="0" id="returnRefundAmount" class="form-control form-control-sm" placeholder="0.00" style="padding-left: 1.45rem; font-weight: 700; font-size: 0.95rem; color: #881337; border-color: #fca5a5; background: #ffffff;">
+            </div>
+            <button type="button" id="btnReturnSetZeroRefund" class="btn btn-sm btn-outline" style="font-size: 0.72rem; padding: 0.35rem 0.55rem; white-space: nowrap;">
+              No Refund (₹0)
+            </button>
+          </div>
+        </div>
+
+        <!-- Return Reason / Notes -->
+        <div class="form-field" style="margin-bottom: 1.15rem;">
+          <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #64748b; margin-bottom: 0.25rem;">Staff Return Reason / Note (Optional)</label>
+          <input type="text" id="returnNotes" class="form-control form-control-sm" placeholder="e.g. Customer returned book, accidental sell, etc.">
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 0.6rem; justify-content: flex-end;">
+          <button type="button" class="btn btn-outline" id="btnCancelReturnModal" style="padding: 0.5rem 0.9rem;">
+            ✖ Keep Sold
+          </button>
+          <button type="button" class="btn btn-danger" id="btnConfirmReturnToShelf" style="background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); border: none; font-weight: 700; padding: 0.5rem 1.1rem; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3);">
+            ↩️ Confirm Return to Shelf
+          </button>
+        </div>
       </div>
     </div>
   </div>

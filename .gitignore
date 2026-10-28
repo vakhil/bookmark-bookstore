@@ -6,4 +6,5 @@ google_config.json
 bookstore.db-shm
 bookstore.db-wal
 test_bookstore.db
+*.sqbpro
 *.pem

@@ -292,12 +292,25 @@ def app(environ, start_response):
                 return json_response(start_response, res, 400)
             return json_response(start_response, res)
 
-        elif path in ("/api/books/revert-sale", "/api/books/repay", "/api/books/refund"):
+        elif path in ("/api/books/revert-sale", "/api/books/repay", "/api/books/refund", "/api/books/cancel-sale", "/api/books/return"):
             book_id = body.get("book_id", "")
             if not book_id:
                 return json_response(start_response, {"error": "Book ID is required."}, 400)
             notes = body.get("notes", "")
-            res = database.revert_sale(book_id, notes=notes)
+            position_mode = body.get("position_mode", "previous")
+            rack = body.get("rack")
+            column_num = body.get("column_num")
+            position = body.get("position")
+            refund_amount = body.get("refund_amount")
+            res = database.revert_sale(
+                book_id=book_id,
+                notes=notes,
+                position_mode=position_mode,
+                rack=rack,
+                column_num=column_num,
+                position=position,
+                refund_amount=refund_amount
+            )
             return json_response(start_response, res)
 
         elif path == "/api/books/update":
