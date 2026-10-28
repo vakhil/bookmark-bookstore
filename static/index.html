@@ -48,11 +48,11 @@
     </div>
   </header>
 
-  <!-- Navigation Tabs (Search & Sell, Genre, Book Advisor, Add Book, Sell by ID, Unassigned) -->
+  <!-- Navigation Tabs (Search & Sell, Genre, Book Advisor, Add Book, Shelf Unassigned) -->
   <nav class="main-tabs simple-nav">
     <button class="tab-btn active" data-tab="tabSearch">
       <span class="tab-icon">🔍</span>
-      <span class="tab-label">Search</span>
+      <span class="tab-label">Search &amp; Sell</span>
     </button>
     <button class="tab-btn" data-tab="tabGenre">
       <span class="tab-icon">🏷️</span>
@@ -65,10 +65,6 @@
     <button class="tab-btn" data-tab="tabAdd">
       <span class="tab-icon">➕</span>
       <span class="tab-label">Add</span>
-    </button>
-    <button class="tab-btn" data-tab="tabSell">
-      <span class="tab-icon">⚡</span>
-      <span class="tab-label">Sell ID</span>
     </button>
     <button class="tab-btn tab-btn-quiet" data-tab="tabUnassigned">
       <span class="tab-icon">📍</span>
@@ -98,13 +94,17 @@
         <button class="btn-clear" id="btnClearSearch" style="display: none;" title="Clear">✕</button>
       </div>
 
-      <!-- Action Row: Voice Search + Upload Image -->
+      <!-- Action Row: Voice Search + Take Photo + Upload Image -->
       <div class="search-actions-row">
         <button type="button" class="btn btn-secondary btn-sm" id="btnVoiceSearchAction">
           🎙️ Speak to Search
         </button>
+        <label for="cameraSearchSnapInput" class="btn btn-outline btn-sm camera-btn-wrapper">
+          📸 Take Photo
+          <input type="file" id="cameraSearchSnapInput" accept="image/*" capture="environment" class="native-file-overlay">
+        </label>
         <label for="cameraSearchFileInput" class="btn btn-outline btn-sm camera-btn-wrapper">
-          📁 Upload Book Image
+          📁 Upload Image
           <input type="file" id="cameraSearchFileInput" accept="image/*" class="native-file-overlay">
         </label>
       </div>
@@ -112,6 +112,9 @@
         <span class="pulse-mic">🔴</span>
         <span id="voiceSearchStatusText">Listening... Speak book title or author now</span>
       </div>
+
+      <!-- Digital Receipt for Quick Sales (dismissible) -->
+      <div id="saleReceiptContainer" style="display: none;" class="receipt-box"></div>
 
       <!-- Live Search Results -->
       <div id="searchResultsContainer">
@@ -486,67 +489,6 @@
             </button>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ==================== TAB 3: QUICK SELL (POS) ==================== -->
-    <section id="tabSell" class="tab-pane">
-      <div class="clean-card">
-        <div class="card-title-row">
-          <h2>Search and Sell</h2>
-          <span class="status-pill">Instant Register</span>
-        </div>
-
-        <!-- Mode: Search & Sell Only -->
-        <div id="sectionPosSingle" class="pos-mode-content">
-          <div class="pos-input-group">
-            <input type="text" id="posSearchInput" placeholder="Enter Book ID (e.g. BK-10151) or title to sell..." autocomplete="off">
-          </div>
-          <div class="pos-camera-options-row">
-            <label for="posCameraInput" class="btn btn-primary camera-btn-wrapper">
-              <span>📸</span> Take Photo
-              <input type="file" id="posCameraInput" accept="image/*" capture="environment" class="native-file-overlay">
-            </label>
-            <label for="posFileInput" class="btn btn-outline camera-btn-wrapper">
-              <span>📁</span> Upload Photo
-              <input type="file" id="posFileInput" accept="image/*" class="native-file-overlay">
-            </label>
-          </div>
-
-          <div id="posCandidatesContainer" class="pos-results">
-            <div class="empty-prompt small">
-              Enter a Book ID or book title above to find available copies to sell.
-            </div>
-          </div>
-        </div>
-
-        <!-- Unified Sale Cart / Multi-Book Checkout Bar & Drawer -->
-        <div id="posCartSection" class="pos-cart-panel" style="display: none;">
-          <div class="pos-cart-header">
-            <div class="pos-cart-title">
-              🛒 Sale Cart (<span id="posCartCount">0</span> books)
-            </div>
-            <button type="button" class="btn btn-sm btn-outline" id="btnClearPosCart" style="color:var(--danger); border-color:#fca5a5;">
-              Clear Cart
-            </button>
-          </div>
-          <div id="posCartItemsList" class="pos-cart-items-list"></div>
-          
-          <div class="pos-cart-footer">
-            <div class="pos-cart-summary-row">
-              <div class="pos-cart-total-label">Total Books: <b id="posCartTotalItems">0</b></div>
-              <div class="pos-cart-total-price">Total: <b id="posCartTotalPrice">$0.00</b></div>
-            </div>
-            <div class="pos-cart-inputs-row">
-              <input type="text" id="posCartNotes" placeholder="Payment method / customer note (e.g. Cash, Card, UPI)..." class="candidate-input">
-            </div>
-            <button type="button" class="btn btn-success btn-block btn-lg" id="btnCheckoutPosCart">
-              ✅ Complete Sale of All <span id="posCartBtnCount">0</span> Books & Mark SOLD OUT
-            </button>
-          </div>
-        </div>
-
-        <div id="saleReceiptContainer" style="display: none;" class="receipt-box"></div>
       </div>
     </section>
 

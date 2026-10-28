@@ -62,9 +62,9 @@ function initTabs() {
       }
       if (tabId === 'tabUnassigned') fetchUnassigned();
       if (tabId === 'tabHistory') fetchSalesAndAudit();
-      if (tabId === 'tabSell') {
-        const posInp = document.getElementById('posSearchInput');
-        if (posInp) posInp.focus();
+      if (tabId === 'tabSearch') {
+        const sinp = document.getElementById('searchInput');
+        if (sinp) sinp.focus();
       }
     });
   });
@@ -225,6 +225,17 @@ function initSearch() {
     clearBtn.style.display = 'none';
     performSearch('');
   });
+
+  // Photo search via camera snap
+  const cameraSearchSnapInput = document.getElementById('cameraSearchSnapInput');
+  if (cameraSearchSnapInput) {
+    cameraSearchSnapInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await processCoverSearchImage(file, file.name);
+      cameraSearchSnapInput.value = '';
+    });
+  }
 
   // Photo search via image file upload
   const cameraSearchFileInput = document.getElementById('cameraSearchFileInput');
@@ -3844,12 +3855,14 @@ function initPOS() {
   }
 
   let posDebounce = null;
-  searchInput.addEventListener('input', () => {
-    clearTimeout(posDebounce);
-    posDebounce = setTimeout(() => {
-      searchPOS(searchInput.value);
-    }, 250);
-  });
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      clearTimeout(posDebounce);
+      posDebounce = setTimeout(() => {
+        searchPOS(searchInput.value);
+      }, 250);
+    });
+  }
 
   const handlePosFile = async (file) => {
     if (!file) return;
@@ -3862,27 +3875,30 @@ function initPOS() {
   if (fileInput) fileInput.addEventListener('change', (e) => handlePosFile(e.target.files[0]));
 
   const hideSaleDrawer = () => {
-    drawer.style.display = 'none';
+    if (drawer) drawer.style.display = 'none';
     activeSaleCopy = null;
   };
 
-  closeBtn.addEventListener('click', hideSaleDrawer);
+  if (closeBtn) closeBtn.addEventListener('click', hideSaleDrawer);
   const btnCancelSaleDrawer = document.getElementById('btnCancelSaleDrawer');
   if (btnCancelSaleDrawer) {
     btnCancelSaleDrawer.addEventListener('click', hideSaleDrawer);
   }
 
   // Also close when clicking outside modal card on backdrop
-  drawer.addEventListener('click', (e) => {
-    if (e.target === drawer) {
-      hideSaleDrawer();
-    }
-  });
+  if (drawer) {
+    drawer.addEventListener('click', (e) => {
+      if (e.target === drawer) {
+        hideSaleDrawer();
+      }
+    });
+  }
 
-  confirmBtn.addEventListener('click', async () => {
-    if (!activeSaleCopy) return;
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', async () => {
+      if (!activeSaleCopy) return;
 
-    confirmBtn.disabled = true;
+      confirmBtn.disabled = true;
     confirmBtn.textContent = 'Processing Sale...';
 
     const priceInput = document.getElementById('salePrice').value;
@@ -4503,6 +4519,7 @@ function openSaleModalForCopy(bookId, title, author, locationEnglish) {
 
 function renderDigitalReceipt(saleData) {
   const container = document.getElementById('saleReceiptContainer');
+  if (!container) return;
   container.style.display = 'block';
 
   // Multi-book sale receipt
