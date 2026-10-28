@@ -25,6 +25,8 @@ from datetime import datetime
 # Prime and verify database on serverless cold-boot
 try:
     database.ensure_database_ready()
+    # Pre-warm search engine cache into RAM for instant searches
+    search_engine.get_all_books_cached()
 except Exception as e:
     print(f"Serverless DB init notice: {e}")
 

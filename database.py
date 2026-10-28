@@ -719,6 +719,14 @@ def generate_next_book_id(conn: sqlite3.Connection) -> str:
             return candidate_id
         next_num += 1
 
+def notify_inventory_changed():
+    """Invalidates the in-memory book search cache on writes."""
+    try:
+        import search_engine
+        search_engine.invalidate_search_cache()
+    except Exception:
+        pass
+
 def add_book(
     title: str,
     author: str,
@@ -820,6 +828,7 @@ def add_book(
         result = dict(cursor.fetchone())
         conn.close()
         sync_csv_add_book(result)
+        notify_inventory_changed()
         return result
 
 def add_books_batch(
@@ -896,6 +905,7 @@ def add_books_batch(
 
         conn.commit()
         conn.close()
+        notify_inventory_changed()
         return {"success": True, "count": len(saved_books), "books": saved_books}
 
 def assign_location(
@@ -973,6 +983,7 @@ def assign_location(
         updated = dict(cursor.fetchone())
         conn.close()
         sync_csv_update_location(book_id, rack, column_num, position)
+        notify_inventory_changed()
         return updated
 
 def assign_location_bulk(
@@ -1034,6 +1045,7 @@ def delete_book(book_id: str, user: str = "Staff") -> Dict[str, Any]:
         conn.commit()
         conn.close()
         sync_csv_delete_book(book_id)
+        notify_inventory_changed()
         return {"success": True, "book_id": book_id, "deleted_book": book_data}
 
 def delete_books_bulk(book_ids: List[str], user: str = "Staff") -> Dict[str, Any]:
@@ -1153,6 +1165,7 @@ def sell_book(
 
         conn.close()
         sync_csv_update_status(book_id, "SOLD OUT")
+        notify_inventory_changed()
 
         return {
             "success": True,
@@ -1294,6 +1307,7 @@ def sell_books_bulk(
 
         conn.commit()
         conn.close()
+        notify_inventory_changed()
 
         if not successful_sales and errors:
             return {"error": "; ".join(errors), "errors": errors}
@@ -1432,6 +1446,7 @@ def revert_sale(
         sync_csv_update_status(book_id, "")
         if mode_clean == "new":
             sync_csv_update_location(book_id, str(new_rack or ""), str(new_col or ""), str(new_pos or ""))
+        notify_inventory_changed()
 
         return {
             "success": True,
@@ -1534,6 +1549,7 @@ def update_sale_payment(
 
         conn.commit()
         conn.close()
+        notify_inventory_changed()
 
         return {
             "success": True,
@@ -1672,6 +1688,7 @@ def update_book_metadata(
         res = dict(cursor.fetchone())
         conn.close()
         sync_csv_update_location(book_id, str(new_r_int if new_r_int is not None else ""), str(new_c_int if new_c_int is not None else ""), str(new_p_int if new_p_int is not None else ""))
+        notify_inventory_changed()
         return res
 
 def get_unassigned_books(query: str = "", limit: int = 200, offset: int = 0) -> Dict[str, Any]:

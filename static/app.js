@@ -85,6 +85,7 @@ function safeSet(id, val) {
 }
 
 async function fetchStats() {
+  clearSearchCache();
   try {
     const res = await fetch('/api/stats');
     const data = await res.json();
@@ -217,7 +218,7 @@ function initSearch() {
     clearBtn.style.display = input.value ? 'inline-block' : 'none';
     searchDebounceTimer = setTimeout(() => {
       performSearch(input.value);
-    }, 250);
+    }, 160);
   });
 
   clearBtn.addEventListener('click', () => {
@@ -436,9 +437,22 @@ function setSearch(query, searchType = 'all') {
   performSearch(query);
 }
 
+let searchSeqCounter = 0;
+let searchAbortController = null;
+const clientSearchCache = new Map();
+
+function clearSearchCache() {
+  clientSearchCache.clear();
+}
+
 async function performSearch(query) {
   const container = document.getElementById('searchResultsContainer');
-  if (!query || !query.trim()) {
+  const cleanQ = (query || '').trim();
+  if (!cleanQ) {
+    if (searchAbortController) {
+      searchAbortController.abort();
+      searchAbortController = null;
+    }
     const hint = currentSearchType === 'author' 
       ? "Enter an author's name above to see all their books." 
       : (currentSearchType === 'title' 
@@ -448,13 +462,43 @@ async function performSearch(query) {
     return;
   }
 
-  container.innerHTML = '<div class="photo-meta">Searching live inventory records...</div>';
+  const cacheKey = `${currentSearchType}:${cleanQ.toLowerCase()}`;
+  if (clientSearchCache.has(cacheKey)) {
+    renderSearchResults(clientSearchCache.get(cacheKey));
+    return;
+  }
+
+  // Cancel any existing in-flight search request to eliminate race conditions
+  if (searchAbortController) {
+    searchAbortController.abort();
+  }
+  searchAbortController = new AbortController();
+  const currentSeq = ++searchSeqCounter;
+
+  // Only display full loading state if results aren't currently shown
+  if (!container.querySelector('.book-card')) {
+    container.innerHTML = '<div class="photo-meta">⚡ Searching live inventory records...</div>';
+  }
 
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(currentSearchType)}`);
+    const res = await fetch(
+      `/api/search?q=${encodeURIComponent(cleanQ)}&type=${encodeURIComponent(currentSearchType)}`,
+      { signal: searchAbortController.signal }
+    );
     const data = await res.json();
+    if (currentSeq !== searchSeqCounter) return;
+
+    // Cache the result for immediate lookup if user types/backspaces
+    clientSearchCache.set(cacheKey, data);
+    if (clientSearchCache.size > 100) {
+      const firstKey = clientSearchCache.keys().next().value;
+      clientSearchCache.delete(firstKey);
+    }
+
     renderSearchResults(data);
   } catch (err) {
+    if (err.name === 'AbortError') return;
+    if (currentSeq !== searchSeqCounter) return;
     container.innerHTML = `<div class="alert alert-danger">Error searching inventory: ${err.message}</div>`;
   }
 }

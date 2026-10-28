@@ -9,8 +9,35 @@ author search, niche genre and semantic topic expansion, and 3-tier result group
 
 import re
 import difflib
+import time
 from typing import Dict, List, Any, Tuple, Optional
 import database
+
+# In-memory book cache to eliminate expensive remote database transfers during searches
+_CACHE_BOOKS: Optional[List[Dict[str, Any]]] = None
+_CACHE_TIMESTAMP: float = 0.0
+_CACHE_TTL: float = 60.0  # Keep warm in memory for 60 seconds (invalidated instantly on mutations)
+
+def invalidate_search_cache():
+    """Invalidates the in-memory book inventory cache on writes."""
+    global _CACHE_BOOKS, _CACHE_TIMESTAMP
+    _CACHE_BOOKS = None
+    _CACHE_TIMESTAMP = 0.0
+
+def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Retrieves all books with in-memory caching to eliminate expensive remote DB roundtrips."""
+    global _CACHE_BOOKS, _CACHE_TIMESTAMP
+    now = time.time()
+    if not force_refresh and _CACHE_BOOKS is not None and (now - _CACHE_TIMESTAMP < _CACHE_TTL):
+        return _CACHE_BOOKS
+
+    conn = database.get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM books")
+    _CACHE_BOOKS = [dict(r) for r in cursor.fetchall()]
+    _CACHE_TIMESTAMP = now
+    conn.close()
+    return _CACHE_BOOKS
 
 # Semantic dictionary for niche genres and concept queries (Req 2.3)
 SEMANTIC_TOPIC_MAP = {
@@ -170,28 +197,23 @@ def search_books(
         }
 
     norm_query = normalize_text(clean_query)
-    conn = database.get_db_connection()
-    cursor = conn.cursor()
+    all_books = get_all_books_cached()
 
     # Step 1: Direct ID Match Check (e.g. BK-10151)
     if clean_query.upper().startswith("BK-") or "BK-" in clean_query.upper():
-        cursor.execute("SELECT * FROM books WHERE upper(book_id) = ?", (clean_query.upper(),))
-        id_match = cursor.fetchone()
-        if id_match:
-            grouped = group_physical_copies([dict(id_match)])
-            conn.close()
+        upper_id = clean_query.upper().strip()
+        id_matches = [b for b in all_books if b.get("book_id", "").upper() == upper_id]
+        if not id_matches:
+            id_matches = [b for b in all_books if upper_id in b.get("book_id", "").upper()]
+        if id_matches:
+            grouped = group_physical_copies(id_matches)
             return {
                 "query": query,
                 "exact_matches": grouped,
                 "possible_matches": [],
                 "related_books": [],
-                "total_results": 1
+                "total_results": len(grouped)
             }
-
-    # Step 2: Fetch all candidate books from local DB
-    cursor.execute("SELECT * FROM books")
-    all_books = [dict(r) for r in cursor.fetchall()]
-    conn.close()
 
     exact_candidates = []
     possible_candidates = []
@@ -478,11 +500,7 @@ def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
         "fiction": ["novel", "fiction", "stories", "classic", "romance", "thriller", "mystery"]
     }
 
-    conn = database.get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM books")
-    all_books = [dict(b) for b in cursor.fetchall()]
-    conn.close()
+    all_books = get_all_books_cached()
 
     scored = []
     seen_ids = set()

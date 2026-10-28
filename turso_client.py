@@ -258,13 +258,22 @@ class TursoConnection:
             data=data_bytes,
             headers={
                 "Authorization": f"Bearer {self.auth_token}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept-Encoding": "gzip, deflate"
             },
             method="POST"
         )
         try:
             with urllib.request.urlopen(req, timeout=25) as resp:
-                raw_body = resp.read().decode("utf-8")
+                raw_bytes = resp.read()
+                enc = resp.headers.get("Content-Encoding", "").lower()
+                if "gzip" in enc:
+                    import gzip
+                    raw_bytes = gzip.decompress(raw_bytes)
+                elif "deflate" in enc:
+                    import zlib
+                    raw_bytes = zlib.decompress(raw_bytes)
+                raw_body = raw_bytes.decode("utf-8")
                 return json.loads(raw_body)
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
