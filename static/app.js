@@ -3950,6 +3950,7 @@ function initPOS() {
       confirmBtn.textContent = '✅ Complete Sale & Mark SOLD OUT';
     }
   });
+  }
 }
 
 async function searchPOS(query) {
