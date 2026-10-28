@@ -684,12 +684,24 @@ function createBookTile(book, copy, matchType) {
           <div class="book-info">
             <div class="book-title">${escapeHtml(cleanTitle)}</div>
             <div class="book-author">by <b>${cleanAuthor}</b></div>
+            <div class="book-location-hero">
+              ${state === 'ASSIGNED' && locationText ? `
+                <div class="location-banner" title="Physical shelf location">
+                  <span class="loc-pin-icon">📍</span>
+                  <span class="loc-text-highlight">${escapeHtml(locationText)}</span>
+                </div>
+              ` : `
+                <div class="location-banner location-banner-unassigned" title="Needs shelf assignment">
+                  <span class="loc-pin-icon">📍</span>
+                  <span class="loc-text-highlight">Location Unassigned</span>
+                </div>
+              `}
+            </div>
             <div class="book-meta-line">
               <span class="state-chip state-${state.toLowerCase()}">${state}</span>
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
               ${book.simple_genre ? `<span class="chip simple-genre-chip">${escapeHtml(book.simple_genre)}</span>` : ''}
-              ${state === 'ASSIGNED' && locationText ? `<span class="book-loc-chip">📍 ${escapeHtml(locationText)}</span>` : ''}
-              ${state === 'UNASSIGNED' ? `<span class="book-loc-chip unassigned-loc-chip">📍 Location Unassigned</span>` : ''}
+              <span class="chip book-id-chip">#${escapeHtml(bookId)}</span>
             </div>
           </div>
         </div>
@@ -709,6 +721,30 @@ function createBookTile(book, copy, matchType) {
               🗑️ Delete
             </button>
           </div>
+        </div>
+      </div>
+      <div class="book-card-expanded-area">
+        <div class="expanded-meta-grid">
+          <div class="expanded-meta-item">
+            <span class="meta-label">Inventory ID</span>
+            <span class="meta-value copy-id-box">${escapeHtml(bookId)}</span>
+          </div>
+          <div class="expanded-meta-item">
+            <span class="meta-label">Language</span>
+            <span class="meta-value">🌐 ${escapeHtml(language)}</span>
+          </div>
+          <div class="expanded-meta-item">
+            <span class="meta-label">Genre</span>
+            <span class="meta-value">${escapeHtml(book.simple_genre || book.genre || 'General')}</span>
+          </div>
+          <div class="expanded-meta-item">
+            <span class="meta-label">Availability</span>
+            <span class="meta-value">${state === 'ASSIGNED' ? '✅ Ready on Shelf' : (state === 'SOLD' ? '❌ Sold' : '⚠️ Unassigned')}</span>
+          </div>
+        </div>
+        <div class="expanded-summary-placeholder">
+          <span style="font-size:1.15rem;">📖</span>
+          <span>Book overview & synopsis slot &bull; <i style="opacity:0.8;">(Summary held for future update)</i></span>
         </div>
       </div>
     `;
@@ -949,6 +985,23 @@ function createBookTile(book, copy, matchType) {
       }
     });
   }
+
+  // Card click to expand / select (tile gets bigger with extra details)
+  card.addEventListener('click', (e) => {
+    // If the click is on an interactive button, input, or inside edit mode, don't toggle selection
+    if (e.target.closest('button, input, select, textarea, .book-card-actions, .edit-active-card, .delete-trigger-container')) {
+      return;
+    }
+    const wasSelected = card.classList.contains('is-selected');
+    document.querySelectorAll('.book-card-item.is-selected').forEach(c => {
+      if (c !== card) c.classList.remove('is-selected');
+    });
+    if (wasSelected) {
+      card.classList.remove('is-selected');
+    } else {
+      card.classList.add('is-selected');
+    }
+  });
 
   // Initial render in View mode
   renderView();
