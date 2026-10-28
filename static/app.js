@@ -659,14 +659,17 @@ function formatLocationPreviewText(rack, col, pos) {
   return `Rack ${r} → Column ${c} → ${posText}`;
 }
 
-function formatLocationPill(state, locationText) {
+function formatLocationPill(state, locationText, sellingPrice) {
   if (state === 'SOLD') {
+    const priceText = (sellingPrice !== null && sellingPrice !== undefined && sellingPrice !== '') 
+      ? ` &bull; Paid: ₹${sellingPrice}` 
+      : '';
     return `
       <div class="wayfinder-hud hud-sold" title="This copy has been sold and removed from inventory">
         <span class="hud-status-icon">❌</span>
         <div class="hud-marker">
           <span class="hud-label">STATUS</span>
-          <span class="hud-val">SOLD OUT &bull; Off Shelf</span>
+          <span class="hud-val">SOLD OUT${priceText} &bull; Off Shelf</span>
         </div>
         ${locationText ? `<span class="hud-subval">(Was ${escapeHtml(locationText)})</span>` : ''}
       </div>
@@ -752,6 +755,7 @@ function createBookTile(book, copy, matchType) {
     const locationText = copy.location_english || book.location_english || (copy.shelf_location ? `Shelf ${copy.shelf_location}` : '');
     const bookId = copy.book_id || book.book_id || '';
     const language = copy.language || book.language || 'English';
+    const sellingPrice = (copy.selling_price !== null && copy.selling_price !== undefined && copy.selling_price !== '') ? copy.selling_price : (book.selling_price || '');
 
     card.innerHTML = `
       <div class="book-card-main">
@@ -766,10 +770,15 @@ function createBookTile(book, copy, matchType) {
               <b>${cleanAuthor}</b>
             </div>
             <div class="book-location-hero">
-              ${formatLocationPill(state, locationText)}
+              ${formatLocationPill(state, locationText, sellingPrice)}
             </div>
             <div class="book-meta-line">
               <span class="state-chip state-${state.toLowerCase()}"><span class="chip-dot"></span> ${state === 'SOLD' ? 'SOLD OUT' : (state === 'ASSIGNED' ? 'IN STOCK' : 'UNASSIGNED')}</span>
+              ${(state === 'SOLD' && sellingPrice !== '') ? `
+                <span class="chip sold-price-chip" style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-weight:700; border-radius:9999px; padding:0.26rem 0.75rem; font-size:0.78rem;">
+                  💳 Paid: ₹${escapeHtml(sellingPrice.toString())}
+                </span>
+              ` : ''}
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
               ${genre ? `<span class="chip simple-genre-chip">${escapeHtml(genre)}</span>` : ''}
               <span class="chip book-id-chip">#${escapeHtml(bookId)}</span>
@@ -778,13 +787,15 @@ function createBookTile(book, copy, matchType) {
         </div>
         <div class="book-card-actions">
           ${state === 'SOLD' ? `
-            <button class="btn btn-sm btn-sold-disabled" disabled title="Sold copy">❌ SOLD</button>
+            <button class="btn btn-sm btn-sold-disabled" disabled title="Sold copy${sellingPrice ? ` (Paid: ₹${sellingPrice})` : ''}">
+              ❌ SOLD${sellingPrice ? ` (₹${sellingPrice})` : ''}
+            </button>
           ` : `
             <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy">
               ⚡ Sell
             </button>
           `}
-          <button class="btn btn-sm btn-edit-tile" title="Edit book details">
+          <button class="btn btn-sm btn-edit-tile" title="Edit book details & payment / repay">
             ✏️ Edit
           </button>
           <div class="delete-trigger-container">
@@ -810,7 +821,7 @@ function createBookTile(book, copy, matchType) {
           </div>
           <div class="expanded-meta-item">
             <span class="meta-label">Availability</span>
-            <span class="meta-value">${state === 'ASSIGNED' ? '✅ Ready on Shelf' : (state === 'SOLD' ? '❌ Sold' : '⚠️ Unassigned')}</span>
+            <span class="meta-value">${state === 'ASSIGNED' ? '✅ Ready on Shelf' : (state === 'SOLD' ? `❌ Sold${sellingPrice ? ` (₹${sellingPrice})` : ''}` : '⚠️ Unassigned')}</span>
           </div>
         </div>
         <div class="expanded-summary-placeholder">
@@ -916,6 +927,7 @@ function createBookTile(book, copy, matchType) {
     const curRack = copy.rack !== null && copy.rack !== undefined ? copy.rack : '';
     const curCol = copy.column_num !== null && copy.column_num !== undefined ? copy.column_num : '';
     const curPos = copy.position !== null && copy.position !== undefined ? copy.position : '';
+    const curPrice = copy.selling_price !== null && copy.selling_price !== undefined ? copy.selling_price : (book.selling_price || '');
     const initialPreview = formatLocationPreviewText(curRack, curCol, curPos);
 
     card.innerHTML = `
@@ -924,7 +936,11 @@ function createBookTile(book, copy, matchType) {
           <div class="book-edit-form-wrap" style="width:100%; display:flex; flex-direction:column; gap:0.5rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.15rem;">
               <span class="copy-id-box" style="font-weight:700;">✏️ Editing: ${escapeHtml(bookId)}</span>
-              <span style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">(Sell option hidden during edit)</span>
+              ${state === 'SOLD' ? `
+                <span class="state-chip state-sold" style="padding:0.18rem 0.6rem; font-size:0.72rem;">SOLD COPY</span>
+              ` : `
+                <span style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">(Sell option hidden during edit)</span>
+              `}
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
@@ -957,8 +973,46 @@ function createBookTile(book, copy, matchType) {
               </div>
             </div>
 
-            <div class="edit-loc-preview-badge" style="margin-top:0.2rem;">
+            <div class="edit-loc-preview-badge" style="margin-top:0.15rem;">
               <span>📍</span> <span class="lbl-loc-preview" style="font-weight:600;">${escapeHtml(initialPreview)}</span>
+            </div>
+
+            <!-- Payment & Repayment Section -->
+            <div class="edit-payment-container" style="margin-top:0.35rem; padding:0.75rem 0.95rem; background:${state === 'SOLD' ? '#fff1f2' : '#f8fafc'}; border:1.5px solid ${state === 'SOLD' ? '#fecdd3' : '#e2e8f0'}; border-radius:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                <span style="font-size:0.82rem; font-weight:700; color:${state === 'SOLD' ? '#be123c' : '#334155'}; display:inline-flex; align-items:center; gap:0.35rem;">
+                  <span>💳</span> ${state === 'SOLD' ? 'Sale Payment Recorded' : 'Price Setting'}
+                </span>
+                ${state === 'SOLD' ? `
+                  <span style="font-size:0.74rem; font-weight:700; color:#9f1239;">Recorded Sale Amount</span>
+                ` : `
+                  <span style="font-size:0.72rem; color:var(--text-muted);">(Optional price tag)</span>
+                `}
+              </div>
+
+              <div style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
+                <div style="width:140px;">
+                  <label style="display:block; font-size:0.72rem; font-weight:700; color:${state === 'SOLD' ? '#9f1239' : '#64748b'}; margin-bottom:0.2rem;">
+                    ${state === 'SOLD' ? 'Amount Paid (₹)' : 'Price (₹)'}
+                  </label>
+                  <div style="position:relative; display:flex; align-items:center;">
+                    <span style="position:absolute; left:0.55rem; font-weight:700; color:${state === 'SOLD' ? '#be123c' : '#64748b'}; font-size:0.9rem;">₹</span>
+                    <input type="number" step="any" min="0" class="form-control form-control-sm inp-edit-price" value="${escapeHtml(curPrice.toString())}" placeholder="${state === 'SOLD' ? '0.00' : 'Price...'}" style="width:100%; padding-left:1.45rem; font-weight:700; font-size:0.92rem; ${state === 'SOLD' ? 'color:#881337; border-color:#fca5a5; background:#ffffff;' : ''}">
+                  </div>
+                </div>
+
+                ${state === 'SOLD' ? `
+                  <button type="button" class="btn btn-sm btn-repay-copy" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 1.05rem; display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(225, 29, 72, 0.35); transition:all 0.15s ease;" title="Repay/Refund this amount to customer and return book back to Available inventory on shelf">
+                    <span>💸</span> Repay &amp; Return to Shelf
+                  </button>
+                ` : ''}
+              </div>
+
+              ${state === 'SOLD' ? `
+                <div style="font-size:0.72rem; color:#9f1239; margin-top:0.45rem; line-height:1.35;">
+                  💡 <b>Repay &amp; Return</b>: Refunds the customer, marks the copy <b>Available</b>, restores it to its shelf rack/column, and adjusts sales revenue.
+                </div>
+              ` : ''}
             </div>
           </div>
         </div>
@@ -995,6 +1049,56 @@ function createBookTile(book, copy, matchType) {
       renderView();
     });
 
+    // Repay & Return action (for sold books)
+    const btnRepay = card.querySelector('.btn-repay-copy');
+    if (btnRepay) {
+      btnRepay.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const priceInputVal = card.querySelector('.inp-edit-price') ? card.querySelector('.inp-edit-price').value.trim() : '';
+        const repayAmount = priceInputVal !== '' ? priceInputVal : (curPrice || '0');
+        const confirmMsg = `💸 REPAY & RETURN BOOK TO SHELF\n\nAre you sure you want to repay ₹${repayAmount} to the customer and return "${cleanTitle}" (${bookId}) back to Available inventory on shelf?\n\nThis will restore the book to Available status on ${copy.location_english || 'its shelf'} and adjust total store revenue.`;
+        if (!confirm(confirmMsg)) return;
+
+        btnRepay.disabled = true;
+        btnRepay.innerHTML = `<span>⏳</span> Repaying...`;
+
+        try {
+          const res = await fetch('/api/books/repay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ book_id: bookId })
+          });
+          const data = await res.json();
+          if (data.success || !data.error) {
+            copy.status = 'Available';
+            copy.selling_price = null;
+            if (book.copies) {
+              const bCopy = book.copies.find(c => c.book_id === bookId);
+              if (bCopy) {
+                bCopy.status = 'Available';
+                bCopy.selling_price = null;
+              }
+            }
+            if (book.book_id === bookId) {
+              book.status = 'Available';
+              book.selling_price = null;
+            }
+            fetchStats();
+            renderView();
+            alert(`✅ Repaid ₹${repayAmount} successfully!\n\n"${cleanTitle}" is now back in stock on shelf.`);
+          } else {
+            alert('Failed to repay sale: ' + (data.error || 'Unknown error'));
+            btnRepay.disabled = false;
+            btnRepay.innerHTML = `<span>💸</span> Repay &amp; Return to Shelf`;
+          }
+        } catch (err) {
+          alert('Network error while repaying: ' + err.message);
+          btnRepay.disabled = false;
+          btnRepay.innerHTML = `<span>💸</span> Repay &amp; Return to Shelf`;
+        }
+      });
+    }
+
     // Save action
     const btnSave = card.querySelector('.btn-save-edit');
     btnSave.addEventListener('click', async (e) => {
@@ -1005,6 +1109,7 @@ function createBookTile(book, copy, matchType) {
       const newRack = inpRack.value.trim();
       const newCol = inpCol.value.trim();
       const newPos = inpPos.value.trim();
+      const newPrice = card.querySelector('.inp-edit-price') ? card.querySelector('.inp-edit-price').value.trim() : '';
 
       if (!newTitle) {
         alert('Book Title cannot be empty.');
@@ -1025,7 +1130,8 @@ function createBookTile(book, copy, matchType) {
             language: newLang,
             rack: newRack,
             column_num: newCol,
-            position: newPos
+            position: newPos,
+            selling_price: newPrice
           })
         });
         const data = await res.json();
@@ -1042,6 +1148,8 @@ function createBookTile(book, copy, matchType) {
           copy.position = data.book.position;
           copy.location_english = data.book.location_english;
           book.location_english = data.book.location_english;
+          copy.selling_price = data.book.selling_price;
+          copy.status = data.book.status;
           renderView();
           fetchStats();
         } else {

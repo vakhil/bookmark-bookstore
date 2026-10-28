@@ -292,11 +292,12 @@ def app(environ, start_response):
                 return json_response(start_response, res, 400)
             return json_response(start_response, res)
 
-        elif path == "/api/books/revert-sale":
+        elif path in ("/api/books/revert-sale", "/api/books/repay", "/api/books/refund"):
             book_id = body.get("book_id", "")
             if not book_id:
                 return json_response(start_response, {"error": "Book ID is required."}, 400)
-            res = database.revert_sale(book_id)
+            notes = body.get("notes", "")
+            res = database.revert_sale(book_id, notes=notes)
             return json_response(start_response, res)
 
         elif path == "/api/books/update":
@@ -313,7 +314,8 @@ def app(environ, start_response):
                 column_num=body.get("column_num"),
                 position=body.get("position"),
                 notes=body.get("notes"),
-                status=body.get("status")
+                status=body.get("status"),
+                selling_price=body.get("selling_price")
             )
             if "error" in res:
                 return json_response(start_response, res, 400)

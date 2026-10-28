@@ -1292,18 +1292,55 @@ def sell_books_bulk(
             "message": f"Successfully completed sale for {len(successful_sales)} books."
         }
 
-def revert_sale(book_id: str) -> Dict[str, Any]:
-    """Reverts a sold book back to 'Available' status and removes test transaction."""
+def revert_sale(book_id: str, user: str = "Staff", notes: str = "") -> Dict[str, Any]:
+    """Reverts a sold book back to 'Available' status, refunds/repays customer, and updates audit/sales logs."""
     with db_lock:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE books SET status = 'Available', selling_price = NULL WHERE book_id = ?", (book_id,))
+        now_iso = datetime.now().isoformat()
+        cursor.execute("SELECT * FROM books WHERE book_id = ?", (book_id,))
+        book = cursor.fetchone()
+        if not book:
+            conn.close()
+            return {"error": f"Book with ID {book_id} not found."}
+
+        cursor.execute("SELECT * FROM sales_transactions WHERE book_id = ? ORDER BY id DESC LIMIT 1", (book_id,))
+        tx = cursor.fetchone()
+        amount_paid = (tx["selling_price"] if tx and tx["selling_price"] is not None else book["selling_price"]) or 0.0
+
+        cursor.execute("UPDATE books SET status = 'Available', selling_price = NULL, updated_at = ? WHERE book_id = ?", (now_iso, book_id))
         cursor.execute("DELETE FROM sales_transactions WHERE book_id = ?", (book_id,))
         cursor.execute("DELETE FROM sync_queue WHERE payload LIKE ?", (f'%"{book_id}"%',))
+
+        cursor.execute("""
+            INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "REPAY_REFUND", book_id,
+            json.dumps({"status": book["status"], "selling_price": amount_paid}),
+            json.dumps({"status": "Available", "selling_price": None, "repaid_amount": amount_paid}),
+            now_iso, user, f"Sale repaid/refunded (₹{amount_paid:g}). Restored to shelf. {notes}".strip()
+        ))
+
+        cursor.execute("""
+            INSERT INTO sync_queue (operation, payload, created_at)
+            VALUES (?, ?, ?)
+        """, (
+            "UPDATE_STATUS",
+            json.dumps({"book_id": book_id, "status": "Available", "repaid_amount": amount_paid}),
+            now_iso
+        ))
+
         conn.commit()
         conn.close()
         sync_csv_update_status(book_id, "")
-        return {"success": True, "book_id": book_id, "status": "Available"}
+        return {
+            "success": True,
+            "book_id": book_id,
+            "status": "Available",
+            "repaid_amount": amount_paid,
+            "message": f"Successfully repaid ₹{amount_paid:g} and returned {book['title']} ({book_id}) to shelf."
+        }
 
 def update_book_metadata(
     book_id: str,
@@ -1316,6 +1353,7 @@ def update_book_metadata(
     position: Any = None,
     notes: Optional[str] = None,
     status: Optional[str] = None,
+    selling_price: Any = None,
     user: str = "Staff"
 ) -> Dict[str, Any]:
     """Updates book metadata while preserving Inventory ID and location history."""
@@ -1337,6 +1375,16 @@ def update_book_metadata(
         new_notes = notes.strip() if notes is not None else (existing["notes"] or "")
         new_status = status.strip() if status is not None else existing["status"]
         new_simple_genre = genre_classifier.classify_common_genre(new_genre, new_title)
+
+        if selling_price is not None and selling_price != "":
+            try:
+                new_selling_price = round(float(selling_price), 2)
+            except (ValueError, TypeError):
+                new_selling_price = existing["selling_price"]
+        elif selling_price == "":
+            new_selling_price = None
+        else:
+            new_selling_price = existing["selling_price"]
 
         # Location parsing & formatting if any location attribute is supplied
         if rack is not None or column_num is not None or position is not None:
@@ -1369,14 +1417,23 @@ def update_book_metadata(
                 location_english = ?,
                 notes = ?,
                 status = ?,
+                selling_price = ?,
                 updated_at = ?,
                 unassigned_since = ?
             WHERE book_id = ?
         """, (
             new_title, new_author, new_genre, new_simple_genre, new_lang,
             new_r_int, new_c_int, new_p_int, new_loc_eng, new_notes, new_status,
-            now_iso, new_unassigned_since, book_id
+            new_selling_price, now_iso, new_unassigned_since, book_id
         ))
+
+        # Keep sales_transactions selling_price in sync if sale exists
+        if new_selling_price != existing["selling_price"]:
+            cursor.execute("""
+                UPDATE sales_transactions
+                SET selling_price = ?
+                WHERE book_id = ?
+            """, (new_selling_price, book_id))
 
         cursor.execute("""
             INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
@@ -1387,9 +1444,10 @@ def update_book_metadata(
             json.dumps({
                 "title": new_title, "author": new_author, "genre": new_genre,
                 "language": new_lang, "rack": new_r_int, "column": new_c_int,
-                "position": new_p_int, "location_english": new_loc_eng, "status": new_status
+                "position": new_p_int, "location_english": new_loc_eng,
+                "status": new_status, "selling_price": new_selling_price
             }),
-            now_iso, user, "Metadata and location updated"
+            now_iso, user, "Metadata and location/payment updated"
         ))
 
         cursor.execute("""
@@ -1401,7 +1459,7 @@ def update_book_metadata(
                 "book_id": book_id, "title": new_title, "author": new_author,
                 "genre": new_genre, "language": new_lang, "rack": new_r_int,
                 "column": new_c_int, "position": new_p_int, "location_english": new_loc_eng,
-                "notes": new_notes, "status": new_status
+                "notes": new_notes, "status": new_status, "selling_price": new_selling_price
             }),
             now_iso
         ))

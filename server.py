@@ -375,12 +375,13 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
                 self._send_json(res)
             return
 
-        elif path == "/api/books/revert-sale":
+        elif path in ("/api/books/revert-sale", "/api/books/repay", "/api/books/refund"):
             book_id = body.get("book_id", "")
             if not book_id:
                 self._send_json({"error": "Book ID is required."}, 400)
                 return
-            res = database.revert_sale(book_id)
+            notes = body.get("notes", "")
+            res = database.revert_sale(book_id, notes=notes)
             self._send_json(res)
             return
 
@@ -401,7 +402,8 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
                 column_num=body.get("column_num"),
                 position=body.get("position"),
                 notes=body.get("notes"),
-                status=body.get("status")
+                status=body.get("status"),
+                selling_price=body.get("selling_price")
             )
             if "error" in res:
                 self._send_json(res, 400)

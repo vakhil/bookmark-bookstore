@@ -806,6 +806,17 @@ input, select, textarea, button {
   text-align: center;
 }
 
+.btn-repay-copy:hover {
+  background: linear-gradient(135deg, #be123c 0%, #9f1239 100%) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.45) !important;
+}
+
+.btn-repay-copy:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px rgba(225, 29, 72, 0.3) !important;
+}
+
 .delete-confirm-wrap {
   display: flex;
   align-items: center;
