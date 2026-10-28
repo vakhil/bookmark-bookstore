@@ -104,20 +104,25 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     grouped_map = {}
     for b in books:
+        clean_title = database.sanitize_title(b["title"])
         # Key on normalized title and author
-        key = (normalize_text(b["title"]), normalize_text(b["author"]))
+        key = (normalize_text(clean_title), normalize_text(b["author"]))
         if key not in grouped_map:
             grouped_map[key] = {
-                "title": b["title"],
+                "title": clean_title,
                 "author": b["author"],
                 "genre": b["genre"],
                 "simple_genre": b.get("simple_genre") or "",
                 "language": b.get("language", "English"),
+                "image_url": b.get("image_url") or "",
                 "total_copies": 0,
                 "available_copies": 0,
                 "sold_copies": 0,
                 "copies": []
             }
+
+        if not grouped_map[key]["image_url"] and b.get("image_url"):
+            grouped_map[key]["image_url"] = b["image_url"]
 
         grouped_map[key]["total_copies"] += 1
         if b["status"] == "Available":
@@ -137,7 +142,8 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "notes": clean_notes,
             "status": b["status"],
             "selling_price": b.get("selling_price"),
-            "simple_genre": b.get("simple_genre") or ""
+            "simple_genre": b.get("simple_genre") or "",
+            "language": b.get("language") or "English"
         })
 
     return list(grouped_map.values())

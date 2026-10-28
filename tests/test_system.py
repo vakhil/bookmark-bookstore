@@ -182,6 +182,30 @@ class TestBookstoreSystem(unittest.TestCase):
         self.assertEqual(recent_tx["transaction_ref"], sale_res["transaction_ref"])
         self.assertEqual(recent_tx["selling_price"], 19.99)
 
+    def test_05b_bulk_selling(self):
+        """Test selling multiple books at once."""
+        b1 = database.add_book(title="Multi Sell 1", author="Author A")
+        b2 = database.add_book(title="Multi Sell 2", author="Author B")
+
+        res = database.sell_books_bulk([
+            {"book_id": b1["book_id"], "selling_price": 15.0},
+            {"book_id": b2["book_id"], "selling_price": 25.0}
+        ], shared_notes="Bulk Cash Sale")
+
+        self.assertTrue(res["success"])
+        self.assertEqual(res["count"], 2)
+        self.assertEqual(res["total_amount"], 40.0)
+        self.assertEqual(len(res["sold_books"]), 2)
+
+        # Verify books status in DB
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT status, selling_price FROM books WHERE book_id IN (?, ?)", (b1["book_id"], b2["book_id"]))
+        rows = c.fetchall()
+        conn.close()
+        for r in rows:
+            self.assertEqual(r["status"], "SOLD OUT")
+
     def test_06_unassigned_books_and_bulk_assignment_req1_7(self):
         """Req 1.7: Unassigned books section and bulk location assignment."""
         # Add 2 books with unassigned locations
@@ -356,6 +380,42 @@ class TestBookstoreSystem(unittest.TestCase):
         self.assertTrue(candidates[0]["matched_existing"])
         self.assertEqual(candidates[1]["position"], 2)
         self.assertEqual(candidates[2]["position"], 3)
+
+    def test_book_cover_resolution_and_caching(self):
+        """Verifies dynamic cover lookup and persistent caching in SQLite."""
+        target_title = "The Road to Vietnam"
+        mock_cover = "https://covers.openlibrary.org/b/id/10156205-M.jpg"
+
+        # Pre-seed cover cache in SQLite for existing book
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE books SET image_url = ? WHERE lower(title) = ?", (mock_cover, target_title.lower()))
+        conn.commit()
+        conn.close()
+
+        cover = database.get_or_fetch_book_cover(target_title)
+        self.assertTrue(bool(cover))
+        self.assertTrue(cover.startswith("http"))
+        self.assertEqual(cover, mock_cover)
+
+        # Verify search_engine returns image_url
+        res = search_engine.search_books(target_title)
+        self.assertGreater(len(res["exact_matches"]), 0)
+        self.assertEqual(res["exact_matches"][0]["image_url"], mock_cover)
+
+    def test_llm_genre_prediction_and_auto_assignment(self):
+        """Verifies predict_genre_with_llm and automatic assignment in add_book."""
+        # 1. Existing title in inventory
+        g = ocr_engine.predict_genre_with_llm("The Road to Vietnam")
+        self.assertTrue(bool(g))
+
+        # 2. Add book with empty genre -> backend automatically predicts and assigns genre
+        new_book = database.add_book(
+            title="Introduction to Quantum Mechanics",
+            author="David J. Griffiths",
+            genre=""  # Left blank to trigger LLM/rule prediction
+        )
+        self.assertTrue(bool(new_book["genre"]))
 
 if __name__ == "__main__":
     unittest.main()

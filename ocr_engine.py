@@ -30,7 +30,10 @@ def is_valid_google_key(key: Optional[str]) -> bool:
     return len(k) >= 15
 
 def get_google_api_key() -> str:
-    """Gets Google API key from config file, environment, or default."""
+    """Gets Google API key from environment or server-side config file."""
+    env_key = (os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")).strip()
+    if is_valid_google_key(env_key):
+        return env_key
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -40,10 +43,7 @@ def get_google_api_key() -> str:
                     return cand
         except Exception:
             pass
-    env_key = (os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")).strip()
-    if is_valid_google_key(env_key):
-        return env_key
-    return "AQ.Ab8RN6LlJMtfmbF5D-ab_GRLfZUOw02vTua6nA9IbRKtZE6L_w"
+    return ""
 
 AUTHOR_PREFIXES = ["by", "edited by", "author:", "written by", "translated by", "compiled by"]
 
@@ -413,11 +413,12 @@ def extract_candidates_from_text(
 
     flag_uncertain = len(detected_title) < 3
     warning = "Please verify title and author before saving." if flag_uncertain else None
+    detected_genre = predict_genre_with_llm(detected_title, detected_author) if detected_title else ""
 
     return {
         "title": detected_title,
         "author": detected_author,
-        "genre": "",
+        "genre": detected_genre,
         "language": "English",
         "confidence": "high" if (detected_title and detected_author) else ("medium" if detected_title else "low"),
         "flag_uncertain": flag_uncertain,
@@ -569,12 +570,16 @@ def detect_multiple_books_in_image(
                     g_genre = top.get("genre", g_genre)
                     matched_existing = True
 
+                if not g_genre:
+                    g_genre = predict_genre_with_llm(g_title, g_author)
+
                 cursor.execute(
-                    "SELECT book_id, rack, column_num, position FROM books WHERE lower(title) = ? AND status = 'Available'",
+                    "SELECT book_id, rack, column_num, position, location_english FROM books WHERE lower(title) = ? AND status = 'Available'",
                     (g_title.lower(),)
                 )
                 existing_copies = cursor.fetchall()
                 existing_count = len(existing_copies)
+                best_copy = existing_copies[0] if existing_copies else None
 
                 item = {
                     "candidate_index": idx + 1,
@@ -588,6 +593,8 @@ def detect_multiple_books_in_image(
                     "matched_existing": matched_existing or existing_count > 0,
                     "existing_in_inventory": existing_count > 0,
                     "existing_copies_count": existing_count,
+                    "available_book_id": best_copy["book_id"] if best_copy else None,
+                    "location_english": best_copy["location_english"] if best_copy else "",
                     "info_message": f"Title exists in store ({existing_count} copies)" if existing_count > 0 else "New title",
                     "engine": "Google Gemini Vision AI",
                     "warning": "Same image photographed twice" if is_dup_image else None,
@@ -635,10 +642,13 @@ def detect_multiple_books_in_image(
             cand["warning"] = "Same image photographed twice in this batch. Please verify if intentional."
 
         if cand.get("title"):
+            if not cand.get("genre"):
+                cand["genre"] = predict_genre_with_llm(cand["title"], cand.get("author", ""))
+
             conn = database.get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT book_id, rack, column_num, position FROM books WHERE lower(title) = ? AND status = 'Available'",
+                "SELECT book_id, rack, column_num, position, location_english FROM books WHERE lower(title) = ? AND status = 'Available'",
                 (cand["title"].lower(),)
             )
             existing_copies = cursor.fetchall()
@@ -647,10 +657,92 @@ def detect_multiple_books_in_image(
             if existing_copies:
                 cand["existing_in_inventory"] = True
                 cand["existing_copies_count"] = len(existing_copies)
-                cand["info_message"] = f"Title already exists in inventory ({len(existing_copies)} copies). Adding as another physical copy."
+                cand["available_book_id"] = existing_copies[0]["book_id"]
+                cand["location_english"] = existing_copies[0]["location_english"]
+                cand["info_message"] = f"Title already exists in inventory ({len(existing_copies)} copies)."
             else:
                 cand["existing_in_inventory"] = False
+                cand["available_book_id"] = None
+                cand["location_english"] = ""
 
         candidates.append(cand)
 
     return candidates
+
+def predict_genre_with_llm(title: str, author: str = "") -> str:
+    """
+    Uses Google Gemini LLM to predict the most accurate canonical genre for a book title and author.
+    Falls back to existing catalog match or rule-based genre classifier.
+    """
+    clean_title = (title or "").strip()
+    if not clean_title:
+        return "General Non-Fiction"
+
+    # 1. Check existing catalog match first
+    try:
+        matches = search_engine.search_books(clean_title)
+        if matches and matches.get("exact_matches"):
+            top = matches["exact_matches"][0]
+            if top.get("genre"):
+                return top["genre"]
+    except Exception:
+        pass
+
+    # 2. Fast rule-based keyword check first (0ms latency)
+    try:
+        import genre_classifier
+        rule_genre = genre_classifier.classify_common_genre("", clean_title)
+        if rule_genre and rule_genre != "General Non-Fiction":
+            return rule_genre
+    except Exception:
+        pass
+
+    # 3. Call Google Gemini LLM
+    api_key = get_google_api_key()
+    if is_valid_google_key(api_key):
+        prompt = (
+            f"You are a bookstore librarian. Given the book title '{clean_title}' by '{author}', "
+            f"classify it into EXACTLY ONE of these canonical bookstore genres:\n"
+            f"[Fiction, Philosophy, Self-Help, History, Biography, Business & Economics, Politics, "
+            f"Law, Psychology, Science & Technology, Religion & Spirituality, Health & Wellness, "
+            f"Music, Art & Culture, Children & Young Adult, Travel & Adventure, Cookery & Food, "
+            f"Education & Reference, Humor & Lifestyle, General Non-Fiction].\n\n"
+            f"Reply with ONLY the exact chosen genre name from this list, nothing else."
+        )
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 30}
+        }
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                cleaned = re.sub(r'["\'.*]', '', text).strip()
+
+                import genre_classifier
+                for g in genre_classifier.FIXED_COMMON_GENRES:
+                    if g.lower() == cleaned.lower():
+                        return g
+                for g in genre_classifier.FIXED_COMMON_GENRES:
+                    if g.lower() in cleaned.lower():
+                        return g
+                if cleaned and len(cleaned) < 40:
+                    return cleaned
+        except Exception:
+            pass
+
+    # 4. Fallback
+    try:
+        import genre_classifier
+        return genre_classifier.classify_common_genre("", clean_title)
+    except Exception:
+        return "General Non-Fiction"
+

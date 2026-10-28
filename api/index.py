@@ -18,8 +18,9 @@ if root_dir not in sys.path:
 
 import database
 import search_engine
-import sheets_sync
+import export_manager
 import ocr_engine
+from datetime import datetime
 
 # Prime and verify database on serverless cold-boot
 try:
@@ -96,7 +97,7 @@ def app(environ, start_response):
     if method == "GET":
         if path == "/api/stats":
             stats = database.get_inventory_stats()
-            sync_info = sheets_sync.get_sync_status()
+            sync_info = {"active": False, "mode": "local_database", "pending_changes": 0}
             return json_response(start_response, {"stats": stats, "sync": sync_info})
 
         elif path == "/api/search":
@@ -124,8 +125,7 @@ def app(environ, start_response):
             return json_response(start_response, {"audit_logs": logs})
 
         elif path == "/api/sync/status":
-            status = sheets_sync.get_sync_status()
-            return json_response(start_response, status)
+            return json_response(start_response, {"connected": False, "pending_count": 0, "mode": "local_database"})
 
         elif path == "/api/genres":
             dist = database.get_genre_distribution()
@@ -133,39 +133,61 @@ def app(environ, start_response):
 
         elif path == "/api/books/by-genre":
             genre = query_params.get("genre", [""])[0]
-            avail_only = query_params.get("available_only", ["false"])[0].lower() in ("true", "1")
+            avail_only = query_params.get("available_only", ["true"])[0].lower() in ("true", "1")
             limit = int(query_params.get("limit", [500])[0])
             raw_books = database.get_books_by_genre(genre, available_only=avail_only, limit=limit)
             grouped = search_engine.group_physical_copies(raw_books)
             return json_response(start_response, {"genre": genre, "total_books": len(grouped), "books": grouped})
 
+        elif path == "/api/books/cover":
+            title = query_params.get("title", [""])[0]
+            author = query_params.get("author", [""])[0]
+            cover_url = database.get_or_fetch_book_cover(title, author)
+            return json_response(start_response, {"title": title, "cover_url": cover_url})
+
+        elif path == "/api/books/suggest-genre":
+            title = query_params.get("title", [""])[0]
+            author = query_params.get("author", [""])[0]
+            suggested = ocr_engine.predict_genre_with_llm(title, author)
+            return json_response(start_response, {"title": title, "author": author, "genre": suggested})
+
         elif path == "/api/config/google-key":
             key = ocr_engine.get_google_api_key()
-            return json_response(start_response, {"google_api_key": key, "has_key": bool(key)})
+            # Security: Never expose raw API key to the client
+            return json_response(start_response, {"has_key": bool(key), "ai_status": "active" if bool(key) else "inactive"})
 
-        elif path == "/api/export/csv":
-            conn = database.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM books ORDER BY id ASC")
-            books = cursor.fetchall()
-            conn.close()
+        elif path in ("/api/export/xlsx", "/api/export/excel"):
+            xlsx_bytes = export_manager.generate_database_xlsx()
+            filename = f"Bookstore_Database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            headers = [
+                ("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ("Content-Disposition", f'attachment; filename="{filename}"'),
+                ("Access-Control-Allow-Origin", "*"),
+                ("Content-Length", str(len(xlsx_bytes)))
+            ]
+            start_response("200 OK", headers)
+            return [xlsx_bytes]
 
-            output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(["Book_ID", "Rack", "Column", "Position_Top_To_Bottom", "Title", "Author_or_Editor", "Genre", "Notes", "Simple_Genre", "Status", "Location_English", "Selling_Price"])
-            for b in books:
-                b_dict = dict(b)
-                writer.writerow([
-                    b_dict.get("book_id", ""), b_dict.get("rack", ""), b_dict.get("column_num", ""), b_dict.get("position", ""),
-                    b_dict.get("title", ""), b_dict.get("author", ""), b_dict.get("genre", ""), b_dict.get("notes", ""),
-                    b_dict.get("simple_genre", ""), b_dict.get("status", "Available"), b_dict.get("location_english", ""),
-                    b_dict.get("selling_price", "")
-                ])
-            csv_bytes = output.getvalue().encode("utf-8")
+        elif path in ("/api/export/csv", "/api/export/inventory.csv"):
+            csv_bytes = export_manager.generate_inventory_csv()
+            filename = f"Bookstore_Inventory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             headers = [
                 ("Content-Type", "text/csv; charset=utf-8"),
-                ("Content-Disposition", "attachment; filename=\"inventory_export.csv\""),
-                ("Access-Control-Allow-Origin", "*")
+                ("Content-Disposition", f'attachment; filename="{filename}"'),
+                ("Access-Control-Allow-Origin", "*"),
+                ("Content-Length", str(len(csv_bytes)))
+            ]
+            start_response("200 OK", headers)
+            return [csv_bytes]
+
+        elif path == "/api/export/sales.csv":
+            csv_bytes = export_manager.generate_sales_csv()
+            filename = f"Bookstore_Sales_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            headers = [
+                ("Content-Type", "text/csv; charset=utf-8"),
+                ("Content-Disposition", f'attachment; filename="{filename}"'),
+                ("Access-Control-Allow-Origin", "*"),
+                ("Content-Length", str(len(csv_bytes)))
             ]
             start_response("200 OK", headers)
             return [csv_bytes]
@@ -238,7 +260,19 @@ def app(environ, start_response):
             res = database.delete_books_bulk(book_ids)
             return json_response(start_response, res)
 
-        elif path == "/api/books/sell":
+        elif path in ("/api/books/sell", "/api/books/sell-bulk"):
+            # Multi-book bulk sale support
+            if body.get("books") and isinstance(body.get("books"), list):
+                res = database.sell_books_bulk(
+                    items=body["books"],
+                    user=body.get("user", "Staff"),
+                    shared_notes=body.get("notes", "")
+                )
+                if "error" in res and not res.get("success"):
+                    return json_response(start_response, res, 400)
+                return json_response(start_response, res)
+
+            # Single book sale support
             book_id = body.get("book_id", "")
             selling_price = body.get("selling_price")
             notes = body.get("notes", "")
@@ -340,7 +374,10 @@ def app(environ, start_response):
             if "api_key" in body:
                 cfg["api_key"] = body["api_key"].strip()
             sheets_sync.save_config(cfg)
-            return json_response(start_response, {"success": True, "config": cfg})
+            safe_cfg = dict(cfg)
+            if safe_cfg.get("api_key"):
+                safe_cfg["api_key"] = "••••••••"
+            return json_response(start_response, {"success": True, "config": safe_cfg})
 
         elif path == "/api/sync/pull-sheet":
             live_csv = sheets_sync.fetch_live_sheet_csv()

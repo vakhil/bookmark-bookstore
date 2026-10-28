@@ -71,6 +71,10 @@ def get_db_connection() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode = WAL")
     except Exception:
         pass
+    try:
+        conn.execute("PRAGMA busy_timeout = 30000")
+    except Exception:
+        pass
     return conn
 
 def format_location_english(rack: Optional[str], column: Optional[str], position: Optional[str], notes: Optional[str] = "") -> str:
@@ -128,6 +132,27 @@ def format_location_english(rack: Optional[str], column: Optional[str], position
             placement_english = pos_raw
 
     return f"{rack} → {column} → {placement_english}"
+
+def sanitize_title(title: str) -> str:
+    """Removes 'Copy 1', 'Copy 2', '(Copy 1 of 2)', etc. from book title."""
+    if not title:
+        return ""
+    t = title
+    t = re.sub(r',\s*copy\s*\d+(\s*of\s*\d+)?\s*(?=\))', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\s*\(\s*copy\s*\d+(\s*of\s*\d+)?\s*\)', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\s*[-–—]\s*copy\s*\d+(\s*of\s*\d+)?\s*$', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\s+copy\s+\d+(\s*of\s*\d+)?\s*$', '', t, flags=re.IGNORECASE)
+    return t.strip()
+
+def sanitize_notes(n: str) -> str:
+    """Removes 'Copy 1 of 2', 'Copy 1', etc. from notes."""
+    if not n:
+        return ""
+    s = re.sub(r'\s*\(\s*copy\s*\d+(\s*of\s*\d+)?\s*\)', '', n, flags=re.IGNORECASE)
+    s = re.sub(r'\bcopy\s*\d+(\s*of\s*\d+)?\b', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'\s*[-–—]\s*$', '', s).strip()
+    s = re.sub(r'^\s*[-–—]\s*', '', s).strip()
+    return s.strip()
 
 def init_db(force_reseed: bool = False):
     """Initializes tables, triggers, indexes, and imports seed inventory if needed."""
@@ -291,9 +316,22 @@ def ensure_database_ready():
             return
         cursor.execute("SELECT COUNT(*) FROM books")
         cnt = cursor.fetchone()[0]
-        conn.close()
         if cnt == 0:
+            conn.close()
             init_database(force_reseed=True)
+            return
+
+        # Sanitize any legacy copy suffixes on warm containers
+        cursor.execute("SELECT id, title, notes FROM books WHERE title LIKE '%copy%' OR notes LIKE '%copy%'")
+        to_clean = cursor.fetchall()
+        for r in to_clean:
+            cursor.execute(
+                "UPDATE books SET title = ?, notes = ? WHERE id = ?",
+                (sanitize_title(r["title"]), sanitize_notes(r["notes"]), r["id"])
+            )
+        if to_clean:
+            conn.commit()
+        conn.close()
     except Exception as e:
         print(f"Notice initializing database: {e}")
         try:
@@ -450,10 +488,10 @@ def import_initial_seed(conn: sqlite3.Connection):
             rack = row[rack_idx].strip() if rack_idx < len(row) else ""
             column = row[column_idx].strip() if column_idx < len(row) else ""
             pos = row[pos_idx].strip() if pos_idx < len(row) else ""
-            title = row[title_idx].strip() if title_idx < len(row) else ""
+            title = sanitize_title(row[title_idx].strip() if title_idx < len(row) else "")
             author = row[author_idx].strip() if author_idx < len(row) else ""
             genre = row[genre_idx].strip() if genre_idx < len(row) else ""
-            notes = row[notes_idx].strip() if notes_idx < len(row) else ""
+            notes = sanitize_notes(row[notes_idx].strip() if notes_idx < len(row) else "")
             simple_genre = row[simple_genre_idx].strip() if (simple_genre_idx >= 0 and simple_genre_idx < len(row)) else ""
             if not simple_genre:
                 simple_genre = genre_classifier.classify_common_genre(genre, title)
@@ -548,6 +586,24 @@ def add_book(
     Adds a new book record with a uniquely generated Inventory ID.
     Performs concurrency checking and audit logging.
     """
+    clean_title = sanitize_title(title.strip())
+    clean_notes = sanitize_notes(notes.strip())
+    loc_eng = format_location_english(rack, column_num, position, clean_notes)
+
+    stored_notes = clean_notes
+    if idempotency_key:
+        stored_notes = f"{clean_notes} [idempotency:{idempotency_key}]".strip()
+
+    assigned_genre = genre.strip()
+    if not assigned_genre:
+        try:
+            import ocr_engine
+            assigned_genre = ocr_engine.predict_genre_with_llm(clean_title, author.strip())
+        except Exception:
+            assigned_genre = "General Non-Fiction"
+
+    simple_genre = genre_classifier.classify_common_genre(assigned_genre, clean_title)
+
     with db_lock:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -564,13 +620,6 @@ def add_book(
         book_id = generate_next_book_id(conn)
         is_unassigned = not rack or not column_num or not position or rack.lower() == "unassigned"
         unassigned_since = now_iso if is_unassigned else None
-        loc_eng = format_location_english(rack, column_num, position, notes)
-
-        stored_notes = notes
-        if idempotency_key:
-            stored_notes = f"{notes} [idempotency:{idempotency_key}]".strip()
-
-        simple_genre = genre_classifier.classify_common_genre(genre.strip(), title.strip())
 
         cursor.execute("""
             INSERT INTO books (
@@ -579,7 +628,7 @@ def add_book(
                 notes, status, created_at, updated_at, unassigned_since
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available', ?, ?, ?)
         """, (
-            book_id, title.strip(), author.strip(), genre.strip(), simple_genre, language.strip(),
+            book_id, clean_title, author.strip(), assigned_genre, simple_genre, language.strip(),
             rack.strip(), column_num.strip(), position.strip(), loc_eng,
             stored_notes, now_iso, now_iso, unassigned_since
         ))
@@ -636,14 +685,14 @@ def add_books_batch(
 
         saved_books = []
         for item in books_list:
-            title = (item.get("title") or "").strip()
+            title = sanitize_title((item.get("title") or "").strip())
             author = (item.get("author") or "").strip()
             genre = (item.get("genre") or "").strip()
             language = (item.get("language") or "English").strip()
             rack = (item.get("rack") or "").strip()
             column_num = (item.get("column_num") or "").strip()
             position = (item.get("position") or "").strip()
-            notes = (item.get("notes") or "").strip()
+            notes = sanitize_notes((item.get("notes") or "").strip())
 
             if not title:
                 continue
@@ -950,13 +999,6 @@ def sell_book(
         conn.close()
         sync_csv_update_status(book_id, "SOLD OUT")
 
-        # Immediately flush sync queue to Google Sheets if webhook is available
-        try:
-            import sheets_sync
-            sheets_sync.process_outbox_queue()
-        except Exception as e:
-            print(f"Notice auto-flushing sync queue: {e}")
-
         return {
             "success": True,
             "transaction_ref": tx_ref,
@@ -964,6 +1006,150 @@ def sell_book(
             "selling_price": selling_price,
             "sold_at": now_iso,
             "message": f"Successfully completed sale for {updated_book['title']} ({book_id})."
+        }
+
+def sell_books_bulk(
+    items: List[Dict[str, Any]],
+    user: str = "Staff",
+    shared_notes: str = ""
+) -> Dict[str, Any]:
+    """
+    Executes selling multiple physical books at once (multi-book sale transaction).
+    Each item in items contains:
+      - book_id: str (required)
+      - selling_price: Optional[float]
+      - notes: Optional[str]
+    Marks each book as 'SOLD OUT', generates transaction references,
+    logs into audit_log and sales_transactions, and queues sync to Google Sheets.
+    """
+    if not items:
+        return {"error": "No books provided to sell."}
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+        today_code = datetime.now().strftime("%Y%m%d")
+
+        cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
+        daily_count = cursor.fetchone()[0]
+
+        successful_sales = []
+        errors = []
+        total_amount = 0.0
+
+        for item in items:
+            bid = (item.get("book_id") or "").strip()
+            if not bid:
+                continue
+
+            price = item.get("selling_price")
+            price_val = None
+            if price is not None and str(price).strip() != "":
+                try:
+                    price_val = float(price)
+                except ValueError:
+                    price_val = None
+
+            notes = (item.get("notes") or shared_notes or "").strip()
+
+            cursor.execute("SELECT * FROM books WHERE book_id = ?", (bid,))
+            book = cursor.fetchone()
+            if not book:
+                errors.append(f"Book {bid} not found in inventory.")
+                continue
+
+            if book["status"] == "SOLD OUT":
+                errors.append(f"Book '{book['title']}' ({bid}) is already marked as SOLD OUT.")
+                continue
+
+            daily_count += 1
+            tx_ref = f"TX-{today_code}-{daily_count:04d}"
+
+            cursor.execute("""
+                UPDATE books SET
+                    status = 'SOLD OUT',
+                    selling_price = ?,
+                    updated_at = ?
+                WHERE book_id = ?
+            """, (price_val, now_iso, bid))
+
+            cursor.execute("""
+                INSERT INTO sales_transactions (
+                    transaction_ref, book_id, title, author,
+                    selling_price, sold_at, sold_by, notes, synced_to_sheets
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """, (
+                tx_ref, bid, book["title"], book["author"],
+                price_val, now_iso, user, notes
+            ))
+
+            cursor.execute("""
+                INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "SELL_BOOK_BULK", bid,
+                json.dumps({"status": "Available", "selling_price": None}),
+                json.dumps({"status": "SOLD OUT", "selling_price": price_val, "transaction_ref": tx_ref}),
+                now_iso, user, f"Bulk sale transaction: {tx_ref}"
+            ))
+
+            cursor.execute("""
+                INSERT INTO sync_queue (operation, payload, created_at)
+                VALUES (?, ?, ?)
+            """, (
+                "UPDATE_STATUS",
+                json.dumps({
+                    "book_id": bid, "status": "SOLD OUT",
+                    "transaction_ref": tx_ref, "selling_price": price_val
+                }),
+                now_iso
+            ))
+
+            cursor.execute("""
+                INSERT INTO sync_queue (operation, payload, created_at)
+                VALUES (?, ?, ?)
+            """, (
+                "APPEND_SALE",
+                json.dumps({
+                    "transaction_ref": tx_ref,
+                    "book_id": bid,
+                    "title": book["title"],
+                    "author": book["author"],
+                    "selling_price": price_val,
+                    "sold_at": now_iso,
+                    "sold_by": user,
+                    "notes": notes
+                }),
+                now_iso
+            ))
+
+            sync_csv_update_status(bid, "SOLD OUT")
+            if price_val is not None:
+                total_amount += price_val
+
+            successful_sales.append({
+                "book_id": bid,
+                "title": book["title"],
+                "author": book["author"],
+                "transaction_ref": tx_ref,
+                "selling_price": price_val,
+                "location_english": book["location_english"]
+            })
+
+        conn.commit()
+        conn.close()
+
+        if not successful_sales and errors:
+            return {"error": "; ".join(errors), "errors": errors}
+
+        return {
+            "success": True,
+            "count": len(successful_sales),
+            "total_amount": round(total_amount, 2),
+            "sold_books": successful_sales,
+            "errors": errors,
+            "message": f"Successfully completed sale for {len(successful_sales)} books."
         }
 
 def revert_sale(book_id: str) -> Dict[str, Any]:
@@ -1193,3 +1379,99 @@ def get_books_by_genre(genre: str, available_only: bool = False, limit: int = 50
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
+
+def get_or_fetch_book_cover(title: str, author: str = "") -> Optional[str]:
+    """
+    Returns the cached cover URL from SQLite if available.
+    Otherwise queries Open Library / Google Books, caches in SQLite, and returns the URL.
+    """
+    clean_title = (title or "").strip()
+    if not clean_title:
+        return None
+
+    # Check local SQLite cache first
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT image_url FROM books WHERE lower(title) = ? AND image_url != '' AND image_url IS NOT NULL LIMIT 1",
+            (clean_title.lower(),)
+        )
+        row = cursor.fetchone()
+        if row and row["image_url"]:
+            cached = row["image_url"]
+            conn.close()
+            return cached
+        conn.close()
+    except Exception as e:
+        print(f"Notice reading cached cover: {e}")
+
+    # Query Open Library Search API
+    cover_url = None
+    try:
+        import urllib.request, urllib.parse
+        q_params = f"title={urllib.parse.quote(clean_title)}"
+        if author and author.strip():
+            q_params += f"&author={urllib.parse.quote(author.strip())}"
+        q_url = f"https://openlibrary.org/search.json?{q_params}&limit=1"
+        req = urllib.request.Request(q_url, headers={"User-Agent": "BookstoreApp/2.0 (books@internal)"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            docs = data.get("docs", [])
+            if docs and docs[0].get("cover_i"):
+                cover_id = docs[0]["cover_i"]
+                cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
+    except Exception as e:
+        pass
+
+    # Fallback to Bing / Web Image Search
+    if not cover_url:
+        try:
+            import urllib.request, urllib.parse, re
+            query_str = f"{clean_title} {author}".strip()
+            url = f"https://www.bing.com/images/search?q={urllib.parse.quote(query_str + ' book cover')}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                m = re.findall(r'(https://tse\d\.mm\.bing\.net/th/id/[^\"]+)', html)
+                if m:
+                    cover_url = m[0].replace("&amp;", "&")
+        except Exception:
+            pass
+
+    # Fallback to Google Books API
+    if not cover_url:
+        try:
+            import urllib.request, urllib.parse
+            gb_query = f"intitle:{urllib.parse.quote(clean_title)}"
+            if author and author.strip():
+                gb_query += f"+inauthor:{urllib.parse.quote(author.strip())}"
+            gb_url = f"https://www.googleapis.com/books/v1/volumes?q={gb_query}&maxResults=1"
+            req = urllib.request.Request(gb_url, headers={"User-Agent": "BookstoreApp/2.0 (books@internal)"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                gb_data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                items = gb_data.get("items", [])
+                if items:
+                    images = items[0].get("volumeInfo", {}).get("imageLinks", {})
+                    thumb = images.get("thumbnail") or images.get("smallThumbnail")
+                    if thumb:
+                        cover_url = thumb.replace("http://", "https://")
+        except Exception as e:
+            pass
+
+    if cover_url:
+        try:
+            with db_lock:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE books SET image_url = ? WHERE lower(title) = ?",
+                    (cover_url, clean_title.lower())
+                )
+                conn.commit()
+                conn.close()
+        except Exception as e:
+            print(f"Notice saving book cover to DB: {e}")
+
+    return cover_url
+
