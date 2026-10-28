@@ -659,6 +659,45 @@ function formatLocationPreviewText(rack, col, pos) {
   return `Rack ${r} → Column ${c} → ${posText}`;
 }
 
+function formatLocationPill(state, locationText) {
+  if (state === 'SOLD') {
+    return `
+      <div class="location-banner location-banner-sold" title="This copy has been sold and removed from inventory">
+        <span class="loc-pin-icon">❌</span>
+        <span class="loc-text-highlight">SOLD OUT &bull; Off Shelf</span>
+        ${locationText ? `<span class="loc-subtext" style="font-size:0.8rem; font-weight:500; opacity:0.85; margin-left:0.3rem;">(Was ${escapeHtml(locationText)})</span>` : ''}
+      </div>
+    `;
+  }
+  if (!locationText || state === 'UNASSIGNED' || locationText.toLowerCase() === 'unassigned') {
+    return `
+      <div class="location-banner location-banner-unassigned" title="Needs shelf assignment">
+        <span class="loc-pin-icon">📍</span>
+        <span class="loc-text-highlight">Location Unassigned</span>
+      </div>
+    `;
+  }
+
+  // Format parts: Rack X › Column Y › Position
+  const parts = locationText.split(/→|->/g).map(p => p.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const formatted = parts.map(p => `<span class="loc-step">${escapeHtml(p)}</span>`).join('<span class="loc-sep">›</span>');
+    return `
+      <div class="location-banner" title="Physical shelf location">
+        <span class="loc-pin-icon">📍</span>
+        ${formatted}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="location-banner" title="Physical shelf location">
+      <span class="loc-pin-icon">📍</span>
+      <span class="loc-text-highlight">${escapeHtml(locationText)}</span>
+    </div>
+  `;
+}
+
 /**
  * Creates a single, independent tile for one physical book copy.
  * Each copy gets its own separate card with editable fields and Sell button.
@@ -670,10 +709,16 @@ function createBookTile(book, copy, matchType) {
 
   function renderView() {
     const state = getBookState(book, copy);
-    card.className = 'book-card-item' + (state === 'SOLD' ? ' card-is-sold' : '');
+    let cardClass = 'book-card-item';
+    if (state === 'SOLD') cardClass += ' card-is-sold';
+    else if (state === 'UNASSIGNED') cardClass += ' card-is-unassigned';
+    else cardClass += ' card-is-assigned';
+    card.className = cardClass;
+
     const cleanTitle = cleanBookTitle(copy.title || book.title || '');
     const cleanAuthor = escapeHtml(copy.author || book.author || 'Author');
-    const coverHtml = getBookCoverHtml(cleanTitle, copy.author || book.author, copy.simple_genre || book.simple_genre || book.genre, copy.image_url || book.image_url);
+    const genre = copy.simple_genre || book.simple_genre || copy.genre || book.genre || '';
+    const coverHtml = getBookCoverHtml(cleanTitle, copy.author || book.author, genre, copy.image_url || book.image_url);
     const locationText = copy.location_english || book.location_english || (copy.shelf_location ? `Shelf ${copy.shelf_location}` : '');
     const bookId = copy.book_id || book.book_id || '';
     const language = copy.language || book.language || 'English';
@@ -683,49 +728,31 @@ function createBookTile(book, copy, matchType) {
         <div class="book-card-header-left">
           ${coverHtml}
           <div class="book-info">
-            <div class="book-title-author-row">
-              <span class="book-title">${escapeHtml(cleanTitle)}</span>
-              <span class="book-author-inline">by <b>${cleanAuthor}</b></span>
-            </div>
+            <h3 class="book-title">${escapeHtml(cleanTitle)}</h3>
+            <div class="book-author">by <b>${cleanAuthor}</b></div>
             <div class="book-location-hero">
-              ${state === 'SOLD' ? `
-                <div class="location-banner location-banner-sold" title="This copy has been sold and removed from inventory">
-                  <span class="loc-pin-icon">❌</span>
-                  <span class="loc-text-highlight">SOLD OUT &bull; Off Shelf</span>
-                  ${locationText ? `<span style="font-size:0.8rem; font-weight:500; opacity:0.85; margin-left:0.3rem;">(Was ${escapeHtml(locationText)})</span>` : ''}
-                </div>
-              ` : (state === 'ASSIGNED' && locationText ? `
-                <div class="location-banner" title="Physical shelf location">
-                  <span class="loc-pin-icon">📍</span>
-                  <span class="loc-text-highlight">${escapeHtml(locationText)}</span>
-                </div>
-              ` : `
-                <div class="location-banner location-banner-unassigned" title="Needs shelf assignment">
-                  <span class="loc-pin-icon">📍</span>
-                  <span class="loc-text-highlight">Location Unassigned</span>
-                </div>
-              `)}
+              ${formatLocationPill(state, locationText)}
             </div>
             <div class="book-meta-line">
-              <span class="state-chip state-${state.toLowerCase()}">${state === 'SOLD' ? 'SOLD OUT' : state}</span>
+              <span class="state-chip state-${state.toLowerCase()}"><span class="chip-dot">●</span> ${state === 'SOLD' ? 'SOLD OUT' : state}</span>
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
-              ${book.simple_genre ? `<span class="chip simple-genre-chip">${escapeHtml(book.simple_genre)}</span>` : ''}
+              ${genre ? `<span class="chip simple-genre-chip">${escapeHtml(genre)}</span>` : ''}
               <span class="chip book-id-chip">#${escapeHtml(bookId)}</span>
             </div>
           </div>
         </div>
         <div class="book-card-actions">
-          <button class="btn btn-sm btn-outline btn-edit-tile" title="Edit book details">
-            ✏️ Edit
-          </button>
           ${state === 'SOLD' ? `
-            <button class="btn btn-sm btn-outline" disabled style="opacity:0.85; font-weight:700; color:#dc2626; border-color:#fca5a5; background:#fef2f2;">❌ SOLD</button>
+            <button class="btn btn-sm btn-sold-disabled" disabled title="Sold copy">❌ SOLD</button>
           ` : `
-            <button class="btn btn-sm btn-success btn-sell-copy" data-bid="${escapeHtml(bookId)}">
+            <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy">
               ⚡ Sell
             </button>
           `}
-          <div class="delete-trigger-container" style="display:flex; justify-content:flex-end;">
+          <button class="btn btn-sm btn-edit-tile" title="Edit book details">
+            ✏️ Edit
+          </button>
+          <div class="delete-trigger-container">
             <button class="btn-subtle-delete" title="Permanently delete this copy">
               🗑️ Delete
             </button>
@@ -744,7 +771,7 @@ function createBookTile(book, copy, matchType) {
           </div>
           <div class="expanded-meta-item">
             <span class="meta-label">Genre</span>
-            <span class="meta-value">${escapeHtml(book.simple_genre || book.genre || 'General')}</span>
+            <span class="meta-value">${escapeHtml(genre || 'General')}</span>
           </div>
           <div class="expanded-meta-item">
             <span class="meta-label">Availability</span>

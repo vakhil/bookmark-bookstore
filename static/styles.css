@@ -463,29 +463,50 @@ input, select, textarea, button {
 .badge-danger { background: #fee2e2; color: #b91c1c; }
 
 .book-card-item {
+  position: relative;
   background: var(--card-bg, #ffffff);
-  border: 1.5px solid var(--border, #e2e8f0);
-  border-radius: 12px;
-  padding: 1.35rem 1.6rem;
+  border: 1.5px solid #edf2f7;
+  border-radius: 20px;
+  padding: 1.25rem 1.6rem;
   margin-bottom: 1.25rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
   transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
-  position: relative;
+  overflow: hidden;
+}
+
+.book-card-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18px;
+  bottom: 18px;
+  width: 6px;
+  background: #22c55e;
+  border-radius: 0 4px 4px 0;
+  transition: all 0.2s ease;
+}
+
+.book-card-item.card-is-sold::before {
+  background: #ef4444;
+}
+
+.book-card-item.card-is-unassigned::before {
+  background: #f59e0b;
 }
 
 .book-card-item:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
 }
 
 /* Expanded / Selected state: Gets significantly bigger with more details */
 .book-card-item.is-selected {
-  padding: 1.85rem 2.1rem;
+  padding: 1.65rem 2rem;
   margin-top: 0.65rem;
-  margin-bottom: 1.85rem;
-  border-color: #0284c7;
-  box-shadow: 0 12px 32px -4px rgba(2, 132, 199, 0.18), 0 4px 12px rgba(0, 0, 0, 0.04);
+  margin-bottom: 1.75rem;
+  border-color: #38bdf8;
+  box-shadow: 0 12px 32px -4px rgba(14, 165, 233, 0.16), 0 4px 14px rgba(0, 0, 0, 0.05);
   background: #ffffff;
   transform: translateY(-2px);
 }
@@ -508,8 +529,8 @@ input, select, textarea, button {
 }
 
 .book-card-item.is-selected .location-banner {
-  padding: 0.55rem 1.15rem;
-  font-size: 1.05rem;
+  padding: 0.55rem 1.25rem;
+  font-size: 1.02rem;
   border-width: 2px;
   box-shadow: 0 3px 10px rgba(16, 185, 129, 0.16);
 }
@@ -534,13 +555,13 @@ input, select, textarea, button {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1.15rem;
+  gap: 1.35rem;
 }
 
 .book-card-header-left {
   display: flex;
   align-items: flex-start;
-  gap: 1.15rem;
+  gap: 1.35rem;
   flex: 1;
   min-width: 0;
 }
@@ -548,41 +569,72 @@ input, select, textarea, button {
 .book-card-actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 0.45rem;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.6rem;
+  min-width: 118px;
   flex-shrink: 0;
 }
 
 .state-chip {
   display: inline-flex;
   align-items: center;
-  font-weight: 700;
-  font-size: 0.72rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
+  gap: 0.35rem;
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 0.28rem 0.8rem;
+  border-radius: 9999px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
+.state-chip .chip-dot {
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
 .state-chip.state-assigned {
-  background: #dcfce7;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1.5px solid #86efac;
+}
+
+.state-chip.state-assigned .chip-dot {
+  color: #22c55e;
 }
 
 .state-chip.state-unassigned {
-  background: #fef3c7;
+  background: #fffbeb;
   color: #92400e;
-  border: 1px solid #fde68a;
+  border: 1.5px solid #fde68a;
+}
+
+.state-chip.state-unassigned .chip-dot {
+  color: #f59e0b;
 }
 
 .state-chip.state-sold {
-  background: #fee2e2;
+  background: #fef2f2;
   color: #991b1b;
-  border: 1px solid #fecaca;
+  border: 1.5px solid #fecaca;
+}
+
+.state-chip.state-sold .chip-dot {
+  color: #ef4444;
 }
 
 .book-lang-chip {
+  background: #f0f9ff;
+  border: 1.5px solid #bae6fd;
+  color: #0369a1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.28rem 0.8rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   color: #1e40af;
@@ -638,36 +690,100 @@ input, select, textarea, button {
   gap: 0.3rem;
 }
 
-/* Subtle, accidental-proof delete action */
-.btn-subtle-delete {
-  background: transparent;
-  border: 1px solid transparent;
-  color: #94a3b8;
-  font-size: 0.72rem;
-  font-weight: 500;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-top: 0.4rem;
-  transition: all 0.15s ease;
+/* Action buttons styled to match the clean rounded design */
+.book-card-actions .btn-sell-copy {
+  background: #22c55e;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.65rem 1.4rem;
+  box-shadow: 0 3px 10px rgba(34, 197, 94, 0.32);
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  opacity: 0.75;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: all 0.18s ease;
+  cursor: pointer;
 }
 
-.btn-subtle-delete:hover {
+.book-card-actions .btn-sell-copy:hover {
+  background: #16a34a;
+  box-shadow: 0 5px 14px rgba(34, 197, 94, 0.42);
+  transform: translateY(-1px);
+}
+
+.book-card-actions .btn-edit-tile {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  color: #0f172a;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.55rem 1.4rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+
+.book-card-actions .btn-edit-tile:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.delete-trigger-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.book-card-actions .btn-subtle-delete {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0.9;
+  border-radius: 8px;
+}
+
+.book-card-actions .btn-subtle-delete:hover {
   color: #dc2626;
   background: #fef2f2;
-  border-color: #fecaca;
   opacity: 1;
+}
+
+.book-card-actions .btn-sold-disabled {
+  background: #fef2f2;
+  border: 1.5px solid #fecaca;
+  color: #dc2626;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.6rem 1.2rem;
+  opacity: 0.95;
+  cursor: not-allowed;
+  text-align: center;
 }
 
 .delete-confirm-wrap {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin-top: 0.35rem;
   animation: fadeIn 0.15s ease-out;
 }
 
@@ -675,11 +791,12 @@ input, select, textarea, button {
   background: #dc2626;
   color: #ffffff;
   border: none;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .btn-really-delete:hover {
@@ -690,9 +807,9 @@ input, select, textarea, button {
   background: #f1f5f9;
   color: #64748b;
   border: 1px solid #cbd5e1;
-  font-size: 0.72rem;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
+  font-size: 0.76rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -721,12 +838,24 @@ input, select, textarea, button {
 
 .book-id-chip {
   background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  border: 1.5px solid #e2e8f0;
   color: #475569;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.15rem 0.45rem;
-  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.28rem 0.8rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.simple-genre-chip {
+  background: #eef2ff;
+  border: 1.5px solid #c7d2fe;
+  color: #4338ca;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.28rem 0.8rem;
+  border-radius: 9999px;
   display: inline-flex;
   align-items: center;
 }
@@ -735,11 +864,10 @@ input, select, textarea, button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
-  margin-top: 0.45rem;
+  gap: 0.55rem;
+  margin-top: 0.1rem;
 }
 
-/* Location banner hero: sitting prominently right below author, full width matching details */
 .book-info {
   flex: 1;
   min-width: 0;
@@ -747,65 +875,76 @@ input, select, textarea, button {
   flex-direction: column;
 }
 
-.book-title-author-row {
+.book-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.25;
+  margin: 0 0 0.18rem 0;
+  letter-spacing: -0.015em;
+  word-break: break-word;
+}
+
+.book-author {
+  font-size: 1.02rem;
+  color: #64748b;
+  font-weight: 500;
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.65rem;
-  margin-bottom: 0.2rem;
+  gap: 0.3rem;
+  margin-bottom: 0.65rem;
+  line-height: 1.3;
 }
 
-.book-author-inline {
-  font-size: 0.95rem;
-  color: var(--text-muted, #64748b);
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.25rem;
-}
-
-.book-author-inline b {
-  color: #334155;
-  font-weight: 600;
+.book-author b {
+  color: #1e293b;
+  font-weight: 700;
 }
 
 .book-location-hero {
-  margin: 0.45rem 0 0.55rem 0;
-  width: 100%;
+  margin-bottom: 0.75rem;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .location-banner {
-  display: flex;
-  width: 100%;
-  box-sizing: border-box;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+  gap: 0.45rem;
+  background: #f0fdf4;
   border: 1.5px solid #86efac;
-  box-shadow: 0 2px 5px rgba(16, 185, 129, 0.08);
-  color: #065f46;
-  padding: 0.48rem 0.95rem;
-  border-radius: 8px;
-  font-size: 0.94rem;
+  border-radius: 9999px;
+  padding: 0.42rem 1.15rem;
+  color: #166534;
+  font-size: 0.98rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
   line-height: 1.35;
+  box-shadow: 0 1px 3px rgba(34, 197, 94, 0.08);
   transition: all 0.2s ease;
 }
 
 .location-banner .loc-pin-icon {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   line-height: 1;
 }
 
-.location-banner .loc-text-highlight {
-  color: #065f46;
+.location-banner .loc-step {
+  color: #166534;
   font-weight: 700;
 }
 
+.location-banner .loc-sep {
+  color: #86efac;
+  font-size: 1.15rem;
+  font-weight: 400;
+  margin: 0 0.15rem;
+  user-select: none;
+}
+
 .location-banner-unassigned {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border-color: #fcd34d;
-  color: #92400e;
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+  color: #b45309;
 }
 
 .location-banner-unassigned .loc-text-highlight {
@@ -813,8 +952,8 @@ input, select, textarea, button {
 }
 
 .location-banner-sold {
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border-color: #fca5a5;
+  background: #fef2f2;
+  border: 1.5px solid #fecaca;
   color: #991b1b;
 }
 
@@ -878,12 +1017,12 @@ input, select, textarea, button {
 }
 
 .book-cover-container {
-  width: 72px;
-  height: 104px;
-  min-width: 72px;
+  width: 78px;
+  height: 114px;
+  min-width: 78px;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
   background: #f1f5f9;
   position: relative;
   display: flex;
@@ -1739,19 +1878,64 @@ input, select, textarea, button {
 
   /* Book Cards on Mobile */
   .book-card-item {
-    padding: 1rem;
-    border-radius: 12px;
-    margin-bottom: 0.85rem;
+    padding: 1.1rem;
+    border-radius: 16px;
+    margin-bottom: 0.95rem;
+  }
+
+  .book-card-item::before {
+    top: 14px;
+    bottom: 14px;
+    width: 5px;
   }
 
   .book-card-main {
     flex-direction: column;
-    gap: 0.5rem;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .book-card-header-left {
+    gap: 0.85rem;
+  }
+
+  .book-cover-container {
+    width: 68px;
+    height: 98px;
+    min-width: 68px;
   }
 
   .book-title {
-    font-size: 1.05rem;
-    line-height: 1.35;
+    font-size: 1.15rem;
+  }
+
+  .book-author {
+    font-size: 0.92rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .location-banner {
+    font-size: 0.88rem;
+    padding: 0.38rem 0.9rem;
+  }
+
+  .book-card-actions {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-top: 0.35rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .book-card-actions .btn-sell-copy,
+  .book-card-actions .btn-edit-tile {
+    flex: 1;
+  }
+
+  .delete-trigger-container {
+    width: auto;
   }
 
   .copies-summary-badge {
