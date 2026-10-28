@@ -623,9 +623,10 @@ function getBookState(book, copy) {
   if (status === 'SOLD' || status === 'SOLD OUT') {
     return 'SOLD';
   }
-  const rack = ((copy && copy.rack) || (book && book.rack) || '').trim();
-  const loc = ((copy && copy.location_english) || (book && book.location_english) || '').toLowerCase();
-  if (!rack || rack.toLowerCase().includes('unassigned') || loc.includes('unassigned') || loc === '') {
+  const rackRaw = (copy && copy.rack !== undefined && copy.rack !== null) ? copy.rack : ((book && book.rack !== undefined && book.rack !== null) ? book.rack : '');
+  const rack = String(rackRaw).trim();
+  const loc = String((copy && copy.location_english) || (book && book.location_english) || '').toLowerCase();
+  if (!rack || rack === '' || rack.toLowerCase().includes('unassigned') || loc.includes('unassigned') || loc === '') {
     return 'UNASSIGNED';
   }
   return 'ASSIGNED';
@@ -983,10 +984,17 @@ function initManualAdd() {
       if (pos === '1') posText = 'On top of the rack';
       else if (pos === '2') posText = '2nd book from top';
       else if (pos === '3') posText = '3rd book from top';
-      else if (pos === '4') posText = '4th book from top';
-      else if (pos === '5') posText = '5th book from top';
-      else if (!isNaN(pos)) posText = `${pos}th book from top`;
-      locPreview.innerHTML = `Location: <span class="highlight">${escapeHtml(rack)} → ${escapeHtml(col)} → ${escapeHtml(posText)}</span>`;
+      else if (!isNaN(pos)) {
+        const n = parseInt(pos, 10);
+        let sfx = 'th';
+        if (n % 100 < 11 || n % 100 > 13) {
+          if (n % 10 === 1) sfx = 'st';
+          else if (n % 10 === 2) sfx = 'nd';
+          else if (n % 10 === 3) sfx = 'rd';
+        }
+        posText = `${n}${sfx} book from top`;
+      }
+      locPreview.innerHTML = `Location: <span class="highlight">Rack ${escapeHtml(rack)} → Column ${escapeHtml(col)} → ${escapeHtml(posText)}</span>`;
     }
   }
 
@@ -1163,10 +1171,17 @@ function initPictureAdd() {
       if (pos === '1') posText = 'On top of the rack';
       else if (pos === '2') posText = '2nd book from top';
       else if (pos === '3') posText = '3rd book from top';
-      else if (pos === '4') posText = '4th book from top';
-      else if (pos === '5') posText = '5th book from top';
-      else if (!isNaN(pos)) posText = `${pos}th book from top`;
-      locPreview.innerHTML = `Location: <span class="highlight">${escapeHtml(rack)} → ${escapeHtml(col)} → ${escapeHtml(posText)}</span>`;
+      else if (!isNaN(pos)) {
+        const n = parseInt(pos, 10);
+        let sfx = 'th';
+        if (n % 100 < 11 || n % 100 > 13) {
+          if (n % 10 === 1) sfx = 'st';
+          else if (n % 10 === 2) sfx = 'nd';
+          else if (n % 10 === 3) sfx = 'rd';
+        }
+        posText = `${n}${sfx} book from top`;
+      }
+      locPreview.innerHTML = `Location: <span class="highlight">Rack ${escapeHtml(rack)} → Column ${escapeHtml(col)} → ${escapeHtml(posText)}</span>`;
     }
   }
 
@@ -3611,7 +3626,61 @@ function initUnassigned() {
     btnBulkDelete.addEventListener('click', deleteBulkUnassigned);
   }
 
-  btnOpenModal.addEventListener('click', () => {
+  btnOpenModal.addEventListener('click', async () => {
+    const selectedBids = Array.from(selectedUnassignedBookIds);
+    if (selectedBids.length === 0) return;
+
+    // Check if user already typed individual locations into the table row inputs
+    const inlineAssignments = [];
+    let anyRowFilled = false;
+    let missingFieldBids = [];
+
+    for (const bid of selectedBids) {
+      const rInput = document.getElementById(`rack_${bid}`);
+      const cInput = document.getElementById(`col_${bid}`);
+      const pInput = document.getElementById(`pos_${bid}`);
+      const r = rInput ? rInput.value.trim() : '';
+      const c = cInput ? cInput.value.trim() : '';
+      const p = pInput ? pInput.value.trim() : '';
+
+      if (r || c || p) {
+        anyRowFilled = true;
+        if (!r || !c || !p) {
+          missingFieldBids.push(bid);
+        } else {
+          inlineAssignments.push({ book_id: bid, rack: r, column_num: c, position: p });
+        }
+      }
+    }
+
+    // If individual row inputs were typed, save them directly without opening the modal!
+    if (anyRowFilled) {
+      if (missingFieldBids.length > 0) {
+        alert('Please fill in Rack, Column, and Position for all selected books, or clear the row inputs to apply one shared location.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/books/assign-location-bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assignments: inlineAssignments })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`🎉 Successfully assigned locations for ${data.updated_count} books!`);
+          selectedUnassignedBookIds.clear();
+          fetchUnassigned();
+          fetchStats();
+        } else {
+          alert('Error: ' + (data.error || 'Failed to update locations'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+      return;
+    }
+
+    // Otherwise, open the modal to assign one shared location to all selected books
     document.getElementById('modalSelectedCount').textContent = selectedUnassignedBookIds.size;
     modal.style.display = 'flex';
   });
@@ -3659,6 +3728,21 @@ async function fetchUnassigned() {
   const query = document.getElementById('unassignedSearchInput').value;
   const tbody = document.getElementById('tbodyUnassigned');
 
+  // Preserve any typed input values so they are not wiped out
+  const cachedInputs = {};
+  document.querySelectorAll('input[id^="rack_"]').forEach(el => {
+    const bid = el.id.replace('rack_', '');
+    const cEl = document.getElementById(`col_${bid}`);
+    const pEl = document.getElementById(`pos_${bid}`);
+    if (el.value || (cEl && cEl.value) || (pEl && pEl.value)) {
+      cachedInputs[bid] = {
+        rack: el.value,
+        col: cEl ? cEl.value : '',
+        pos: pEl ? pEl.value : ''
+      };
+    }
+  });
+
   try {
     const res = await fetch(`/api/unassigned?q=${encodeURIComponent(query)}`);
     const data = await res.json();
@@ -3691,6 +3775,16 @@ async function fetchUnassigned() {
         </td>
       </tr>
     `).join('');
+
+    // Restore cached inputs for books that still exist in the list
+    for (const [bid, vals] of Object.entries(cachedInputs)) {
+      const rEl = document.getElementById(`rack_${bid}`);
+      const cEl = document.getElementById(`col_${bid}`);
+      const pEl = document.getElementById(`pos_${bid}`);
+      if (rEl && vals.rack) rEl.value = vals.rack;
+      if (cEl && vals.col) cEl.value = vals.col;
+      if (pEl && vals.pos) pEl.value = vals.pos;
+    }
   } catch (err) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Error loading unassigned books: ${err.message}</td></tr>`;
   }

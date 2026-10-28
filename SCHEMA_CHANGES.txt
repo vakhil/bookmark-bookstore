@@ -1,0 +1,89 @@
+================================================================================
+BOOKSTORE SCHEMA & CODEBASE TRANSFORMATION SPECIFICATION
+================================================================================
+Generated Date: 2026-10-28
+Author: Assistant (per user instructions)
+
+1. RACK COLUMN TRANSFORMATION (Column: rack -> INTEGER)
+--------------------------------------------------------------------------------
+- If it is "Rack <N>" (e.g. "Rack 1", "Rack 36", "Rack 117"):
+  -> Hide the "Rack" prefix and extract only the integer number.
+     Example: "Rack 1" -> 1
+     Example: "Rack 36" -> 36
+
+- If it is "Top rack 1", "Top Rack 2", or any "Top rack <N>" (e.g. "Top rack 400"):
+  -> Add 5000 to the number at the end of the rack string (5000 + N).
+     Example: "Top Rack 1" -> 5000 + 1 = 5001
+     Example: "Top Rack 2" -> 5000 + 2 = 5002
+     Example: "Top rack 400" -> 5000 + 400 = 5400
+
+- If it is "Top Rack Part 2":
+  -> Replace directly with 10000.
+
+- If it is "Top Rack Part <N>" (e.g. "Top Rack Part 5"):
+  -> Add 10000 to the part number: 10000 + N.
+     Example: "Top Rack Part 5" -> 10000 + 5 = 10005
+
+- If empty, "Unassigned", or NULL:
+  -> Set to NULL.
+
+- Column Type:
+  -> Convert column `rack` to an INTEGER column in SQLite table schema.
+
+
+2. COLUMN NUMBER TRANSFORMATION (Column: column_num -> INTEGER)
+--------------------------------------------------------------------------------
+- Extract the pure integer number from the column string:
+  Example: "Column 1" -> 1
+  Example: "Column 2" -> 2
+  Example: "Column 3" -> 3
+  Example: "Column 4 (Vertical)" -> 4
+  Example: "Column 4 (Right Vertical)" -> 4
+  Example: "Between Col 2 & 3 (Vertical)" -> 2
+- If empty or unassigned: Set to NULL.
+- Column Type:
+  -> Convert column `column_num` to an INTEGER column in SQLite table schema.
+
+
+3. POSITION TRANSFORMATION (Column: position -> INTEGER)
+--------------------------------------------------------------------------------
+- Extract the pure integer number from the position string:
+  Example: "'1'" or "1 (Top Horizontal)" -> 1
+  Example: "'2'" or "2 (Right Vertical)" -> 2
+  Example: "'10'" -> 10
+- If empty or unassigned: Set to NULL.
+- Column Type:
+  -> Convert column `position` to an INTEGER column in SQLite table schema.
+
+
+4. LOCATION ENGLISH COLUMN REGENERATION (Column: location_english -> TEXT)
+--------------------------------------------------------------------------------
+- Format: "Rack " + str(rack) + " → Column " + str(column_num) + " → " + <placement_description>
+- Position convention:
+  * Position 1 -> "On top of the rack"
+  * Position 2 -> "2nd book from top"
+  * Position 3 -> "3rd book from top"
+  * Position N -> "{N}th book from top"
+- If rack or column_num or position is NULL or unassigned:
+  * "Unassigned"
+
+
+5. CODEBASE DEPENDENCY UPDATES
+--------------------------------------------------------------------------------
+- database.py:
+  * Update table DDL: rack INTEGER, column_num INTEGER, position INTEGER.
+  * Update format_location_english() to accept integers or convert safely.
+  * Update add_book(), add_books_batch(), update_book_location(), etc.
+  * Update seed importer and CSV synchronization logic.
+  * Update migration / ensure_database_ready() logic to auto-migrate.
+- search_engine.py:
+  * Update physical copy grouping, sorting by rack/column/position as integers.
+- export_manager.py:
+  * Ensure Excel and CSV exports display the transformed integer fields properly.
+- server.py & api/index.py:
+  * Ensure parsing of rack, column_num, position handles integer inputs.
+- static/app.js & public/app.js:
+  * Update UI display, sorting, location badge rendering, and filters.
+- tests:
+  * Ensure all test suites pass with the new integer columns.
+================================================================================

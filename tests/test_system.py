@@ -61,6 +61,16 @@ class TestBookstoreSystem(unittest.TestCase):
         loc5 = database.format_location_english("Rack 50", "Column 2", "5")
         self.assertEqual(loc5, "Rack 50 → Column 2 → 5th book from top")
 
+        # Top Rack 1 -> 5001, Top Rack 2 -> 5002, Top Rack 400 -> 5400
+        self.assertEqual(database.parse_rack_value("Top Rack 1"), 5001)
+        self.assertEqual(database.parse_rack_value("Top Rack 2"), 5002)
+        self.assertEqual(database.parse_rack_value("Top Rack 400"), 5400)
+        self.assertEqual(database.format_location_english("Top Rack 2", 1, 1), "Rack 5002 → Column 1 → On top of the rack")
+
+        # Top Rack Part 5 -> 10005
+        self.assertEqual(database.format_location_english("Top Rack Part 5", 1, 1), "Rack 10005 → Column 1 → On top of the rack")
+        self.assertEqual(database.parse_rack_value("Top Rack Part 5"), 10005)
+
         # Verify existing record BK-10151 specifically cited in user specification
         conn = database.get_db_connection()
         cursor = conn.cursor()
@@ -71,9 +81,9 @@ class TestBookstoreSystem(unittest.TestCase):
         self.assertEqual(book["book_id"], "BK-10151")
         self.assertEqual(book["title"], "The One Plus One")
         self.assertEqual(book["author"], "Jojo Moyes")
-        self.assertEqual(book["rack"], "Rack 50")
-        self.assertEqual(book["column_num"], "Column 1")
-        self.assertEqual(book["position"], "1")
+        self.assertEqual(book["rack"], 50)
+        self.assertEqual(book["column_num"], 1)
+        self.assertEqual(book["position"], 1)
         self.assertEqual(book["location_english"], "Rack 50 → Column 1 → On top of the rack")
         self.assertEqual(book["status"], "Available")
 

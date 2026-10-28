@@ -77,61 +77,92 @@ def get_db_connection() -> sqlite3.Connection:
         pass
     return conn
 
-def format_location_english(rack: Optional[str], column: Optional[str], position: Optional[str], notes: Optional[str] = "") -> str:
+def parse_rack_value(val: Any) -> Optional[int]:
     """
-    Translates rack, column, and position codes into standard bookstore English.
-    Requirement 1.6:
-      - Rack 50 -> Column 1 -> On top of the rack
-      - Rack 50 -> Column 2 -> 5th book from top
-      - Preserves store's documented conventions: position 1 -> 'On top of the rack'
-      - Handles unassigned books distinctly.
+    Normalizes rack input to integer:
+      - 'Rack 1' -> 1, 'Rack 36' -> 36
+      - 'Top Rack 1' -> 5001, 'Top Rack 2' -> 5002, 'Top Rack 400' -> 5400 ('Top Rack <N>' -> 5000 + N)
+      - 'Top Rack Part 2' -> 10000
+      - 'Top Rack Part <N>' -> 10000 + N (e.g. 'Top Rack Part 5' -> 10005)
+      - Unassigned / empty / None -> None
     """
-    rack = (rack or "").strip()
-    column = (column or "").strip()
-    pos_raw = (position or "").strip()
-    notes = (notes or "").strip()
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ("none", "null", "unassigned", ""):
+        return None
+    s_clean = " ".join(s.split())
+    # 1. Top Rack Part <N>
+    m_part = re.search(r"top\s*rack\s*part\s*(\d+)", s_clean, re.IGNORECASE)
+    if m_part:
+        part_num = int(m_part.group(1))
+        if part_num == 2:
+            return 10000
+        return 10000 + part_num
 
-    if not rack or not column or rack.lower() == "unassigned" or column.lower() == "unassigned" or not pos_raw:
+    # 2. Top Rack <N> (e.g. Top Rack 1 -> 5001, Top Rack 2 -> 5002, Top Rack 400 -> 5400)
+    m_top = re.search(r"top\s*rack\s*(\d+)", s_clean, re.IGNORECASE)
+    if m_top:
+        return 5000 + int(m_top.group(1))
+
+    # 3. Pure integer or Rack <N>
+    m_num = re.search(r"\d+", s_clean)
+    if m_num:
+        return int(m_num.group(0))
+    return None
+
+def parse_column_value(val: Any) -> Optional[int]:
+    """Extracts integer column number (e.g. 'Column 1' -> 1, 'Column 4 (Vertical)' -> 4)."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ("none", "null", "unassigned", ""):
+        return None
+    m = re.search(r"\d+", s)
+    if m:
+        return int(m.group(0))
+    return None
+
+def parse_position_value(val: Any) -> Optional[int]:
+    """Extracts integer position number (e.g. '1', 1, '1 (Top Horizontal)' -> 1)."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ("none", "null", "unassigned", ""):
+        return None
+    m = re.search(r"\d+", s)
+    if m:
+        return int(m.group(0))
+    return None
+
+def format_location_english(rack: Any, column: Any, position: Any, notes: Optional[str] = "") -> str:
+    """
+    Translates integer rack, column, and position codes into standard bookstore English:
+      - Rack 50 -> Column 1 -> On top of the rack
+      - Rack 5001 -> Column 2 -> 5th book from top
+    """
+    r_int = parse_rack_value(rack)
+    c_int = parse_column_value(column)
+    p_int = parse_position_value(position)
+
+    if r_int is None or c_int is None or p_int is None:
         return "Unassigned"
 
-    # Interpret position / book number
-    pos_str = pos_raw.lower()
-    placement_english = ""
-
-    # Check known notes or explicit conventions
-    if pos_raw in ("1", "1.0"):
-        if "top horizontal" in pos_str:
-            placement_english = "1st book from top (Top horizontal)"
-        elif "on top" in notes.lower() or "top book" in notes.lower() or True:
-            # Documented bookstore convention: position 1 = On top of the rack
-            placement_english = "On top of the rack"
-    elif pos_raw in ("2", "2.0"):
-        placement_english = "2nd book from top"
-    elif pos_raw in ("3", "3.0"):
-        placement_english = "3rd book from top"
-    elif pos_raw in ("4", "4.0"):
-        placement_english = "4th book from top"
-    elif pos_raw in ("5", "5.0"):
-        placement_english = "5th book from top"
-    elif pos_raw.isdigit():
-        n = int(pos_raw)
-        if 11 <= (n % 100) <= 13:
+    if p_int == 1:
+        placement = "On top of the rack"
+    elif p_int == 2:
+        placement = "2nd book from top"
+    elif p_int == 3:
+        placement = "3rd book from top"
+    else:
+        suffix = "th"
+        if 11 <= (p_int % 100) <= 13:
             suffix = "th"
         else:
-            suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-        placement_english = f"{n}{suffix} book from top"
-    else:
-        # Descriptive positions like '1 (Top Horizontal)', 'Vertical, Left to Right 1'
-        m = re.match(r"^(\d+)\s*\((.+)\)$", pos_raw)
-        if m:
-            num = int(m.group(1))
-            suffix = {1: "st", 2: "nd", 3: "rd"}.get(num, "th")
-            desc = m.group(2).capitalize()
-            placement_english = f"{num}{suffix} book ({desc})"
-        else:
-            placement_english = pos_raw
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(p_int % 10, "th")
+        placement = f"{p_int}{suffix} book from top"
 
-    return f"{rack} → {column} → {placement_english}"
+    return f"Rack {r_int} → Column {c_int} → {placement}"
 
 def sanitize_title(title: str) -> str:
     """Removes 'Copy 1', 'Copy 2', '(Copy 1 of 2)', etc. from book title."""
@@ -170,9 +201,9 @@ def init_db(force_reseed: bool = False):
                 genre TEXT DEFAULT '',
                 simple_genre TEXT DEFAULT '',
                 language TEXT DEFAULT 'English',
-                rack TEXT DEFAULT '',
-                column_num TEXT DEFAULT '',
-                position TEXT DEFAULT '',
+                rack INTEGER DEFAULT NULL,
+                column_num INTEGER DEFAULT NULL,
+                position INTEGER DEFAULT NULL,
                 location_english TEXT DEFAULT '',
                 notes TEXT DEFAULT '',
                 status TEXT DEFAULT 'Available',
@@ -304,6 +335,100 @@ def init_db(force_reseed: bool = False):
 
         conn.close()
 
+def migrate_database_schema(conn: sqlite3.Connection):
+    """Migrates books table schema so that rack, column_num, position are stored as pure INTEGER."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM books ORDER BY id ASC")
+    rows = cursor.fetchall()
+
+    cursor.execute("DROP TABLE IF EXISTS books_new")
+    cursor.execute("""
+        CREATE TABLE books_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            author TEXT NOT NULL,
+            genre TEXT DEFAULT '',
+            simple_genre TEXT DEFAULT '',
+            language TEXT DEFAULT 'English',
+            rack INTEGER DEFAULT NULL,
+            column_num INTEGER DEFAULT NULL,
+            position INTEGER DEFAULT NULL,
+            location_english TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            status TEXT DEFAULT 'Available',
+            selling_price REAL DEFAULT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            unassigned_since TEXT DEFAULT NULL,
+            image_url TEXT DEFAULT ''
+        )
+    """)
+
+    migrated_rows = []
+    for r in rows:
+        r_int = parse_rack_value(r["rack"])
+        c_int = parse_column_value(r["column_num"])
+        p_int = parse_position_value(r["position"])
+        loc_eng = format_location_english(r_int, c_int, p_int, r["notes"])
+
+        migrated_rows.append((
+            r["id"], r["book_id"], r["title"], r["author"], r["genre"], r["simple_genre"], r["language"],
+            r_int, c_int, p_int, loc_eng,
+            r["notes"], r["status"], r["selling_price"],
+            r["created_at"], r["updated_at"], r["unassigned_since"],
+            r["image_url"]
+        ))
+
+    cursor.executemany("""
+        INSERT INTO books_new (
+            id, book_id, title, author, genre, simple_genre, language,
+            rack, column_num, position, location_english,
+            notes, status, selling_price,
+            created_at, updated_at, unassigned_since,
+            image_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, migrated_rows)
+
+    cursor.execute("DROP TRIGGER IF EXISTS books_ai")
+    cursor.execute("DROP TRIGGER IF EXISTS books_ad")
+    cursor.execute("DROP TRIGGER IF EXISTS books_au")
+
+    cursor.execute("DROP TABLE books")
+    cursor.execute("ALTER TABLE books_new RENAME TO books")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_id ON books(book_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_status ON books(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_rack ON books(rack, column_num)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_unassigned ON books(unassigned_since)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_simple_genre ON books(simple_genre)")
+
+    cursor.execute("""
+        CREATE TRIGGER IF NOT EXISTS books_ai AFTER INSERT ON books BEGIN
+            INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
+            VALUES (new.id, new.book_id, new.title, new.author, new.genre, new.notes, new.location_english);
+        END
+    """)
+    cursor.execute("""
+        CREATE TRIGGER IF NOT EXISTS books_ad AFTER DELETE ON books BEGIN
+            DELETE FROM books_fts WHERE rowid = old.id;
+        END
+    """)
+    cursor.execute("""
+        CREATE TRIGGER IF NOT EXISTS books_au AFTER UPDATE ON books BEGIN
+            DELETE FROM books_fts WHERE rowid = old.id;
+            INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
+            VALUES (new.id, new.book_id, new.title, new.author, new.genre, new.notes, new.location_english);
+        END
+    """)
+
+    cursor.execute("DELETE FROM books_fts")
+    cursor.execute("""
+        INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
+        SELECT id, book_id, title, author, genre, notes, location_english FROM books
+    """)
+    conn.commit()
+
 def ensure_database_ready():
     """Verifies books exist; if empty or missing, initializes and seeds from CSV or Google Sheet."""
     try:
@@ -322,6 +447,12 @@ def ensure_database_ready():
             return
 
         # Sanitize any legacy copy suffixes on warm containers
+        cursor.execute("PRAGMA table_info(books)")
+        cols = {row["name"]: row["type"].upper() for row in cursor.fetchall()}
+        if cols.get("rack") != "INTEGER":
+            print("Auto-migrating books schema to INTEGER rack, column_num, position...")
+            migrate_database_schema(conn)
+
         cursor.execute("SELECT id, title, notes FROM books WHERE title LIKE '%copy%' OR notes LIKE '%copy%'")
         to_clean = cursor.fetchall()
         for r in to_clean:
@@ -506,9 +637,12 @@ def import_initial_seed(conn: sqlite3.Connection):
                     status = "SOLD OUT"
                     break
 
-            is_unassigned = not rack or not column or not pos or rack.lower() == "unassigned"
+            r_int = parse_rack_value(rack)
+            c_int = parse_column_value(column)
+            p_int = parse_position_value(pos)
+            is_unassigned = r_int is None or c_int is None or p_int is None
             unassigned_since = now_iso if is_unassigned else None
-            loc_eng = format_location_english(rack, column, pos, notes)
+            loc_eng = format_location_english(r_int, c_int, p_int, notes)
 
             # Ensure unique Book_ID if original sheet had collision
             final_book_id = book_id
@@ -533,7 +667,7 @@ def import_initial_seed(conn: sqlite3.Connection):
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     final_book_id, title, author, genre, simple_genre, "English",
-                    rack, column, pos, loc_eng,
+                    r_int, c_int, p_int, loc_eng,
                     notes, status, now_iso, now_iso, unassigned_since
                 ))
                 inserted += 1
@@ -588,7 +722,10 @@ def add_book(
     """
     clean_title = sanitize_title(title.strip())
     clean_notes = sanitize_notes(notes.strip())
-    loc_eng = format_location_english(rack, column_num, position, clean_notes)
+    r_int = parse_rack_value(rack)
+    c_int = parse_column_value(column_num)
+    p_int = parse_position_value(position)
+    loc_eng = format_location_english(r_int, c_int, p_int, clean_notes)
 
     stored_notes = clean_notes
     if idempotency_key:
@@ -618,7 +755,7 @@ def add_book(
                 return dict(existing)
 
         book_id = generate_next_book_id(conn)
-        is_unassigned = not rack or not column_num or not position or rack.lower() == "unassigned"
+        is_unassigned = r_int is None or c_int is None or p_int is None
         unassigned_since = now_iso if is_unassigned else None
 
         cursor.execute("""
@@ -629,7 +766,7 @@ def add_book(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available', ?, ?, ?)
         """, (
             book_id, clean_title, author.strip(), assigned_genre, simple_genre, language.strip(),
-            rack.strip(), column_num.strip(), position.strip(), loc_eng,
+            r_int, c_int, p_int, loc_eng,
             stored_notes, now_iso, now_iso, unassigned_since
         ))
 
@@ -689,18 +826,18 @@ def add_books_batch(
             author = (item.get("author") or "").strip()
             genre = (item.get("genre") or "").strip()
             language = (item.get("language") or "English").strip()
-            rack = (item.get("rack") or "").strip()
-            column_num = (item.get("column_num") or "").strip()
-            position = (item.get("position") or "").strip()
+            r_int = parse_rack_value(item.get("rack"))
+            c_int = parse_column_value(item.get("column_num"))
+            p_int = parse_position_value(item.get("position"))
             notes = sanitize_notes((item.get("notes") or "").strip())
 
             if not title:
                 continue
 
             book_id = generate_next_book_id(conn)
-            is_unassigned = not rack or not column_num or not position or rack.lower() == "unassigned"
+            is_unassigned = r_int is None or c_int is None or p_int is None
             unassigned_since = now_iso if is_unassigned else None
-            loc_eng = format_location_english(rack, column_num, position, notes)
+            loc_eng = format_location_english(r_int, c_int, p_int, notes)
             simple_genre = item.get("simple_genre") or genre_classifier.classify_common_genre(genre, title)
 
             cursor.execute("""
@@ -711,7 +848,7 @@ def add_books_batch(
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available', ?, ?, ?)
             """, (
                 book_id, title, author, genre, simple_genre, language,
-                rack, column_num, position, loc_eng,
+                r_int, c_int, p_int, loc_eng,
                 notes, now_iso, now_iso, unassigned_since
             ))
 
@@ -748,9 +885,9 @@ def add_books_batch(
 
 def assign_location(
     book_id: str,
-    rack: str,
-    column_num: str,
-    position: str,
+    rack: Any,
+    column_num: Any,
+    position: Any,
     notes: Optional[str] = None,
     user: str = "Staff"
 ) -> Dict[str, Any]:
@@ -771,9 +908,12 @@ def assign_location(
 
         before_data = dict(existing)
         loc_notes = notes if notes is not None else existing["notes"]
-        loc_eng = format_location_english(rack, column_num, position, loc_notes)
+        r_int = parse_rack_value(rack)
+        c_int = parse_column_value(column_num)
+        p_int = parse_position_value(position)
+        loc_eng = format_location_english(r_int, c_int, p_int, loc_notes)
 
-        is_unassigned = not rack or not column_num or not position or rack.lower() == "unassigned"
+        is_unassigned = r_int is None or c_int is None or p_int is None
         unassigned_since = existing["unassigned_since"] if is_unassigned else None
 
         cursor.execute("""
@@ -787,7 +927,7 @@ def assign_location(
                 unassigned_since = ?
             WHERE book_id = ?
         """, (
-            rack.strip(), column_num.strip(), position.strip(),
+            r_int, c_int, p_int,
             loc_eng, loc_notes, now_iso, unassigned_since, book_id
         ))
 
@@ -1243,8 +1383,8 @@ def get_unassigned_books(query: str = "", limit: int = 200, offset: int = 0) -> 
 
     base_sql = """
         SELECT * FROM books 
-        WHERE (rack = '' OR rack IS NULL OR column_num = '' OR column_num IS NULL 
-               OR position = '' OR position IS NULL OR lower(rack) = 'unassigned')
+        WHERE (rack IS NULL OR column_num IS NULL OR position IS NULL 
+               OR rack = '' OR column_num = '' OR position = '' OR lower(rack) = 'unassigned')
     """
     params = []
 
@@ -1318,12 +1458,12 @@ def get_inventory_stats() -> Dict[str, Any]:
 
     cursor.execute("""
         SELECT COUNT(*) FROM books 
-        WHERE (rack = '' OR rack IS NULL OR column_num = '' OR column_num IS NULL 
-               OR position = '' OR position IS NULL OR lower(rack) = 'unassigned')
+        WHERE (rack IS NULL OR column_num IS NULL OR position IS NULL 
+               OR rack = '' OR column_num = '' OR position = '' OR lower(rack) = 'unassigned')
     """)
     unassigned_count = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(DISTINCT rack) FROM books WHERE rack != '' AND lower(rack) != 'unassigned'")
+    cursor.execute("SELECT COUNT(DISTINCT rack) FROM books WHERE rack IS NOT NULL AND rack != '' AND lower(rack) != 'unassigned'")
     rack_count = cursor.fetchone()[0]
 
     cursor.execute("SELECT COUNT(*) FROM sales_transactions")
