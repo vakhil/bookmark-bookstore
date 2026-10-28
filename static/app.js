@@ -3798,22 +3798,38 @@ function initUnassigned() {
   const cancelModalBtn = document.getElementById('btnCancelBulkAssign');
   const formBulkAssign = document.getElementById('formBulkAssign');
 
+  if (!searchInput) return;
+
   let debounce = null;
-  searchInput.addEventListener('input', () => {
+  const triggerSearch = () => {
     clearTimeout(debounce);
-    debounce = setTimeout(fetchUnassigned, 250);
+    debounce = setTimeout(fetchUnassigned, 200);
+  };
+
+  searchInput.addEventListener('input', triggerSearch);
+  searchInput.addEventListener('keyup', triggerSearch);
+  searchInput.addEventListener('search', triggerSearch);
+  searchInput.addEventListener('change', triggerSearch);
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(debounce);
+      fetchUnassigned();
+    }
   });
 
-  chkAll.addEventListener('change', () => {
-    const checkboxes = document.querySelectorAll('.chk-unassigned-item');
-    checkboxes.forEach(chk => {
-      chk.checked = chkAll.checked;
-      const bid = chk.getAttribute('data-bid');
-      if (chkAll.checked) selectedUnassignedBookIds.add(bid);
-      else selectedUnassignedBookIds.delete(bid);
+  if (chkAll) {
+    chkAll.addEventListener('change', () => {
+      const checkboxes = document.querySelectorAll('.chk-unassigned-item');
+      checkboxes.forEach(chk => {
+        chk.checked = chkAll.checked;
+        const bid = chk.getAttribute('data-bid');
+        if (chkAll.checked) selectedUnassignedBookIds.add(bid);
+        else selectedUnassignedBookIds.delete(bid);
+      });
+      updateBulkAssignButtonState();
     });
-    updateBulkAssignButtonState();
-  });
+  }
 
   if (btnBulkDelete) {
     btnBulkDelete.addEventListener('click', deleteBulkUnassigned);
@@ -3918,8 +3934,10 @@ function initUnassigned() {
 }
 
 async function fetchUnassigned() {
-  const query = document.getElementById('unassignedSearchInput').value;
+  const searchInput = document.getElementById('unassignedSearchInput');
+  const query = searchInput ? searchInput.value.trim() : '';
   const tbody = document.getElementById('tbodyUnassigned');
+  if (!tbody) return;
 
   // Preserve any typed input values so they are not wiped out
   const cachedInputs = {};
@@ -3940,12 +3958,33 @@ async function fetchUnassigned() {
     const res = await fetch(`/api/unassigned?q=${encodeURIComponent(query)}`);
     const data = await res.json();
 
-    document.getElementById('unassignedCountLabel').textContent = data.total;
-    const badge = document.getElementById('tabUnassignedBadge');
-    if (badge) badge.textContent = data.total;
+    const label = document.getElementById('unassignedCountLabel');
+    if (label) label.textContent = data.total;
 
-    if (data.books.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">✅ No unassigned books! All inventory copies have recorded shelf locations.</td></tr>';
+    // Only update tab badge if not searching, or keep in sync
+    const badge = document.getElementById('tabUnassignedBadge');
+    if (badge && !query) badge.textContent = data.total;
+
+    if (!data.books || data.books.length === 0) {
+      if (query) {
+        tbody.innerHTML = `
+          <tr class="empty-row">
+            <td colspan="6" style="padding: 2.2rem 1rem; text-align: center;">
+              <div style="font-size: 1.1rem; font-weight: 600; color: var(--text, #1e293b); margin-bottom: 0.4rem;">
+                🔍 No unassigned books matching "<b>${escapeHtml(query)}</b>"
+              </div>
+              <div style="font-size: 0.85rem; color: var(--text-muted, #64748b); max-width: 480px; margin: 0 auto 1.1rem auto; line-height: 1.4;">
+                This section only shows newly added books <b>waiting for a shelf assignment</b>. If this book already has a shelf location, search for it on the main <b>Search</b> tab.
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" onclick="switchToSearchTab('${escapeHtml(query.replace(/'/g, "\\'"))}')">
+                🔍 Search All Shelves for "${escapeHtml(query)}"
+              </button>
+            </td>
+          </tr>
+        `;
+      } else {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">✅ No unassigned books! All inventory copies have recorded shelf locations.</td></tr>';
+      }
       return;
     }
 
@@ -3982,6 +4021,17 @@ async function fetchUnassigned() {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Error loading unassigned books: ${err.message}</td></tr>`;
   }
 }
+
+window.switchToSearchTab = function(q) {
+  const searchTabBtn = document.querySelector('.tab-btn[data-tab="tabSearch"]');
+  if (searchTabBtn) searchTabBtn.click();
+  const searchInput = document.getElementById('globalSearchInput');
+  if (searchInput) {
+    searchInput.value = q;
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    searchInput.focus();
+  }
+};
 
 function toggleUnassignedSelect(bid, isChecked) {
   if (isChecked) selectedUnassignedBookIds.add(bid);

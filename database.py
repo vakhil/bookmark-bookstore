@@ -1414,7 +1414,7 @@ def update_book_metadata(
         return res
 
 def get_unassigned_books(query: str = "", limit: int = 200, offset: int = 0) -> Dict[str, Any]:
-    """Retrieves books that do not have an assigned location, with duration analysis."""
+    """Retrieves books that do not have an assigned location, with duration analysis and multi-token search."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -1425,20 +1425,28 @@ def get_unassigned_books(query: str = "", limit: int = 200, offset: int = 0) -> 
     """
     params = []
 
-    if query:
-        base_sql += " AND (title LIKE ? OR author LIKE ? OR genre LIKE ? OR book_id LIKE ?)"
-        pattern = f"%{query.strip()}%"
-        params.extend([pattern, pattern, pattern, pattern])
+    if query and query.strip():
+        tokens = [t.strip() for t in query.strip().split() if t.strip()]
+        for token in tokens:
+            base_sql += """ AND (
+                LOWER(title) LIKE LOWER(?) OR 
+                LOWER(author) LIKE LOWER(?) OR 
+                LOWER(genre) LIKE LOWER(?) OR 
+                LOWER(simple_genre) LIKE LOWER(?) OR 
+                LOWER(book_id) LIKE LOWER(?)
+            )"""
+            pat = f"%{token}%"
+            params.extend([pat, pat, pat, pat, pat])
 
     # Count total unassigned
-    cursor.execute(f"SELECT COUNT(*) FROM ({base_sql})", params)
+    cursor.execute(f"SELECT COUNT(*) FROM ({base_sql})", list(params))
     total = cursor.fetchone()[0]
 
     # Order by unassigned_since ascending (oldest unassigned first)
-    base_sql += " ORDER BY unassigned_since ASC, id DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+    query_sql = base_sql + " ORDER BY unassigned_since ASC, id DESC LIMIT ? OFFSET ?"
+    query_params = list(params) + [limit, offset]
 
-    cursor.execute(base_sql, params)
+    cursor.execute(query_sql, query_params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
 
