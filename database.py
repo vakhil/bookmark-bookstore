@@ -59,8 +59,21 @@ if os.environ.get("VERCEL"):
 # Global lock for concurrency control across threads
 db_lock = threading.Lock()
 
-def get_db_connection() -> sqlite3.Connection:
-    """Creates a database connection with dictionary row access and FTS5 enabled."""
+def get_db_connection() -> Any:
+    """Creates a database connection with dictionary row access.
+    Automatically connects to Turso Cloud (libSQL) when TURSO_DATABASE_URL and
+    TURSO_AUTH_TOKEN are set; otherwise connects to local SQLite bookstore.db.
+    """
+    turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
+    turso_token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+
+    if turso_url and turso_token:
+        try:
+            import turso_client
+            return turso_client.connect(turso_url, turso_token)
+        except Exception as e:
+            print(f"Warning: Turso connection failed ({e}), falling back to local SQLite.")
+
     conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -215,40 +228,42 @@ def init_db(force_reseed: bool = False):
             )
         """)
 
-        # 2. FTS5 full text search table
-        cursor.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
-                book_id,
-                title,
-                author,
-                genre,
-                notes,
-                location_english,
-                tokenize='porter unicode61'
-            )
-        """)
+        # 2. FTS5 full text search table (optional accelerator)
+        try:
+            cursor.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
+                    book_id,
+                    title,
+                    author,
+                    genre,
+                    notes,
+                    location_english,
+                    tokenize='porter unicode61'
+                )
+            """)
 
-        # 3. Triggers to keep FTS5 in sync with books table
-        cursor.execute("""
-            CREATE TRIGGER IF NOT EXISTS books_ai AFTER INSERT ON books BEGIN
-                INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
-                VALUES (new.id, new.book_id, new.title, new.author, new.genre, new.notes, new.location_english);
-            END;
-        """)
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS books_ai AFTER INSERT ON books BEGIN
+                    INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
+                    VALUES (new.id, new.book_id, new.title, new.author, new.genre, new.notes, new.location_english);
+                END;
+            """)
 
-        cursor.execute("""
-            CREATE TRIGGER IF NOT EXISTS books_ad AFTER DELETE ON books BEGIN
-                DELETE FROM books_fts WHERE rowid = old.id;
-            END;
-        """)
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS books_ad AFTER DELETE ON books BEGIN
+                    DELETE FROM books_fts WHERE rowid = old.id;
+                END;
+            """)
 
-        cursor.execute("""
-            CREATE TRIGGER IF NOT EXISTS books_au AFTER UPDATE ON books BEGIN
-                DELETE FROM books_fts WHERE rowid = old.id;
-                INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
-                VALUES (new.id, new.book_id, new.title, new.author, new.genre, new.notes, new.location_english);
-            END;
-        """)
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS books_au AFTER UPDATE ON books BEGIN
+                    DELETE FROM books_fts WHERE rowid = old.id;
+                    INSERT INTO books_fts(rowid, book_id, title, author, genre, notes, location_english)
+                    VALUES (new.id, new.book_id, new.title, new.author, new.genre, new.notes, new.location_english);
+                END;
+            """)
+        except Exception as fts_err:
+            pass
 
         # 4. Sales transactions table
         cursor.execute("""
