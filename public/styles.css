@@ -464,55 +464,66 @@ input, select, textarea, button {
 
 .book-card-item {
   position: relative;
-  background: var(--card-bg, #ffffff);
-  border: 1.5px solid #edf2f7;
-  border-radius: 20px;
-  padding: 1.25rem 1.6rem;
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 22px;
+  padding: 1.35rem 1.65rem;
   margin-bottom: 1.25rem;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
-  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 1px 3px rgba(15, 23, 42, 0.03),
+    0 6px 18px -3px rgba(15, 23, 42, 0.05);
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   overflow: hidden;
 }
 
+/* Slick status edge accent with soft ambient glow */
 .book-card-item::before {
   content: '';
   position: absolute;
   left: 0;
   top: 18px;
   bottom: 18px;
-  width: 6px;
-  background: #22c55e;
+  width: 5px;
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
   border-radius: 0 4px 4px 0;
-  transition: all 0.2s ease;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+  transition: all 0.25s ease;
 }
 
 .book-card-item.card-is-sold::before {
-  background: #ef4444;
+  background: linear-gradient(180deg, #f43f5e 0%, #e11d48 100%);
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.35);
 }
 
 .book-card-item.card-is-unassigned::before {
-  background: #f59e0b;
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
 }
 
 .book-card-item:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
+  transform: translateY(-2.5px);
+  box-shadow: 
+    0 14px 30px -4px rgba(15, 23, 42, 0.08),
+    0 4px 12px -2px rgba(15, 23, 42, 0.03);
 }
 
-/* Expanded / Selected state: Gets significantly bigger with more details */
+/* Expanded / Selected state: Gets bigger with radiant focus */
 .book-card-item.is-selected {
-  padding: 1.65rem 2rem;
+  padding: 1.7rem 2.05rem;
   margin-top: 0.65rem;
   margin-bottom: 1.75rem;
   border-color: #38bdf8;
-  box-shadow: 0 12px 32px -4px rgba(14, 165, 233, 0.16), 0 4px 14px rgba(0, 0, 0, 0.05);
+  box-shadow: 
+    0 16px 36px -4px rgba(14, 165, 233, 0.18),
+    0 4px 14px rgba(0, 0, 0, 0.04);
   background: #ffffff;
-  transform: translateY(-2px);
+  transform: translateY(-3px);
 }
 
 .book-card-item.is-selected .book-title {
-  font-size: 1.45rem;
+  font-size: 1.48rem;
   color: #0f172a;
 }
 
@@ -521,18 +532,14 @@ input, select, textarea, button {
 }
 
 .book-card-item.is-selected .book-cover-container {
-  width: 90px;
-  height: 130px;
-  min-width: 90px;
-  border-radius: 10px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  width: 92px;
+  height: 132px;
+  min-width: 92px;
 }
 
-.book-card-item.is-selected .location-banner {
-  padding: 0.55rem 1.25rem;
-  font-size: 1.02rem;
-  border-width: 2px;
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.16);
+.book-card-item.is-selected .wayfinder-hud {
+  padding: 0.55rem 1.15rem;
+  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.18);
 }
 
 .book-card-item.is-selected .book-card-expanded-area {
@@ -571,59 +578,73 @@ input, select, textarea, button {
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 0.6rem;
-  min-width: 118px;
+  gap: 0.65rem;
+  min-width: 122px;
   flex-shrink: 0;
 }
 
 .state-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-weight: 800;
-  font-size: 0.78rem;
-  padding: 0.28rem 0.8rem;
+  font-size: 0.76rem;
+  padding: 0.28rem 0.75rem;
   border-radius: 9999px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .state-chip .chip-dot {
-  font-size: 0.65rem;
-  line-height: 1;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 .state-chip.state-assigned {
   background: #f0fdf4;
   color: #15803d;
-  border: 1.5px solid #86efac;
+  border: 1px solid #bbf7d0;
 }
 
 .state-chip.state-assigned .chip-dot {
-  color: #22c55e;
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.7);
 }
 
 .state-chip.state-unassigned {
   background: #fffbeb;
-  color: #92400e;
-  border: 1.5px solid #fde68a;
+  color: #b45309;
+  border: 1px solid #fde68a;
 }
 
 .state-chip.state-unassigned .chip-dot {
-  color: #f59e0b;
+  background: #f59e0b;
 }
 
 .state-chip.state-sold {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1.5px solid #fecaca;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
 }
 
 .state-chip.state-sold .chip-dot {
-  color: #ef4444;
+  background: #f43f5e;
 }
 
 .book-lang-chip {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.28rem 0.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
   background: #f0f9ff;
   border: 1.5px solid #bae6fd;
   color: #0369a1;
@@ -690,51 +711,58 @@ input, select, textarea, button {
   gap: 0.3rem;
 }
 
-/* Action buttons styled to match the clean rounded design */
+/* Action buttons styled with slick gradient and tactile depth */
 .book-card-actions .btn-sell-copy {
-  background: #22c55e;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: #ffffff;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   font-weight: 700;
   font-size: 1rem;
-  padding: 0.65rem 1.4rem;
-  box-shadow: 0 3px 10px rgba(34, 197, 94, 0.32);
+  padding: 0.7rem 1.4rem;
+  box-shadow: 0 4px 14px -1px rgba(16, 185, 129, 0.4);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  transition: all 0.18s ease;
+  gap: 0.4rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
 }
 
 .book-card-actions .btn-sell-copy:hover {
-  background: #16a34a;
-  box-shadow: 0 5px 14px rgba(34, 197, 94, 0.42);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 6px 18px -1px rgba(16, 185, 129, 0.5);
+  transform: translateY(-1.5px);
+}
+
+.book-card-actions .btn-sell-copy:active {
+  transform: translateY(0.5px);
+  box-shadow: 0 2px 8px -1px rgba(16, 185, 129, 0.3);
 }
 
 .book-card-actions .btn-edit-tile {
   background: #ffffff;
   border: 1.5px solid #e2e8f0;
-  color: #0f172a;
-  border-radius: 12px;
+  color: #1e293b;
+  border-radius: 14px;
   font-weight: 700;
   font-size: 0.95rem;
-  padding: 0.55rem 1.4rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 0.6rem 1.4rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  transition: all 0.18s ease;
+  gap: 0.4rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
 }
 
 .book-card-actions .btn-edit-tile:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
+  color: #0f172a;
   transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.08);
 }
 
 .delete-trigger-container {
@@ -746,35 +774,33 @@ input, select, textarea, button {
 .book-card-actions .btn-subtle-delete {
   background: transparent;
   border: none;
-  color: #64748b;
-  font-size: 0.92rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
   font-weight: 600;
   padding: 0.35rem 0.75rem;
   margin: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   cursor: pointer;
   transition: all 0.15s ease;
-  opacity: 0.9;
   border-radius: 8px;
 }
 
 .book-card-actions .btn-subtle-delete:hover {
-  color: #dc2626;
-  background: #fef2f2;
-  opacity: 1;
+  color: #f43f5e;
+  background: #fff1f2;
 }
 
 .book-card-actions .btn-sold-disabled {
-  background: #fef2f2;
-  border: 1.5px solid #fecaca;
-  color: #dc2626;
-  border-radius: 12px;
-  font-weight: 700;
+  background: #fff1f2;
+  border: 1.5px solid #fecdd3;
+  color: #e11d48;
+  border-radius: 14px;
+  font-weight: 800;
   font-size: 0.95rem;
-  padding: 0.6rem 1.2rem;
+  padding: 0.65rem 1.2rem;
   opacity: 0.95;
   cursor: not-allowed;
   text-align: center;
@@ -837,24 +863,26 @@ input, select, textarea, button {
 }
 
 .book-id-chip {
-  background: #f1f5f9;
-  border: 1.5px solid #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   color: #475569;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  padding: 0.28rem 0.8rem;
-  border-radius: 9999px;
+  padding: 0.26rem 0.7rem;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
+  letter-spacing: -0.01em;
 }
 
 .simple-genre-chip {
-  background: #eef2ff;
-  border: 1.5px solid #c7d2fe;
-  color: #4338ca;
-  font-size: 0.82rem;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: #6d28d9;
+  font-size: 0.8rem;
   font-weight: 700;
-  padding: 0.28rem 0.8rem;
+  padding: 0.28rem 0.75rem;
   border-radius: 9999px;
   display: inline-flex;
   align-items: center;
@@ -880,20 +908,27 @@ input, select, textarea, button {
   font-weight: 800;
   color: #0f172a;
   line-height: 1.25;
-  margin: 0 0 0.18rem 0;
-  letter-spacing: -0.015em;
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.02em;
   word-break: break-word;
 }
 
 .book-author {
-  font-size: 1.02rem;
+  font-size: 1rem;
   color: #64748b;
   font-weight: 500;
   display: flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  margin-bottom: 0.65rem;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
   line-height: 1.3;
+}
+
+.book-author .author-prefix {
+  font-size: 0.88rem;
+  color: #94a3b8;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .book-author b {
@@ -902,62 +937,99 @@ input, select, textarea, button {
 }
 
 .book-location-hero {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.85rem;
   width: fit-content;
   max-width: 100%;
 }
 
-.location-banner {
+/* Slick Wayfinder HUD: Segmented GPS Shelf Navigation */
+.wayfinder-hud {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  background: #f0fdf4;
-  border: 1.5px solid #86efac;
-  border-radius: 9999px;
-  padding: 0.42rem 1.15rem;
-  color: #166534;
-  font-size: 0.98rem;
-  font-weight: 700;
-  line-height: 1.35;
-  box-shadow: 0 1px 3px rgba(34, 197, 94, 0.08);
+  gap: 0.65rem;
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.95) 0%, rgba(236, 253, 245, 0.7) 100%);
+  border: 1px solid rgba(134, 239, 172, 0.65);
+  border-radius: 12px;
+  padding: 0.45rem 0.95rem;
+  box-shadow: 0 2px 6px -1px rgba(16, 185, 129, 0.08);
   transition: all 0.2s ease;
 }
 
-.location-banner .loc-pin-icon {
-  font-size: 1.05rem;
-  line-height: 1;
+.wayfinder-hud:hover {
+  border-color: #4ade80;
+  box-shadow: 0 3px 10px -1px rgba(16, 185, 129, 0.15);
 }
 
-.location-banner .loc-step {
-  color: #166534;
-  font-weight: 700;
+.wayfinder-hud .hud-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
 }
 
-.location-banner .loc-sep {
+.wayfinder-hud .hud-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #059669;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+
+.wayfinder-hud .hud-val {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #064e3b;
+  letter-spacing: -0.01em;
+}
+
+.wayfinder-hud .hud-divider {
+  font-size: 1.25rem;
   color: #86efac;
-  font-size: 1.15rem;
-  font-weight: 400;
-  margin: 0 0.15rem;
+  font-weight: 300;
+  line-height: 1;
   user-select: none;
+  opacity: 0.9;
 }
 
-.location-banner-unassigned {
-  background: #fffbeb;
-  border: 1.5px solid #fde68a;
-  color: #b45309;
+.wayfinder-hud.hud-unassigned {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 70%);
+  border-color: #fcd34d;
 }
 
-.location-banner-unassigned .loc-text-highlight {
-  color: #b45309;
+.wayfinder-hud.hud-unassigned .hud-label {
+  color: #d97706;
 }
 
-.location-banner-sold {
-  background: #fef2f2;
-  border: 1.5px solid #fecaca;
-  color: #991b1b;
+.wayfinder-hud.hud-unassigned .hud-val {
+  color: #92400e;
 }
 
-.location-banner-sold .loc-text-highlight {
+.wayfinder-hud.hud-sold {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 70%);
+  border-color: #fca5a5;
+}
+
+.wayfinder-hud.hud-sold .hud-label {
+  color: #e11d48;
+}
+
+.wayfinder-hud.hud-sold .hud-val {
+  color: #9f1239;
+}
+
+.wayfinder-hud .hud-subval {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #be123c;
+  opacity: 0.85;
+  margin-left: 0.35rem;
+}
+
+.wayfinder-hud .hud-status-icon {
+  font-size: 1.05rem;
+  margin-right: 0.2rem;
+}
   color: #991b1b;
 }
 
@@ -1016,20 +1088,61 @@ input, select, textarea, button {
   font-weight: 500;
 }
 
+.book-cover-3d-wrap {
+  perspective: 750px;
+  flex-shrink: 0;
+}
+
 .book-cover-container {
-  width: 78px;
-  height: 114px;
-  min-width: 78px;
-  border-radius: 8px;
+  width: 82px;
+  height: 118px;
+  min-width: 82px;
+  border-radius: 6px 9px 9px 6px;
   overflow: hidden;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
-  background: #f1f5f9;
+  background: #1e293b;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.25s ease;
+  box-shadow: 
+    -2px 0 0 rgba(0, 0, 0, 0.18),
+    1px 0 0 #fff,
+    2px 1px 0 #e2e8f0,
+    3px 2px 0 #cbd5e1,
+    5px 8px 18px rgba(15, 23, 42, 0.16);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Hardcover book spine crease & gloss overlay */
+.book-cover-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(0, 0, 0, 0.18) 3%,
+    rgba(255, 255, 255, 0.1) 6%,
+    transparent 12%,
+    transparent 94%,
+    rgba(0, 0, 0, 0.15) 100%
+  );
+  border-radius: inherit;
+}
+
+.book-card-item:hover .book-cover-container {
+  transform: rotateY(-8deg) translateY(-2px);
+  box-shadow: 
+    -3px 0 0 rgba(0, 0, 0, 0.22),
+    1px 0 0 #fff,
+    3px 2px 0 #cbd5e1,
+    5px 3px 0 #94a3b8,
+    8px 14px 26px rgba(15, 23, 42, 0.22);
 }
 
 .book-cover-img {
@@ -1914,9 +2027,15 @@ input, select, textarea, button {
     margin-bottom: 0.5rem;
   }
 
-  .location-banner {
+  .location-banner,
+  .wayfinder-hud {
     font-size: 0.88rem;
-    padding: 0.38rem 0.9rem;
+    padding: 0.4rem 0.8rem;
+    gap: 0.45rem;
+  }
+
+  .wayfinder-hud .hud-val {
+    font-size: 0.88rem;
   }
 
   .book-card-actions {
