@@ -781,6 +781,21 @@ input, select, textarea, button {
   color: #b45309;
 }
 
+.location-banner-sold {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.location-banner-sold .loc-text-highlight {
+  color: #991b1b;
+}
+
+.book-card-item.card-is-sold {
+  background: #fafaf9;
+  border-color: #e7e5e4;
+}
+
 /* Expanded card details slot (ready for summary) */
 .book-card-expanded-area {
   display: none;
