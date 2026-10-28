@@ -33,8 +33,8 @@ def main():
     print("  🚀 BOOKSTORE ADVANCED → TURSO CLOUD MIGRATION UTILITY")
     print("=" * 70)
 
-    url = os.environ.get("TURSO_DATABASE_URL", "").strip()
-    token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+    url = os.environ.get("TURSO_DATABASE_URL", "libsql://bookstore-akhilvemula96.aws-ap-northeast-1.turso.io").strip()
+    token = os.environ.get("TURSO_AUTH_TOKEN", "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTMyMjYwMzQsImlkIjoiMDFhMTg0OTUtN2QwMS03NzcxLThiMzMtMmJhMGQ2ZjY2MDU1Iiwia2lkIjoiczBtU1ZjVU9uV25FRDJaVjMtQVRlOGtMZnhlLUp0clRQeTlKVm5sNGtGayIsInJpZCI6ImRkNDMxYTc2LWM2ZjgtNDViOC1hODQ4LWI5ZTEyNjZkZTAyNiJ9.YLdnymMUWT78qF9-GZtEdQmqBHjKnQGA2EWO9phNuKPPnclCh2QacjB4x5GR2EG3lr6WVYbzWg6dqkVLyaYDAQ").strip()
 
     if not url:
         print("\nEnter your Turso Database URL:")
