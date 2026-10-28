@@ -683,8 +683,10 @@ function createBookTile(book, copy, matchType) {
         <div class="book-card-header-left">
           ${coverHtml}
           <div class="book-info">
-            <div class="book-title">${escapeHtml(cleanTitle)}</div>
-            <div class="book-author">by <b>${cleanAuthor}</b></div>
+            <div class="book-title-author-row">
+              <span class="book-title">${escapeHtml(cleanTitle)}</span>
+              <span class="book-author-inline">by <b>${cleanAuthor}</b></span>
+            </div>
             <div class="book-location-hero">
               ${state === 'SOLD' ? `
                 <div class="location-banner location-banner-sold" title="This copy has been sold and removed from inventory">

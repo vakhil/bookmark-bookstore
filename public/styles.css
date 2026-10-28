@@ -739,20 +739,51 @@ input, select, textarea, button {
   margin-top: 0.45rem;
 }
 
-/* Location banner hero: sitting prominently right below author */
+/* Location banner hero: sitting prominently right below author, full width matching details */
+.book-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.book-title-author-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  margin-bottom: 0.2rem;
+}
+
+.book-author-inline {
+  font-size: 0.95rem;
+  color: var(--text-muted, #64748b);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.book-author-inline b {
+  color: #334155;
+  font-weight: 600;
+}
+
 .book-location-hero {
   margin: 0.45rem 0 0.55rem 0;
+  width: 100%;
 }
 
 .location-banner {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.5rem;
   background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
   border: 1.5px solid #86efac;
   box-shadow: 0 2px 5px rgba(16, 185, 129, 0.08);
   color: #065f46;
-  padding: 0.42rem 0.9rem;
+  padding: 0.48rem 0.95rem;
   border-radius: 8px;
   font-size: 0.94rem;
   font-weight: 700;
