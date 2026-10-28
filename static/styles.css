@@ -579,6 +579,68 @@ input, select, textarea, button {
   gap: 0.3rem;
 }
 
+/* Subtle, accidental-proof delete action */
+.btn-subtle-delete {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0.75;
+}
+
+.btn-subtle-delete:hover {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+  opacity: 1;
+}
+
+.delete-confirm-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.btn-really-delete {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-really-delete:hover {
+  background: #b91c1c;
+}
+
+.btn-abort-delete {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-abort-delete:hover {
+  background: #e2e8f0;
+}
+
 .sold-loc-chip {
   background: #fef2f2 !important;
   border-color: #fecaca !important;

@@ -704,6 +704,11 @@ function createBookTile(book, copy, matchType) {
               ⚡ Sell
             </button>
           `}
+          <div class="delete-trigger-container" style="display:flex; justify-content:flex-end;">
+            <button class="btn-subtle-delete" title="Permanently delete this copy">
+              🗑️ Delete
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -725,6 +730,75 @@ function createBookTile(book, copy, matchType) {
         openSaleModalForCopy(bookId, cleanTitle, copy.author || book.author, locationText);
       });
     }
+
+    // Hook up safe two-step Delete button (guarded against accidental clicks)
+    function wireDeleteTrigger() {
+      const delContainer = card.querySelector('.delete-trigger-container');
+      if (!delContainer) return;
+      const btnDel = delContainer.querySelector('.btn-subtle-delete');
+      if (!btnDel) return;
+
+      btnDel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        delContainer.innerHTML = `
+          <div class="delete-confirm-wrap">
+            <button class="btn-really-delete" title="Click to confirm deletion">⚠️ Really Delete?</button>
+            <button class="btn-abort-delete" title="Cancel">✖</button>
+          </div>
+        `;
+
+        const autoRevertTimer = setTimeout(() => {
+          delContainer.innerHTML = `<button class="btn-subtle-delete" title="Permanently delete this copy">🗑️ Delete</button>`;
+          wireDeleteTrigger();
+        }, 6000);
+
+        delContainer.querySelector('.btn-abort-delete').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          clearTimeout(autoRevertTimer);
+          delContainer.innerHTML = `<button class="btn-subtle-delete" title="Permanently delete this copy">🗑️ Delete</button>`;
+          wireDeleteTrigger();
+        });
+
+        delContainer.querySelector('.btn-really-delete').addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          clearTimeout(autoRevertTimer);
+          const confirmed = confirm(`⚠️ PERMANENT DELETION\n\nAre you sure you want to permanently delete "${cleanTitle}" (${bookId}) from inventory?\n\nThis will remove it completely from the database.`);
+          if (!confirmed) {
+            delContainer.innerHTML = `<button class="btn-subtle-delete" title="Permanently delete this copy">🗑️ Delete</button>`;
+            wireDeleteTrigger();
+            return;
+          }
+
+          try {
+            const res = await fetch('/api/books/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ book_id: bookId })
+            });
+            const data = await res.json();
+            if (data.success || !data.error) {
+              card.style.transition = 'all 0.3s ease';
+              card.style.opacity = '0';
+              card.style.transform = 'scale(0.95)';
+              setTimeout(() => {
+                card.remove();
+                fetchStats();
+              }, 300);
+            } else {
+              alert('Failed to delete book: ' + (data.error || 'Unknown error'));
+              delContainer.innerHTML = `<button class="btn-subtle-delete" title="Permanently delete this copy">🗑️ Delete</button>`;
+              wireDeleteTrigger();
+            }
+          } catch (err) {
+            alert('Network error while deleting: ' + err.message);
+            delContainer.innerHTML = `<button class="btn-subtle-delete" title="Permanently delete this copy">🗑️ Delete</button>`;
+            wireDeleteTrigger();
+          }
+        });
+      });
+    }
+
+    wireDeleteTrigger();
   }
 
   function renderEdit() {
