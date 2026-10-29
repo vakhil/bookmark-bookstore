@@ -2057,7 +2057,7 @@ input, select, textarea, button {
     border-top: 1px solid #f1f5f9;
   }
 
-  .book-card-actions .btn-sell-copy,
+  .book-card-actions .btn-toggle-cart,
   .book-card-actions .btn-edit-tile {
     flex: 1;
   }

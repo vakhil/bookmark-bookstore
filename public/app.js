@@ -507,6 +507,7 @@ async function performSearch(query) {
 }
 
 function renderSearchResults(data) {
+  window.currentSearchResultsData = data;
   const container = document.getElementById('searchResultsContainer');
   container.innerHTML = '';
 
@@ -821,11 +822,8 @@ function createBookTile(book, copy, matchType) {
               <span>💳</span> Edit Payment
             </button>
           ` : `
-            <button class="btn btn-sm btn-toggle-cart ${isBookInCart(bookId) ? 'active' : ''}" data-bid="${escapeHtml(bookId)}" style="background:${isBookInCart(bookId) ? '#059669' : '#ecfdf5'}; color:${isBookInCart(bookId) ? '#ffffff' : '#047857'}; border:1px solid ${isBookInCart(bookId) ? '#059669' : '#a7f3d0'}; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="${isBookInCart(bookId) ? 'Remove from cart' : 'Add to cart'}">
-              <span>${isBookInCart(bookId) ? '✓ In Cart' : '🛒 + Cart'}</span>
-            </button>
-            <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy immediately">
-              ⚡ Sell
+            <button class="btn btn-sm btn-toggle-cart ${isBookInCart(bookId) ? 'active' : ''}" data-bid="${escapeHtml(bookId)}" style="background:${isBookInCart(bookId) ? '#059669' : '#ffffff'}; color:${isBookInCart(bookId) ? '#ffffff' : '#047857'}; border:1px solid ${isBookInCart(bookId) ? '#059669' : '#10b981'}; font-weight:700; border-radius:10px; padding:0.4rem 0.85rem; display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer; height:32px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.15s ease;" title="${isBookInCart(bookId) ? 'Remove from cart' : 'Add to cart'}">
+              <span>${isBookInCart(bookId) ? '✓ In Cart' : '🛒 Add to Cart'}</span>
             </button>
           `}
           <button class="btn btn-sm btn-edit-tile" title="Edit book details">
@@ -898,15 +896,6 @@ function createBookTile(book, copy, matchType) {
           genre: genre,
           image_url: copy.image_url || book.image_url || ''
         });
-      });
-    }
-
-    // Hook up Sell button (visible ONLY in View mode)
-    const btnSell = card.querySelector('.btn-sell-copy');
-    if (btnSell) {
-      btnSell.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openSaleModalForCopy(bookId, cleanTitle, copy.author || book.author, locationText);
       });
     }
 
@@ -4143,10 +4132,7 @@ async function searchPOS(query) {
             ${state !== 'SOLD' ? `
               <div style="display:flex; gap:0.4rem; align-items:center;">
                 <button class="btn btn-sm ${inCart ? 'btn-outline' : 'btn-pos-add-cart'}" data-cart-bid="${escapeHtml(bid)}">
-                  ${inCart ? '✓ In Cart' : '🛒 + Add'}
-                </button>
-                <button class="btn btn-sm btn-success btn-pos-sell" data-bid="${escapeHtml(bid)}">
-                  ⚡ Sell Now
+                  ${inCart ? '✓ In Cart' : '🛒 Add to Cart'}
                 </button>
               </div>
             ` : `
@@ -4176,17 +4162,6 @@ async function searchPOS(query) {
           btn.textContent = '✓ In Cart';
           btn.classList.remove('btn-pos-add-cart');
           btn.classList.add('btn-outline');
-        }
-      });
-    });
-
-    container.querySelectorAll('.btn-pos-sell').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const bid = btn.getAttribute('data-bid');
-        const item = allCopies.find(x => (x.copy.book_id || x.group.book_id) === bid);
-        if (item) {
-          openSaleModalForCopy(bid, item.group.title, item.group.author, item.copy.location_english);
         }
       });
     });
@@ -5233,10 +5208,10 @@ function updateAllCartButtonStates() {
       btn.title = 'Remove from cart';
     } else {
       btn.classList.remove('active');
-      btn.style.background = '#ecfdf5';
+      btn.style.background = '#ffffff';
       btn.style.color = '#047857';
-      btn.style.borderColor = '#a7f3d0';
-      btn.innerHTML = '<span>🛒 + Cart</span>';
+      btn.style.borderColor = '#10b981';
+      btn.innerHTML = '<span>🛒 Add to Cart</span>';
       btn.title = 'Add to cart';
     }
   });
@@ -5248,6 +5223,9 @@ function renderCartTab() {
   const itemsContainer = document.getElementById('cartItemsList');
   const countText = document.getElementById('cartItemsCountText');
   const summaryCount = document.getElementById('summaryTotalBooks');
+  const countPill = document.getElementById('priceMenuBookCountPill');
+  const costInput = document.getElementById('cartTotalCostInput');
+  const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
 
   if (!emptyView || !contentView || !itemsContainer) return;
 
@@ -5262,6 +5240,12 @@ function renderCartTab() {
 
   if (countText) countText.textContent = storeCart.length;
   if (summaryCount) summaryCount.textContent = `${storeCart.length} ${storeCart.length === 1 ? 'book' : 'books'}`;
+  if (countPill) countPill.textContent = `${storeCart.length} ${storeCart.length === 1 ? 'Book' : 'Books'} Selected`;
+
+  if (costInput && liveTotal) {
+    const val = parseFloat(costInput.value);
+    liveTotal.textContent = (!isNaN(val) && val >= 0) ? `₹${val.toFixed(2)}` : '₹0.00';
+  }
 
   itemsContainer.innerHTML = storeCart.map(item => {
     const cleanTitle = cleanBookTitle(item.title || '');
@@ -5310,6 +5294,15 @@ function renderCartTab() {
 function initCart() {
   loadStoreCart();
 
+  const costInput = document.getElementById('cartTotalCostInput');
+  const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
+  if (costInput && liveTotal) {
+    costInput.addEventListener('input', () => {
+      const val = parseFloat(costInput.value);
+      liveTotal.textContent = (!isNaN(val) && val >= 0) ? `₹${val.toFixed(2)}` : '₹0.00';
+    });
+  }
+
   const btnAddMore = document.getElementById('btnCartAddMore');
   if (btnAddMore) {
     btnAddMore.addEventListener('click', () => {
@@ -5335,10 +5328,9 @@ function initCart() {
         return;
       }
 
-      const costInput = document.getElementById('cartTotalCostInput');
       const costVal = costInput ? costInput.value.trim() : '';
       if (!costVal) {
-        alert('Please enter the total cost / payment received for this order in rupees (₹).');
+        alert('Please enter the Total Transaction amount in rupees (₹).');
         if (costInput) costInput.focus();
         return;
       }
@@ -5387,12 +5379,49 @@ function initCart() {
 
         const data = await res.json();
         if (res.ok && data.success) {
+          const soldBids = new Set(itemsToSell.map(x => x.book_id));
+
+          // Immediately update in-memory active view so every member of books is SOLD OUT
+          if (window.currentSearchResultsData && Array.isArray(window.currentSearchResultsData.exact_matches)) {
+            window.currentSearchResultsData.exact_matches.forEach(group => {
+              if (soldBids.has(group.book_id)) {
+                group.status = 'SOLD OUT';
+              }
+              if (group.copies && Array.isArray(group.copies)) {
+                group.copies.forEach(c => {
+                  if (soldBids.has(c.book_id)) {
+                    c.status = 'SOLD OUT';
+                  }
+                });
+              }
+            });
+            renderSearchResults(window.currentSearchResultsData);
+          }
+
+          // Clear client search cache so fresh requests don't show old available status
+          clearSearchCache();
+
+          // Clear cart
           clearStoreCart();
           if (costInput) costInput.value = '';
           if (notesInput) notesInput.value = '';
+          if (liveTotal) liveTotal.textContent = '₹0.00';
+
           fetchStats();
-          clearSearchCache();
-          showSaleConfirmation(data);
+
+          // Refresh current search if query exists
+          const searchInput = document.getElementById('searchQuery');
+          if (searchInput && searchInput.value.trim()) {
+            performSearch(searchInput.value.trim());
+          }
+
+          // Reload genre books if genre controller exists
+          if (typeof loadGenreBooks === 'function') {
+            loadGenreBooks();
+          }
+
+          renderDigitalReceipt(data);
+          alert(`✅ Order Completed!\n\nAll ${data.count} books are now marked SOLD OUT.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}`);
         } else {
           alert('Could not complete order: ' + (data.error || 'Server error'));
         }
@@ -5400,7 +5429,7 @@ function initCart() {
         alert('Order processing error: ' + err.message);
       } finally {
         btnPlaceOrder.disabled = false;
-        btnPlaceOrder.innerHTML = `<span>⚡</span> Place Order &amp; Complete Sale`;
+        btnPlaceOrder.innerHTML = `<span>⚡</span> Place Order &amp; Mark SOLD OUT`;
       }
     });
   }
