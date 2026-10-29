@@ -219,7 +219,7 @@ function initSearch() {
     clearBtn.style.display = input.value ? 'inline-block' : 'none';
     searchDebounceTimer = setTimeout(() => {
       performSearch(input.value);
-    }, 160);
+    }, 100);
   });
 
   clearBtn.addEventListener('click', () => {
@@ -530,16 +530,19 @@ function renderSearchResults(data) {
   });
 
   let badgeText = 'EXACT MATCH';
-  let categoryTitle = `Matching Books (${totalCopiesCount})`;
+  const shownText = (data.total_exact_count && data.total_exact_count > exact_matches.length)
+    ? `${totalCopiesCount} shown of ${data.total_exact_count} total`
+    : `${totalCopiesCount}`;
+  let categoryTitle = `Matching Books (${shownText})`;
   if (search_type === 'author') {
     badgeText = 'AUTHOR MATCH';
-    categoryTitle = `✍️ Books by Author "${escapeHtml(query)}" (${totalCopiesCount})`;
+    categoryTitle = `✍️ Books by Author "${escapeHtml(query)}" (${shownText})`;
   } else if (search_type === 'title') {
     badgeText = 'TITLE MATCH';
-    categoryTitle = `📖 Books Matching Title "${escapeHtml(query)}" (${totalCopiesCount})`;
+    categoryTitle = `📖 Books Matching Title "${escapeHtml(query)}" (${shownText})`;
   }
 
-  // Exact Matches Only - each physical copy rendered as an independent tile
+  // Exact Matches Only - each physical copy rendered as an independent tile via DocumentFragment for batch DOM injection
   const block = document.createElement('div');
   block.className = 'results-category-block';
   block.innerHTML = `
@@ -548,9 +551,11 @@ function renderSearchResults(data) {
       <h3 class="category-title">${categoryTitle}</h3>
     </div>
   `;
+  const fragment = document.createDocumentFragment();
   exact_matches.forEach(item => {
-    block.appendChild(createBookCard(item, 'exact'));
+    fragment.appendChild(createBookCard(item, 'exact'));
   });
+  block.appendChild(fragment);
   container.appendChild(block);
   resolveLazyCovers();
 }

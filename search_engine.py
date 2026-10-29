@@ -16,7 +16,7 @@ import database
 # In-memory book cache to eliminate expensive remote database transfers during searches
 _CACHE_BOOKS: Optional[List[Dict[str, Any]]] = None
 _CACHE_TIMESTAMP: float = 0.0
-_CACHE_TTL: float = 60.0  # Keep warm in memory for 60 seconds (invalidated instantly on mutations)
+_CACHE_TTL: float = 300.0  # Keep warm in memory for 5 minutes (invalidated instantly on any write mutation)
 
 def invalidate_search_cache():
     """Invalidates the in-memory book inventory cache on writes."""
@@ -25,7 +25,7 @@ def invalidate_search_cache():
     _CACHE_TIMESTAMP = 0.0
 
 def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
-    """Retrieves all books with in-memory caching to eliminate expensive remote DB roundtrips."""
+    """Retrieves all books with in-memory caching and pre-computed token index."""
     global _CACHE_BOOKS, _CACHE_TIMESTAMP
     now = time.time()
     if not force_refresh and _CACHE_BOOKS is not None and (now - _CACHE_TIMESTAMP < _CACHE_TTL):
@@ -34,9 +34,35 @@ def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
     conn = database.get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM books")
-    _CACHE_BOOKS = [dict(r) for r in cursor.fetchall()]
-    _CACHE_TIMESTAMP = now
+    rows = cursor.fetchall()
     conn.close()
+
+    indexed_books = []
+    for r in rows:
+        b = dict(r)
+        nt = normalize_text(b.get("title") or "")
+        na = normalize_text(b.get("author") or "")
+        nc = f"{nt} {na}"
+        tw = tuple(nt.split())
+        aw = tuple(na.split())
+        cw = tuple(nc.split())
+        b["_nt"] = nt
+        b["_na"] = na
+        b["_nc"] = nc
+        b["_tw"] = tw
+        b["_aw"] = aw
+        b["_cw"] = cw
+        b["_tws"] = frozenset(tw)
+        b["_aws"] = frozenset(aw)
+        b["_cws"] = frozenset(cw)
+        b["_ng"] = normalize_text(b.get("genre") or "")
+        b["_ns"] = normalize_text(b.get("simple_genre") or "")
+        b["_nn"] = normalize_text(b.get("notes") or "")
+        b["_id"] = (b.get("book_id") or "").upper()
+        indexed_books.append(b)
+
+    _CACHE_BOOKS = indexed_books
+    _CACHE_TIMESTAMP = now
     return _CACHE_BOOKS
 
 # Semantic dictionary for niche genres and concept queries (Req 2.3)
@@ -133,7 +159,7 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for b in books:
         clean_title = database.sanitize_title(b["title"])
         # Key on normalized title and author
-        key = (normalize_text(clean_title), normalize_text(b["author"]))
+        key = (b.get("_nt") or normalize_text(clean_title), b.get("_na") or normalize_text(b["author"]))
         if key not in grouped_map:
             grouped_map[key] = {
                 "title": clean_title,
@@ -158,7 +184,7 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             grouped_map[key]["sold_copies"] += 1
 
         raw_notes = b.get("notes") or ""
-        clean_notes = re.sub(r"\[idempotency:[^\]]+\]", "", raw_notes).strip()
+        clean_notes = re.sub(r"\[idempotency:[^\]]+\]", "", raw_notes).strip() if "[" in raw_notes else raw_notes
         grouped_map[key]["copies"].append({
             "id": b["id"],
             "book_id": b["book_id"],
@@ -180,7 +206,8 @@ def search_books(
     search_type: str = "all",  # 'all', 'title', 'author', 'genre', 'id'
     include_sold: bool = True,
     include_recommendations: bool = False,
-    include_fuzzy: bool = False
+    include_fuzzy: bool = False,
+    limit: int = 80
 ) -> Dict[str, Any]:
     """
     Executes search across the store inventory.
@@ -202,9 +229,9 @@ def search_books(
     # Step 1: Direct ID Match Check (e.g. BK-10151)
     if clean_query.upper().startswith("BK-") or "BK-" in clean_query.upper():
         upper_id = clean_query.upper().strip()
-        id_matches = [b for b in all_books if b.get("book_id", "").upper() == upper_id]
+        id_matches = [b for b in all_books if b.get("_id") == upper_id]
         if not id_matches:
-            id_matches = [b for b in all_books if upper_id in b.get("book_id", "").upper()]
+            id_matches = [b for b in all_books if upper_id in b.get("_id", "")]
         if id_matches:
             grouped = group_physical_copies(id_matches)
             return {
@@ -232,15 +259,15 @@ def search_books(
 
     for b in all_books:
         bid = b["book_id"]
-        title = b["title"]
-        author = b["author"]
-        genre = b["genre"] or ""
-        notes = b.get("notes") or ""
-        norm_title = normalize_text(title)
-        norm_author = normalize_text(author)
-        t_words = norm_title.split()
-        a_words = norm_author.split()
-        norm_combined = f"{norm_title} {norm_author}"
+        norm_title = b.get("_nt") or normalize_text(b["title"])
+        norm_author = b.get("_na") or normalize_text(b["author"])
+        norm_combined = b.get("_nc") or f"{norm_title} {norm_author}"
+        t_words = b.get("_tw") or tuple(norm_title.split())
+        a_words = b.get("_aw") or tuple(norm_author.split())
+        c_words = b.get("_cw") or tuple(norm_combined.split())
+        tws = b.get("_tws") or frozenset(t_words)
+        aws = b.get("_aws") or frozenset(a_words)
+        cws = b.get("_cws") or frozenset(c_words)
 
         is_exact = False
         is_possible = False
@@ -248,72 +275,41 @@ def search_books(
 
         # --- 1. EXACT & PREFIX (SEARCH-AS-YOU-TYPE) MATCHES ---
         if search_type == "author":
-            # Search strictly by author's name
-            if norm_query == norm_author or re.search(r'\b' + re.escape(norm_query) + r'\b', norm_author):
-                is_exact = True
-            elif re.search(r'\b' + re.escape(norm_query), norm_author):
-                is_exact = True
-            elif len(q_words) > 1:
-                completed = q_words[:-1]
-                last = q_words[-1]
-                if all(re.search(r'\b' + re.escape(qw) + r'\b', norm_author) for qw in completed) and re.search(r'\b' + re.escape(last), norm_author):
-                    is_exact = True
-            elif len(q_words) == 1 and len(q_words[0]) >= 2:
-                if re.search(r'\b' + re.escape(q_words[0]), norm_author):
-                    is_exact = True
-            elif len(q_words) == 1 and len(q_words[0]) == 1:
-                if re.search(r'\b' + re.escape(q_words[0]) + r'\b', norm_author):
-                    is_exact = True
-
+            target = norm_author
+            target_ws = a_words
+            target_set = aws
         elif search_type == "title":
-            # Search strictly by book title
-            if norm_query == norm_title or re.search(r'\b' + re.escape(norm_query) + r'\b', norm_title):
-                is_exact = True
-            elif re.search(r'\b' + re.escape(norm_query), norm_title):
-                is_exact = True
-            elif len(q_words) > 1:
-                completed = q_words[:-1]
-                last = q_words[-1]
-                if all(re.search(r'\b' + re.escape(qw) + r'\b', norm_title) for qw in completed) and re.search(r'\b' + re.escape(last), norm_title):
-                    is_exact = True
-            elif len(q_words) == 1 and len(q_words[0]) >= 2:
-                if re.search(r'\b' + re.escape(q_words[0]), norm_title):
-                    is_exact = True
-            elif len(q_words) == 1 and len(q_words[0]) == 1:
-                if re.search(r'\b' + re.escape(q_words[0]) + r'\b', norm_title):
-                    is_exact = True
-
+            target = norm_title
+            target_ws = t_words
+            target_set = tws
         else:
-            # "all": Search both title, author, or combined
-            if norm_query == norm_title or norm_query == norm_author:
+            target = norm_combined
+            target_ws = c_words
+            target_set = cws
+
+        # Fast phrase check: exact match, prefix match, or match after word boundary (space)
+        if target == norm_query or target.startswith(norm_query) or (' ' + norm_query in target):
+            is_exact = True
+        elif len(q_words) > 1:
+            completed = q_words[:-1]
+            last = q_words[-1]
+            if all(w in target_set for w in completed) and any(w.startswith(last) for w in target_ws):
                 is_exact = True
-            # Exact phrase prefix match in title, author, or combined
-            # (e.g. 'awaken the gi' matches 'awaken the giant within')
-            elif re.search(r'\b' + re.escape(norm_query), norm_combined):
-                is_exact = True
-            # Multi-word search-as-you-type: completed words match whole words, last word matches prefix
-            elif len(q_words) > 1:
-                completed = q_words[:-1]
-                last = q_words[-1]
-                if all(re.search(r'\b' + re.escape(qw) + r'\b', norm_combined) for qw in completed) and re.search(r'\b' + re.escape(last), norm_combined):
+        elif len(q_words) == 1:
+            qw = q_words[0]
+            if len(qw) >= 2:
+                if any(w.startswith(qw) for w in target_ws):
                     is_exact = True
-            # Single-word query of length >= 2: prefix match on any word
-            elif len(q_words) == 1 and len(q_words[0]) >= 2:
-                if re.search(r'\b' + re.escape(q_words[0]), norm_combined):
-                    is_exact = True
-            # Single character: requires whole word match (e.g. 'a' in 'A Tale of Two Cities')
-            elif len(q_words) == 1 and len(q_words[0]) == 1:
-                if re.search(r'\b' + re.escape(q_words[0]) + r'\b', norm_combined):
+            else:
+                if qw in target_set:
                     is_exact = True
 
         # --- 2. FUZZY MATCHES (Only when include_fuzzy is explicitly True) ---
         if not is_exact and include_fuzzy:
-            # Whole phrase small edit distance (e.g. 'The One Pluss One' -> 'The One Plus One')
             title_dist = damerau_levenshtein_distance(norm_query, norm_title)
             author_dist = damerau_levenshtein_distance(norm_query, norm_author)
             if title_dist <= 2 or author_dist <= 2:
                 is_possible = True
-            # Multi-word near typo match: every word matches exactly or within edit dist 1
             elif len(q_words) > 1:
                 all_words_match = True
                 has_at_least_one_typo = False
@@ -328,7 +324,6 @@ def search_books(
                         break
                 if all_words_match and has_at_least_one_typo:
                     is_possible = True
-            # Single-word typo match (e.g. 'markting' -> 'marketing', 'sapienss' -> 'sapiens')
             elif len(q_words) == 1 and len(q_words[0]) >= 5:
                 qw = q_words[0]
                 for tw in t_words:
@@ -338,11 +333,11 @@ def search_books(
 
         # --- 3. OPTIONAL RECOMMENDATIONS (Only when explicitly enabled) ---
         if not is_exact and not is_possible and include_recommendations:
-            norm_genre = normalize_text(genre)
-            norm_simple = normalize_text(b.get("simple_genre") or "")
+            norm_genre = b.get("_ng") or normalize_text(b.get("genre") or "")
+            norm_simple = b.get("_ns") or normalize_text(b.get("simple_genre") or "")
             if norm_query in norm_genre or norm_genre in norm_query or norm_query == norm_simple or norm_query in norm_simple:
                 is_related = True
-            elif any(kw in norm_genre or kw in norm_simple or kw in norm_title or kw in normalize_text(notes) for kw in topic_keywords):
+            elif any(kw in norm_genre or kw in norm_simple or kw in norm_title or kw in (b.get("_nn") or "") for kw in topic_keywords):
                 is_related = True
 
         if is_exact:
@@ -359,8 +354,8 @@ def search_books(
                 seen_book_ids.add(bid)
 
     def exact_score(b):
-        norm_t = normalize_text(b["title"])
-        norm_a = normalize_text(b["author"])
+        norm_t = b.get("_nt") or normalize_text(b["title"])
+        norm_a = b.get("_na") or normalize_text(b["author"])
         score = 0.0
 
         if search_type == "author":
@@ -368,9 +363,9 @@ def search_books(
                 score += 100.0
             elif norm_a.startswith(norm_query):
                 score += 85.0
-            elif re.search(r'\b' + re.escape(norm_query) + r'\b', norm_a):
+            elif (' ' + norm_query + ' ') in norm_a or norm_a.endswith(' ' + norm_query):
                 score += 70.0
-            elif re.search(r'\b' + re.escape(norm_query), norm_a):
+            elif (' ' + norm_query) in norm_a:
                 score += 55.0
             else:
                 score += 20.0
@@ -382,9 +377,9 @@ def search_books(
                 score += 100.0
             elif norm_t.startswith(norm_query):
                 score += 85.0
-            elif re.search(r'\b' + re.escape(norm_query) + r'\b', norm_t):
+            elif (' ' + norm_query + ' ') in norm_t or norm_t.endswith(' ' + norm_query):
                 score += 70.0
-            elif re.search(r'\b' + re.escape(norm_query), norm_t):
+            elif (' ' + norm_query) in norm_t:
                 score += 55.0
             else:
                 score += 20.0
@@ -396,15 +391,15 @@ def search_books(
                 score += 100.0
             elif norm_t.startswith(norm_query):
                 score += 85.0
-            elif re.search(r'\b' + re.escape(norm_query) + r'\b', norm_t):
+            elif (' ' + norm_query + ' ') in norm_t or norm_t.endswith(' ' + norm_query):
                 score += 70.0
-            elif re.search(r'\b' + re.escape(norm_query), norm_t):
+            elif (' ' + norm_query) in norm_t:
                 score += 55.0
             elif norm_a.startswith(norm_query):
                 score += 45.0
-            elif re.search(r'\b' + re.escape(norm_query) + r'\b', norm_a):
+            elif (' ' + norm_query + ' ') in norm_a or norm_a.endswith(' ' + norm_query):
                 score += 40.0
-            elif re.search(r'\b' + re.escape(norm_query), norm_a):
+            elif (' ' + norm_query) in norm_a:
                 score += 35.0
             else:
                 score += 20.0
@@ -414,18 +409,22 @@ def search_books(
 
     # Sort each tier by similarity relevance
     exact_candidates.sort(key=exact_score, reverse=True)
-    possible_candidates.sort(key=lambda b: max(string_similarity(clean_query, b["title"]), token_similarity(clean_query, b["title"]), string_similarity(clean_query, b["author"])), reverse=True)
-    related_candidates.sort(key=lambda b: (clean_query.lower() in (b["genre"] or "").lower(), string_similarity(clean_query, b["title"])), reverse=True)
+    if possible_candidates:
+        possible_candidates.sort(key=lambda b: max(string_similarity(clean_query, b["title"]), token_similarity(clean_query, b["title"]), string_similarity(clean_query, b["author"])), reverse=True)
+    if related_candidates:
+        related_candidates.sort(key=lambda b: (clean_query.lower() in (b["genre"] or "").lower(), string_similarity(clean_query, b["title"])), reverse=True)
 
     exact_grouped = group_physical_copies(exact_candidates)
     possible_grouped = group_physical_copies(possible_candidates)
     related_grouped = group_physical_copies(related_candidates)
 
-    # Limit lists to top results for fast rendering
+    total_exact_count = len(exact_grouped)
+    total_results = total_exact_count + len(possible_grouped) + len(related_grouped)
+
+    # Limit lists to top results for fast rendering and minimal network payload
+    exact_grouped = exact_grouped[:limit]
     possible_grouped = possible_grouped[:30]
     related_grouped = related_grouped[:30]
-
-    total_results = len(exact_grouped) + len(possible_grouped) + len(related_grouped)
 
     return {
         "query": query,
@@ -433,7 +432,8 @@ def search_books(
         "exact_matches": exact_grouped,
         "possible_matches": possible_grouped,
         "related_books": related_grouped,
-        "total_results": total_results
+        "total_results": total_results,
+        "total_exact_count": total_exact_count
     }
 
 def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
