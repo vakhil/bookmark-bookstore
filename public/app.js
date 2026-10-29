@@ -5476,7 +5476,14 @@ function initCart() {
           })
         });
 
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const rawText = await res.text();
+          data = { success: false, error: rawText || `Server responded with status ${res.status}` };
+        }
         if (res.ok && data.success) {
           const soldBids = new Set(itemsToSell.map(x => x.book_id));
 
@@ -5717,7 +5724,14 @@ function renderTransactionsList() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ order_id: oid, user: 'Staff' })
         });
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const rawText = await res.text();
+          data = { success: false, error: rawText || `Server responded with status ${res.status}` };
+        }
         if (res.ok && data.success) {
           clearSearchCache();
           fetchStats();
@@ -5751,7 +5765,14 @@ function renderTransactionsList() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ order_id: oid, user: 'Staff' })
         });
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const rawText = await res.text();
+          data = { success: false, error: rawText || `Server responded with status ${res.status}` };
+        }
         if (res.ok && data.success) {
           clearSearchCache();
           fetchStats();
@@ -5785,7 +5806,14 @@ function renderTransactionsList() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ order_id: oid, user: 'Staff' })
         });
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const rawText = await res.text();
+          data = { success: false, error: rawText || `Server responded with status ${res.status}` };
+        }
         if (res.ok && data.success) {
           clearSearchCache();
           fetchStats();

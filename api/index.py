@@ -66,8 +66,8 @@ def read_json_body(environ):
                 return {}
     return {}
 
-def app(environ, start_response):
-    """Main WSGI entry point for Vercel Serverless Functions."""
+def _app_dispatch(environ, start_response):
+    """Internal WSGI request dispatcher."""
     method = environ.get("REQUEST_METHOD", "GET").upper()
     query_string = environ.get("QUERY_STRING", "")
     query_params = urllib.parse.parse_qs(query_string)
@@ -465,6 +465,18 @@ def app(environ, start_response):
             return json_response(start_response, {"success": True, "stats": stats})
 
     return json_response(start_response, {"error": "Not Found", "path": path}, 404)
+
+def app(environ, start_response):
+    """Main WSGI entry point for Vercel Serverless Functions with comprehensive error handling."""
+    try:
+        return _app_dispatch(environ, start_response)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return json_response(start_response, {
+            "success": False,
+            "error": f"Server error: {str(e)}"
+        }, 500)
 
 # Expose both app and handler for Vercel
 handler = app

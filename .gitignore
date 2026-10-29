@@ -8,3 +8,4 @@ bookstore.db-wal
 test_bookstore.db
 *.sqbpro
 *.pem
+.env*

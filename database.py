@@ -59,6 +59,34 @@ if os.environ.get("VERCEL"):
 # Global lock for concurrency control across threads
 db_lock = threading.Lock()
 
+_schema_ensured = False
+
+def ensure_schema(conn):
+    global _schema_ensured
+    if _schema_ensured:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(sales_transactions)")
+        st_cols = [c["name"] for c in cursor.fetchall()]
+        if st_cols:
+            if "order_id" not in st_cols:
+                try:
+                    cursor.execute("ALTER TABLE sales_transactions ADD COLUMN order_id TEXT")
+                    cursor.execute("UPDATE sales_transactions SET order_id = transaction_ref WHERE order_id IS NULL OR order_id = ''")
+                    conn.commit()
+                except Exception:
+                    pass
+            if "status" not in st_cols:
+                try:
+                    cursor.execute("ALTER TABLE sales_transactions ADD COLUMN status TEXT DEFAULT 'COMPLETED'")
+                    conn.commit()
+                except Exception:
+                    pass
+        _schema_ensured = True
+    except Exception:
+        pass
+
 def get_db_connection() -> Any:
     """Creates a database connection with dictionary row access.
     Automatically connects to Turso Cloud (libSQL) when TURSO_DATABASE_URL and
@@ -70,12 +98,15 @@ def get_db_connection() -> Any:
     if turso_url and turso_token:
         try:
             import turso_client
-            return turso_client.connect(turso_url, turso_token)
+            conn = turso_client.connect(turso_url, turso_token)
+            ensure_schema(conn)
+            return conn
         except Exception as e:
             print(f"Warning: Turso connection failed ({e}), falling back to local SQLite.")
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    ensure_schema(conn)
     try:
         conn.execute("PRAGMA foreign_keys = ON")
     except Exception:
@@ -1230,8 +1261,11 @@ def sell_books_bulk(
         cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
         daily_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions WHERE transaction_ref LIKE ? OR order_id LIKE ?", (f"TX-{today_code}-%", f"ORD-{today_code}-%"))
-        daily_order_count = cursor.fetchone()[0]
+        try:
+            cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions WHERE transaction_ref LIKE ? OR order_id LIKE ?", (f"TX-{today_code}-%", f"ORD-{today_code}-%"))
+            daily_order_count = cursor.fetchone()[0]
+        except Exception:
+            daily_order_count = daily_count
         order_id = f"ORD-{today_code}-{daily_order_count+1:04d}"
 
         successful_sales = []
@@ -2109,11 +2143,18 @@ def get_inventory_stats() -> Dict[str, Any]:
     cursor.execute("SELECT COUNT(*) FROM sales_transactions")
     total_sales_count = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions")
-    total_transactions_count = cursor.fetchone()[0]
+    try:
+        cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions")
+        total_transactions_count = cursor.fetchone()[0]
+    except Exception:
+        total_transactions_count = total_sales_count
 
-    cursor.execute("SELECT SUM(selling_price) FROM sales_transactions WHERE selling_price IS NOT NULL AND (status IS NULL OR status != 'REVERTED')")
-    total_revenue = cursor.fetchone()[0] or 0.0
+    try:
+        cursor.execute("SELECT SUM(selling_price) FROM sales_transactions WHERE selling_price IS NOT NULL AND (status IS NULL OR status != 'REVERTED')")
+        total_revenue = cursor.fetchone()[0] or 0.0
+    except Exception:
+        cursor.execute("SELECT SUM(selling_price) FROM sales_transactions WHERE selling_price IS NOT NULL")
+        total_revenue = cursor.fetchone()[0] or 0.0
 
     conn.close()
 
