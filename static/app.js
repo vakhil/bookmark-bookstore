@@ -718,6 +718,11 @@ function formatLocationPreviewText(rack, col, pos) {
 }
 
 function formatLocationPill(state, locationText, sellingPrice, copy = null) {
+  let locStr = (copy && copy.location_english) ? copy.location_english : (locationText || '');
+  if (!locStr && copy && (copy.rack || copy.column_num)) {
+    locStr = formatLocationString(copy.rack, copy.column_num, copy.position);
+  }
+
   if (state === 'SOLD') {
     const priceText = (sellingPrice !== null && sellingPrice !== undefined && sellingPrice !== '') 
       ? ` &bull; Paid: ₹${sellingPrice}` 
@@ -729,11 +734,12 @@ function formatLocationPill(state, locationText, sellingPrice, copy = null) {
           <span class="hud-label">STATUS</span>
           <span class="hud-val">SOLD OUT${priceText} &bull; Off Shelf</span>
         </div>
-        ${locationText ? `<span class="hud-subval">(Was ${escapeHtml(locationText)})</span>` : ''}
+        ${locStr ? `<span class="hud-subval">(Was ${escapeHtml(locStr.replace(/->/g, '→'))})</span>` : ''}
       </div>
     `;
   }
-  if (!locationText || state === 'UNASSIGNED' || locationText.toLowerCase() === 'unassigned') {
+
+  if (!locStr || state === 'UNASSIGNED' || locStr.toLowerCase() === 'unassigned') {
     return `
       <div class="wayfinder-hud hud-unassigned" title="Needs shelf assignment">
         <span class="hud-status-icon">📍</span>
@@ -745,52 +751,11 @@ function formatLocationPill(state, locationText, sellingPrice, copy = null) {
     `;
   }
 
-  // Parse: Rack 35 → Column 2 → 3rd book from top
-  const parts = locationText.split(/→|->|,/g).map(p => p.trim()).filter(Boolean);
-  if (parts.length >= 2 || (copy && copy.rack && copy.column_num)) {
-    const rackStr = parts[0] || '';
-    const colStr = parts[1] || '';
-    const posStr = parts[2] || '';
-
-    let rackVal = (copy && copy.rack !== null && copy.rack !== undefined && copy.rack !== '')
-      ? copy.rack.toString().trim()
-      : rackStr.replace(/^Rack\s*#?\s*/i, '').trim();
-
-    let colVal = (copy && copy.column_num !== null && copy.column_num !== undefined && copy.column_num !== '')
-      ? copy.column_num.toString().trim()
-      : colStr.replace(/^(Column|Col)\.?\s*#?\s*/i, '').trim();
-
-    const posVal = posStr.replace(/\s*book\s*from\s*top$/i, ' from top').trim();
-
-    return `
-      <div class="wayfinder-hud" title="Physical shelf location">
-        <div class="hud-marker">
-          <span class="hud-label">RACK</span>
-          <span class="hud-val">${escapeHtml(rackVal || rackStr)}</span>
-        </div>
-        <div class="hud-divider">›</div>
-        <div class="hud-marker">
-          <span class="hud-label">COLUMN</span>
-          <span class="hud-val">${escapeHtml(colVal || colStr)}</span>
-        </div>
-        ${posStr ? `
-          <div class="hud-divider">›</div>
-          <div class="hud-marker hud-marker-pos">
-            <span class="hud-label">POSITION</span>
-            <span class="hud-val">${escapeHtml(posVal || posStr)}</span>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }
-
+  const formattedLoc = locStr.replace(/->/g, '→');
   return `
     <div class="wayfinder-hud" title="Physical shelf location">
       <span class="hud-status-icon">📍</span>
-      <div class="hud-marker">
-        <span class="hud-label">LOCATION</span>
-        <span class="hud-val">${escapeHtml(locationText)}</span>
-      </div>
+      <span class="hud-val" style="font-size:0.95rem; font-weight:700; color:#064e3b; letter-spacing:-0.01em;">${escapeHtml(formattedLoc)}</span>
     </div>
   `;
 }

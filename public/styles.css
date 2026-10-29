@@ -1041,8 +1041,6 @@ input, select, textarea, button {
   font-size: 1.05rem;
   margin-right: 0.2rem;
 }
-  color: #991b1b;
-}
 
 .book-card-item.card-is-sold {
   background: #fafaf9;
