@@ -818,6 +818,9 @@ function createBookTile(book, copy, matchType) {
         </div>
         <div class="book-card-actions">
           ${state === 'SOLD' ? `
+            <button class="btn btn-sm btn-undo-purchase" data-bid="${escapeHtml(bookId)}" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="Undo purchase and return this book to shelf">
+              <span>↩️</span> Undo Purchase
+            </button>
             <button class="btn btn-sm btn-edit-payment-copy" data-bid="${escapeHtml(bookId)}" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="Change payment received for this sale (e.g. correct ₹200 to ₹300)">
               <span>💳</span> Edit Payment
             </button>
@@ -864,6 +867,88 @@ function createBookTile(book, copy, matchType) {
       btnEdit.addEventListener('click', (e) => {
         e.stopPropagation();
         renderEdit();
+      });
+    }
+
+    // Hook up Undo Purchase button (visible on SOLD books)
+    const btnUndo = card.querySelector('.btn-undo-purchase');
+    if (btnUndo) {
+      btnUndo.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const confirmMsg = `Are you sure you want to undo the purchase for "${cleanTitle}"?\n\nThis will restore the book to its shelf position (${locationText || 'its recorded location'}) and make it available in inventory again.`;
+        if (!confirm(confirmMsg)) return;
+
+        btnUndo.disabled = true;
+        btnUndo.innerHTML = `<span>⏳</span> Undoing...`;
+
+        try {
+          const res = await fetch('/api/books/revert-sale', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              book_id: bookId,
+              position_mode: 'previous',
+              user: 'Staff',
+              notes: 'Undo purchase from UI'
+            })
+          });
+
+          const data = await res.json();
+          if (res.ok && data.success) {
+            // Update in-memory copy & group
+            copy.status = 'Available';
+            copy.selling_price = null;
+            if (book && book.copies) {
+              const matched = book.copies.find(c => c.book_id === bookId);
+              if (matched) {
+                matched.status = 'Available';
+                matched.selling_price = null;
+              }
+            } else if (book && (book.book_id === bookId)) {
+              book.status = 'Available';
+              book.selling_price = null;
+            }
+
+            clearSearchCache();
+            fetchStats();
+
+            // If search results data is currently cached in window, update it
+            if (window.currentSearchResultsData && Array.isArray(window.currentSearchResultsData.exact_matches)) {
+              window.currentSearchResultsData.exact_matches.forEach(g => {
+                if (g.book_id === bookId) {
+                  g.status = 'Available';
+                  g.selling_price = null;
+                }
+                if (g.copies && Array.isArray(g.copies)) {
+                  g.copies.forEach(c => {
+                    if (c.book_id === bookId) {
+                      c.status = 'Available';
+                      c.selling_price = null;
+                    }
+                  });
+                }
+              });
+            }
+
+            // Also refresh genre view if active
+            if (typeof loadGenreBooks === 'function') {
+              loadGenreBooks();
+            }
+
+            renderView();
+
+            const locNotice = (data.book && data.book.location_english) ? `\nLocation: ${data.book.location_english}` : '';
+            alert(`✅ Purchase Undone!\n\n"${cleanTitle}" is now back in inventory as Available.${locNotice}`);
+          } else {
+            alert('Cannot undo purchase: ' + (data.error || 'Server error'));
+            btnUndo.disabled = false;
+            btnUndo.innerHTML = `<span>↩️</span> Undo Purchase`;
+          }
+        } catch (err) {
+          alert('Network error while undoing purchase: ' + err.message);
+          btnUndo.disabled = false;
+          btnUndo.innerHTML = `<span>↩️</span> Undo Purchase`;
+        }
       });
     }
 

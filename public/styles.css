@@ -2058,6 +2058,7 @@ input, select, textarea, button {
   }
 
   .book-card-actions .btn-toggle-cart,
+  .book-card-actions .btn-undo-purchase,
   .book-card-actions .btn-edit-tile {
     flex: 1;
   }
@@ -2642,6 +2643,21 @@ input, select, textarea, button {
 }
 
 .btn-toggle-cart:active {
+  transform: translateY(0);
+}
+
+.btn-undo-purchase {
+  transition: all 0.15s ease;
+}
+
+.btn-undo-purchase:hover {
+  background: #fee2e2 !important;
+  border-color: #f87171 !important;
+  color: #b91c1c !important;
+  transform: translateY(-1px);
+}
+
+.btn-undo-purchase:active {
   transform: translateY(0);
 }
 
