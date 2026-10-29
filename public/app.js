@@ -802,12 +802,7 @@ function createBookTile(book, copy, matchType) {
               ${formatLocationPill(state, locationText, sellingPrice, copy)}
             </div>
             <div class="book-meta-line">
-              ${state === 'SOLD' ? '<span class="state-chip state-sold"><span class="chip-dot"></span> SOLD OUT</span>' : (state === 'UNASSIGNED' ? '<span class="state-chip state-unassigned"><span class="chip-dot"></span> UNASSIGNED</span>' : '')}
-              ${(state === 'SOLD' && sellingPrice !== '') ? `
-                <span class="chip sold-price-chip btn-edit-paid-chip" data-bid="${escapeHtml(bookId)}" style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-weight:700; border-radius:9999px; padding:0.26rem 0.75rem; font-size:0.78rem; cursor:pointer;" title="Click to correct payment received">
-                  💳 Paid: ₹${escapeHtml(sellingPrice.toString())} <span style="font-size:0.72rem; opacity:0.8;">✏️</span>
-                </span>
-              ` : ''}
+              ${state === 'UNASSIGNED' ? '<span class="state-chip state-unassigned"><span class="chip-dot"></span> UNASSIGNED</span>' : ''}
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
               ${genre ? `<span class="chip simple-genre-chip">${escapeHtml(genre)}</span>` : ''}
             </div>
