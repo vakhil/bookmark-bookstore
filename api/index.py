@@ -30,7 +30,7 @@ try:
 except Exception as e:
     print(f"Serverless DB init notice: {e}")
 
-def json_response(start_response, data, status_code=200):
+def json_response(start_response, data, status_code=200, cache_control=None):
     status_text = f"{status_code} OK" if status_code == 200 else f"{status_code} Error"
     if status_code == 404:
         status_text = "404 Not Found"
@@ -39,6 +39,7 @@ def json_response(start_response, data, status_code=200):
     elif status_code == 500:
         status_text = "500 Internal Server Error"
 
+    cc = cache_control or "no-cache, no-store, must-revalidate"
     body = json.dumps(data, default=str).encode("utf-8")
     headers = [
         ("Content-Type", "application/json; charset=utf-8"),
@@ -46,7 +47,7 @@ def json_response(start_response, data, status_code=200):
         ("Access-Control-Allow-Origin", "*"),
         ("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE"),
         ("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With"),
-        ("Cache-Control", "no-cache, no-store, must-revalidate")
+        ("Cache-Control", cc)
     ]
     start_response(status_text, headers)
     return [body]
@@ -97,14 +98,14 @@ def _app_dispatch(environ, start_response):
         if path == "/api/stats":
             stats = database.get_inventory_stats()
             sync_info = {"active": False, "mode": "local_database", "pending_changes": 0}
-            return json_response(start_response, {"stats": stats, "sync": sync_info})
+            return json_response(start_response, {"stats": stats, "sync": sync_info}, cache_control="public, max-age=5, s-maxage=10, stale-while-revalidate=20")
 
         elif path == "/api/search":
             q = query_params.get("q", [""])[0]
             stype = query_params.get("type", ["all"])[0]
             limit = int(query_params.get("limit", [80])[0])
             results = search_engine.search_books(q, search_type=stype, limit=limit)
-            return json_response(start_response, results)
+            return json_response(start_response, results, cache_control="public, max-age=15, s-maxage=30, stale-while-revalidate=60")
 
         elif path == "/api/unassigned":
             q = query_params.get("q", [""])[0]
@@ -116,12 +117,12 @@ def _app_dispatch(environ, start_response):
         elif path == "/api/sales":
             limit = int(query_params.get("limit", [100])[0])
             sales = database.get_recent_sales(limit=limit)
-            return json_response(start_response, {"sales": sales})
+            return json_response(start_response, {"sales": sales}, cache_control="public, max-age=5, s-maxage=10, stale-while-revalidate=20")
 
         elif path in ("/api/transactions", "/api/transactions/list"):
             limit = int(query_params.get("limit", [100])[0])
             txs = database.get_transactions(limit=limit)
-            return json_response(start_response, {"transactions": txs})
+            return json_response(start_response, {"transactions": txs}, cache_control="public, max-age=5, s-maxage=10, stale-while-revalidate=20")
 
         elif path == "/api/audit":
             bid = query_params.get("book_id", [None])[0]

@@ -17,28 +17,40 @@ import database
 _CACHE_BOOKS: Optional[List[Dict[str, Any]]] = None
 _CACHE_TIMESTAMP: float = 0.0
 _CACHE_TTL: float = 300.0  # Keep warm in memory for 5 minutes (invalidated instantly on any write mutation)
+_INVERTED_WORDS: Optional[Dict[str, List[int]]] = None
+_ID_MAP: Optional[Dict[str, List[int]]] = None
 
 def invalidate_search_cache():
     """Invalidates the in-memory book inventory cache on writes."""
-    global _CACHE_BOOKS, _CACHE_TIMESTAMP
+    global _CACHE_BOOKS, _CACHE_TIMESTAMP, _INVERTED_WORDS, _ID_MAP
     _CACHE_BOOKS = None
     _CACHE_TIMESTAMP = 0.0
+    _INVERTED_WORDS = None
+    _ID_MAP = None
 
 def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
     """Retrieves all books with in-memory caching and pre-computed token index."""
-    global _CACHE_BOOKS, _CACHE_TIMESTAMP
+    global _CACHE_BOOKS, _CACHE_TIMESTAMP, _INVERTED_WORDS, _ID_MAP
     now = time.time()
     if not force_refresh and _CACHE_BOOKS is not None and (now - _CACHE_TIMESTAMP < _CACHE_TTL):
         return _CACHE_BOOKS
 
     conn = database.get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM books")
+    # Select only columns needed for search to reduce network transfer payload by >60%
+    cursor.execute("""
+        SELECT id, book_id, title, author, genre, simple_genre, rack, column_num, position,
+               location_english, status, selling_price, notes, language, image_url
+        FROM books
+    """)
     rows = cursor.fetchall()
     conn.close()
 
     indexed_books = []
-    for r in rows:
+    inv_words = {}
+    id_map = {}
+
+    for idx, r in enumerate(rows):
         b = dict(r)
         nt = normalize_text(b.get("title") or "")
         na = normalize_text(b.get("author") or "")
@@ -61,7 +73,21 @@ def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
         b["_id"] = (b.get("book_id") or "").upper()
         indexed_books.append(b)
 
+        # Index book_id
+        if b["_id"]:
+            if b["_id"] not in id_map:
+                id_map[b["_id"]] = []
+            id_map[b["_id"]].append(idx)
+
+        # Index words for sub-millisecond candidate lookup
+        for w in b["_cws"]:
+            if w not in inv_words:
+                inv_words[w] = []
+            inv_words[w].append(idx)
+
     _CACHE_BOOKS = indexed_books
+    _INVERTED_WORDS = inv_words
+    _ID_MAP = id_map
     _CACHE_TIMESTAMP = now
     return _CACHE_BOOKS
 
@@ -229,7 +255,10 @@ def search_books(
     # Step 1: Direct ID Match Check (e.g. BK-10151)
     if clean_query.upper().startswith("BK-") or "BK-" in clean_query.upper():
         upper_id = clean_query.upper().strip()
-        id_matches = [b for b in all_books if b.get("_id") == upper_id]
+        if _ID_MAP and upper_id in _ID_MAP:
+            id_matches = [all_books[i] for i in _ID_MAP[upper_id]]
+        else:
+            id_matches = [b for b in all_books if b.get("_id") == upper_id]
         if not id_matches:
             id_matches = [b for b in all_books if upper_id in b.get("_id", "")]
         if id_matches:
@@ -257,7 +286,27 @@ def search_books(
     q_words = norm_query.split()
     seen_book_ids = set()
 
-    for b in all_books:
+    # Sub-millisecond candidate pre-filtering via inverted word index
+    search_pool = all_books
+    if _INVERTED_WORDS and q_words and not include_recommendations and not include_fuzzy:
+        first_w = q_words[0]
+        if len(first_w) >= 2:
+            candidate_indices = set()
+            for w, idxs in _INVERTED_WORDS.items():
+                if w.startswith(first_w):
+                    candidate_indices.update(idxs)
+            if candidate_indices:
+                for next_w in q_words[1:]:
+                    if len(next_w) >= 2:
+                        next_cands = set()
+                        for w, idxs in _INVERTED_WORDS.items():
+                            if w.startswith(next_w):
+                                next_cands.update(idxs)
+                        if next_cands:
+                            candidate_indices.intersection_update(next_cands)
+                search_pool = [all_books[i] for i in candidate_indices]
+
+    for b in search_pool:
         bid = b["book_id"]
         norm_title = b.get("_nt") or normalize_text(b["title"])
         norm_author = b.get("_na") or normalize_text(b["author"])

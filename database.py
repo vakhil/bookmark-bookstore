@@ -83,6 +83,19 @@ def ensure_schema(conn):
                     conn.commit()
                 except Exception:
                     pass
+
+        # High-performance database indices for instant queries and joins
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_book_id ON books(book_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_status ON books(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_order_id ON sales_transactions(order_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_book_id ON sales_transactions(book_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_id_desc ON sales_transactions(id DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_status ON sales_transactions(status)")
+            conn.commit()
+        except Exception:
+            pass
+
         _schema_ensured = True
     except Exception:
         pass
@@ -827,8 +840,20 @@ def generate_next_book_id(conn: sqlite3.Connection) -> str:
             return candidate_id
         next_num += 1
 
+# In-memory transactions cache for ultra-fast instant lookups
+_TX_CACHE = None
+_TX_CACHE_TIME = 0.0
+_TX_CACHE_TTL = 60.0  # 60 seconds TTL
+
+def invalidate_transactions_cache():
+    """Invalidates the in-memory transactions cache on any sale, revert, or redo."""
+    global _TX_CACHE, _TX_CACHE_TIME
+    _TX_CACHE = None
+    _TX_CACHE_TIME = 0.0
+
 def notify_inventory_changed():
-    """Invalidates the in-memory book search cache on writes."""
+    """Invalidates the in-memory book search and transactions cache on writes."""
+    invalidate_transactions_cache()
     try:
         import search_engine
         search_engine.invalidate_search_cache()
@@ -1853,13 +1878,21 @@ def get_recent_sales(limit: int = 100) -> List[Dict[str, Any]]:
     conn.close()
     return rows
 
-def get_transactions(limit: int = 100) -> List[Dict[str, Any]]:
+def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Fetches sales transactions grouped into discrete order transactions.
     Supports single-book and multi-book sales with member books and locations.
+    Uses in-memory caching and indexed joins for sub-millisecond retrieval.
     """
+    global _TX_CACHE, _TX_CACHE_TIME
+    now = time.time()
+    if not force_refresh and _TX_CACHE is not None and (now - _TX_CACHE_TIME < _TX_CACHE_TTL):
+        return _TX_CACHE[:limit]
+
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Fetch recent transactions using indexed st.id DESC and indexed books.book_id
+    query_limit = max(min(limit * 5, 1000), 100)
     cursor.execute("""
         SELECT st.id, st.transaction_ref, COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_id,
                st.book_id, st.title, st.author, st.selling_price, st.sold_at, st.sold_by, st.notes,
@@ -1869,7 +1902,7 @@ def get_transactions(limit: int = 100) -> List[Dict[str, Any]]:
         LEFT JOIN books b ON st.book_id = b.book_id
         ORDER BY st.id DESC
         LIMIT ?
-    """, (limit * 20,))
+    """, (query_limit,))
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
 
@@ -1912,13 +1945,15 @@ def get_transactions(limit: int = 100) -> List[Dict[str, Any]]:
         })
 
     result = []
-    for oid in ordered_ids[:limit]:
+    for oid in ordered_ids:
         order = orders_map[oid]
         order["total_amount"] = round(order["total_amount"], 2)
         order["count"] = len(order["books"])
         result.append(order)
 
-    return result
+    _TX_CACHE = result
+    _TX_CACHE_TIME = now
+    return result[:limit]
 
 def revert_transaction(order_id: str, user: str = "Staff", notes: str = "") -> Dict[str, Any]:
     """

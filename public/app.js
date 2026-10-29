@@ -5577,7 +5577,11 @@ async function loadTransactionsTab(forceRefresh = false) {
   const container = document.getElementById('transactionsListContainer');
   if (!container) return;
 
-  if (forceRefresh || transactionsCache.length === 0) {
+  // Stale-while-revalidate: Render cached transactions immediately with 0ms delay
+  if (transactionsCache.length > 0) {
+    renderTransactionsList();
+    if (!forceRefresh) return;
+  } else {
     container.innerHTML = '<div class="photo-meta">⏳ Loading transaction history...</div>';
   }
 
@@ -5587,7 +5591,9 @@ async function loadTransactionsTab(forceRefresh = false) {
     transactionsCache = data.transactions || [];
     renderTransactionsList();
   } catch (err) {
-    container.innerHTML = `<div class="alert alert-danger">Error loading transactions: ${escapeHtml(err.message)}</div>`;
+    if (transactionsCache.length === 0) {
+      container.innerHTML = `<div class="alert alert-danger">Error loading transactions: ${escapeHtml(err.message)}</div>`;
+    }
   }
 }
 
