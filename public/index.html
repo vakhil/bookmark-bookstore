@@ -18,37 +18,43 @@
   <!-- Clean, Minimal Header -->
   <header class="simple-header">
     <div class="brand">📚 Bookstore</div>
-    <div class="export-dropdown-wrap">
-      <button id="btnExportMenu" class="btn btn-export" type="button" aria-haspopup="true" aria-expanded="false" title="Export live database as spreadsheet">
-        <span>📥 Export Spreadsheet</span> <span class="caret">▾</span>
+    <div class="header-right-actions" style="display: flex; align-items: center; gap: 0.65rem;">
+      <button class="tab-btn header-shelf-btn" data-tab="tabUnassigned" id="topHeaderShelfBtn" title="View shelf unassigned inventory">
+        <span class="tab-icon">📍</span>
+        <span class="tab-label">Shelf (<span id="topUnassignedBadge">0</span>)</span>
       </button>
-      <div id="exportDropdownMenu" class="export-dropdown-menu" style="display: none;">
-        <a href="/api/export/xlsx" download class="export-menu-item">
-          <span class="export-icon">📊</span>
-          <div class="export-text">
-            <strong>Full Excel Workbook (.xlsx)</strong>
-            <small>Multi-sheet: Inventory, Sales &amp; Summary</small>
-          </div>
-        </a>
-        <a href="/api/export/inventory.csv" download class="export-menu-item">
-          <span class="export-icon">📑</span>
-          <div class="export-text">
-            <strong>Inventory Spreadsheet (.csv)</strong>
-            <small>All physical copies with locations &amp; prices</small>
-          </div>
-        </a>
-        <a href="/api/export/sales.csv" download class="export-menu-item">
-          <span class="export-icon">💰</span>
-          <div class="export-text">
-            <strong>Sales Ledger (.csv)</strong>
-            <small>All sold transactions &amp; revenue</small>
-          </div>
-        </a>
+      <div class="export-dropdown-wrap">
+        <button id="btnExportMenu" class="btn btn-export" type="button" aria-haspopup="true" aria-expanded="false" title="Export live database as spreadsheet">
+          <span>📥 Export Spreadsheet</span> <span class="caret">▾</span>
+        </button>
+        <div id="exportDropdownMenu" class="export-dropdown-menu" style="display: none;">
+          <a href="/api/export/xlsx" download class="export-menu-item">
+            <span class="export-icon">📊</span>
+            <div class="export-text">
+              <strong>Full Excel Workbook (.xlsx)</strong>
+              <small>Multi-sheet: Inventory, Sales &amp; Summary</small>
+            </div>
+          </a>
+          <a href="/api/export/inventory.csv" download class="export-menu-item">
+            <span class="export-icon">📑</span>
+            <div class="export-text">
+              <strong>Inventory Spreadsheet (.csv)</strong>
+              <small>All physical copies with locations &amp; prices</small>
+            </div>
+          </a>
+          <a href="/api/export/sales.csv" download class="export-menu-item">
+            <span class="export-icon">💰</span>
+            <div class="export-text">
+              <strong>Sales Ledger (.csv)</strong>
+              <small>All sold transactions &amp; revenue</small>
+            </div>
+          </a>
+        </div>
       </div>
     </div>
   </header>
 
-  <!-- Navigation Tabs (Search, Cart, Genre, Book Advisor, Add Book, Shelf Unassigned) -->
+  <!-- Navigation Tabs (Search, Cart, Transactions, Genre, Book Advisor, Add Book) -->
   <nav class="main-tabs simple-nav">
     <button class="tab-btn active" data-tab="tabSearch">
       <span class="tab-icon">🔍</span>
@@ -57,6 +63,10 @@
     <button class="tab-btn" data-tab="tabCart" id="tabBtnCart">
       <span class="tab-icon">🛒</span>
       <span class="tab-label">Cart (<span id="tabCartBadge">0</span>)</span>
+    </button>
+    <button class="tab-btn" data-tab="tabTransactions" id="tabBtnTransactions">
+      <span class="tab-icon">🧾</span>
+      <span class="tab-label">Transactions (<span id="tabTransactionsBadge">0</span>)</span>
     </button>
     <button class="tab-btn" data-tab="tabGenre">
       <span class="tab-icon">🏷️</span>
@@ -69,10 +79,6 @@
     <button class="tab-btn" data-tab="tabAdd">
       <span class="tab-icon">➕</span>
       <span class="tab-label">Add</span>
-    </button>
-    <button class="tab-btn tab-btn-quiet" data-tab="tabUnassigned">
-      <span class="tab-icon">📍</span>
-      <span class="tab-label">Shelf (<span id="tabUnassignedBadge">0</span>)</span>
     </button>
   </nav>
 
@@ -236,6 +242,42 @@
             </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: TRANSACTIONS (PURCHASE HISTORY & REVERT/REDO) ==================== -->
+    <section id="tabTransactions" class="tab-pane">
+      <div class="clean-card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+          <div>
+            <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+              <span>🧾</span> Order Transactions
+            </h2>
+            <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
+              All previous sales transactions (single book or multi-book bulk orders). Revert any transaction to return books to their shelf locations or redo sales.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" class="btn btn-sm btn-outline" id="btnRefreshTransactions" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+              <span>🔄</span> Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div style="display: flex; gap: 0.6rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
+          <input type="text" id="transactionsSearchInput" class="form-control" placeholder="Search by Order ID, Book Title, Author, or Notes..." style="flex: 1; min-width: 240px; font-size: 0.88rem; padding: 0.55rem 0.85rem;">
+          <div style="display: flex; gap: 0.35rem;">
+            <button class="btn btn-sm btn-outline tx-filter-btn active" data-filter="all">All</button>
+            <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="completed">Completed</button>
+            <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="reverted">Reverted</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions List Container -->
+      <div id="transactionsListContainer" style="display: flex; flex-direction: column; gap: 1rem;">
+        <!-- Dynamic transaction cards rendered here -->
       </div>
     </section>
 

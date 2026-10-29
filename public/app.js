@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
   safeInit('initStats', initStats);
   safeInit('initSearch', initSearch);
   safeInit('initCart', initCart);
+  safeInit('initTransactions', initTransactions);
   safeInit('initGenreTab', initGenreTab);
   safeInit('initAdvisorTab', initAdvisorTab);
   safeInit('initSingleAdd', initSingleAdd);
@@ -46,29 +47,11 @@ document.addEventListener('DOMContentLoaded', () => {
    ========================================================================= */
 
 function initTabs() {
-  const tabButtons = document.querySelectorAll('.main-tabs .tab-btn');
-  tabButtons.forEach(btn => {
+  const allTabButtons = document.querySelectorAll('.tab-btn[data-tab]');
+  allTabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      tabButtons.forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-
-      btn.classList.add('active');
       const tabId = btn.getAttribute('data-tab');
-      document.getElementById(tabId).classList.add('active');
-      currentTab = tabId;
-
-      if (tabId === 'tabCart') renderCartTab();
-      if (tabId === 'tabGenre') loadGenreTab();
-      if (tabId === 'tabAdvisor') {
-        const inp = document.getElementById('advisorQuestionInput');
-        if (inp) inp.focus();
-      }
-      if (tabId === 'tabUnassigned') fetchUnassigned();
-      if (tabId === 'tabHistory') fetchSalesAndAudit();
-      if (tabId === 'tabSearch') {
-        const sinp = document.getElementById('searchInput');
-        if (sinp) sinp.focus();
-      }
+      switchMainTab(tabId);
     });
   });
 
@@ -76,9 +59,38 @@ function initTabs() {
   const cardUnassigned = document.getElementById('cardUnassigned');
   if (cardUnassigned) {
     cardUnassigned.addEventListener('click', () => {
-      const tab = document.querySelector('.tab-btn[data-tab="tabUnassigned"]');
-      if (tab) tab.click();
+      switchMainTab('tabUnassigned');
     });
+  }
+}
+
+function switchMainTab(tabId) {
+  const allTabButtons = document.querySelectorAll('.tab-btn[data-tab]');
+  allTabButtons.forEach(b => {
+    if (b.getAttribute('data-tab') === tabId) {
+      b.classList.add('active');
+    } else {
+      b.classList.remove('active');
+    }
+  });
+
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById(tabId);
+  if (target) target.classList.add('active');
+  currentTab = tabId;
+
+  if (tabId === 'tabCart') renderCartTab();
+  if (tabId === 'tabTransactions') loadTransactionsTab();
+  if (tabId === 'tabGenre') loadGenreTab();
+  if (tabId === 'tabAdvisor') {
+    const inp = document.getElementById('advisorQuestionInput');
+    if (inp) inp.focus();
+  }
+  if (tabId === 'tabUnassigned') fetchUnassigned();
+  if (tabId === 'tabHistory') fetchSalesAndAudit();
+  if (tabId === 'tabSearch') {
+    const sinp = document.getElementById('searchInput');
+    if (sinp) sinp.focus();
   }
 }
 
@@ -99,6 +111,8 @@ async function fetchStats() {
       safeSet('statSold', data.stats.sold_copies.toLocaleString());
       safeSet('statUnassigned', data.stats.unassigned_count.toLocaleString());
       safeSet('tabUnassignedBadge', data.stats.unassigned_count);
+      safeSet('topUnassignedBadge', data.stats.unassigned_count);
+      safeSet('tabTransactionsBadge', data.stats.total_transactions_count || data.stats.total_sales_count || 0);
       safeSet('unassignedCountLabel', data.stats.unassigned_count);
       safeSet('statSalesCount', data.stats.total_sales_count);
       safeSet('statRevenue', `₹${data.stats.total_revenue.toFixed(2)}`);
@@ -5518,6 +5532,277 @@ function initCart() {
       }
     });
   }
+}
+
+/* =========================================================================
+   TRANSACTIONS TAB CONTROLLER (Orders History, Revert & Redo)
+   ========================================================================= */
+
+let transactionsCache = [];
+let transactionsActiveFilter = 'all';
+
+function initTransactions() {
+  const btnRefresh = document.getElementById('btnRefreshTransactions');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => {
+      loadTransactionsTab(true);
+    });
+  }
+
+  const searchInput = document.getElementById('transactionsSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      renderTransactionsList();
+    });
+  }
+
+  document.querySelectorAll('.tx-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tx-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      transactionsActiveFilter = btn.getAttribute('data-filter') || 'all';
+      renderTransactionsList();
+    });
+  });
+}
+
+async function loadTransactionsTab(forceRefresh = false) {
+  const container = document.getElementById('transactionsListContainer');
+  if (!container) return;
+
+  if (forceRefresh || transactionsCache.length === 0) {
+    container.innerHTML = '<div class="photo-meta">⏳ Loading transaction history...</div>';
+  }
+
+  try {
+    const res = await fetch('/api/transactions?limit=100');
+    const data = await res.json();
+    transactionsCache = data.transactions || [];
+    renderTransactionsList();
+  } catch (err) {
+    container.innerHTML = `<div class="alert alert-danger">Error loading transactions: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderTransactionsList() {
+  const container = document.getElementById('transactionsListContainer');
+  if (!container) return;
+
+  const searchInput = document.getElementById('transactionsSearchInput');
+  const q = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+  let list = transactionsCache;
+
+  // Filter by status
+  if (transactionsActiveFilter === 'completed') {
+    list = list.filter(t => t.status !== 'REVERTED');
+  } else if (transactionsActiveFilter === 'reverted') {
+    list = list.filter(t => t.status === 'REVERTED');
+  }
+
+  // Filter by search query
+  if (q) {
+    list = list.filter(t => {
+      const matchOid = (t.order_id || '').toLowerCase().includes(q);
+      const matchNotes = (t.notes || '').toLowerCase().includes(q);
+      const matchBooks = (t.books || []).some(b => 
+        (b.title || '').toLowerCase().includes(q) ||
+        (b.author || '').toLowerCase().includes(q) ||
+        (b.location_english || '').toLowerCase().includes(q)
+      );
+      return matchOid || matchNotes || matchBooks;
+    });
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="empty-prompt">
+        <div class="prompt-icon">🧾</div>
+        <h3>No Transactions Found</h3>
+        <p>No transactions match your search or filter criteria.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map(order => {
+    const isReverted = order.status === 'REVERTED';
+    const statusBadge = isReverted
+      ? '<span style="background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; font-size:0.75rem; font-weight:800; padding:0.2rem 0.6rem; border-radius:9999px;">↩️ REVERTED</span>'
+      : '<span style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-size:0.75rem; font-weight:800; padding:0.2rem 0.6rem; border-radius:9999px;">✓ COMPLETED</span>';
+
+    const booksHtml = (order.books || []).map(b => {
+      const isBookSold = (b.current_book_status || '').toUpperCase() === 'SOLD OUT';
+      const bookStatusPill = isBookSold
+        ? '<span style="color:#dc2626; font-size:0.76rem; font-weight:700;">❌ Sold Out</span>'
+        : '<span style="color:#059669; font-size:0.76rem; font-weight:700;">✅ Ready on Shelf</span>';
+
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:0.6rem 0.75rem; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; gap:0.5rem;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:0.92rem; color:#1e293b;">${escapeHtml(b.title)}</div>
+            <div style="font-size:0.78rem; color:#64748b; margin-bottom:0.25rem;">by <b>${escapeHtml(b.author || 'Author')}</b></div>
+            <div style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.78rem; font-weight:700; color:#0369a1; background:#f0f9ff; border:1px solid #bae6fd; padding:0.15rem 0.5rem; border-radius:6px;">
+              <span>📍</span> ${escapeHtml((b.location_english || 'Unassigned').replace(/->/g, '→'))}
+            </div>
+          </div>
+          <div style="text-align:right; flex-shrink:0;">
+            <div style="font-weight:800; font-size:0.95rem; color:#0f172a;">${b.selling_price !== null && b.selling_price !== undefined ? `₹${parseFloat(b.selling_price).toFixed(2)}` : '₹0.00'}</div>
+            <div style="margin-top:0.2rem;">${bookStatusPill}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="transaction-card" data-order-id="${escapeHtml(order.order_id)}">
+        <!-- Transaction Header -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.75rem;">
+          <div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <h3 style="margin:0; font-size:1.05rem; font-weight:800; color:#0f172a;">${escapeHtml(order.order_id)}</h3>
+              ${statusBadge}
+            </div>
+            <div style="font-size:0.78rem; color:#64748b; margin-top:0.25rem;">
+              📅 ${new Date(order.sold_at).toLocaleString()} &bull; Sold by: <b>${escapeHtml(order.sold_by || 'Staff')}</b>
+              ${order.notes ? ` &bull; <i>${escapeHtml(order.notes)}</i>` : ''}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:1.25rem; font-weight:800; color:#059669;">₹${parseFloat(order.total_amount).toFixed(2)}</div>
+            <div style="font-size:0.78rem; color:#64748b; font-weight:600;">${order.count} ${order.count === 1 ? 'book' : 'books'} in transaction</div>
+          </div>
+        </div>
+
+        <!-- Member Books List -->
+        <div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.85rem; background:#f8fafc; padding:0.65rem; border-radius:10px; border:1px solid #f1f5f9;">
+          ${booksHtml}
+        </div>
+
+        <!-- Actions Row -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+          <div style="display:flex; gap:0.5rem;">
+            ${!isReverted ? `
+              <button type="button" class="btn btn-sm btn-revert-tx" data-oid="${escapeHtml(order.order_id)}" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:700; border-radius:8px; padding:0.45rem 0.85rem; cursor:pointer;" title="Return all books in this transaction back to their shelf location">
+                <span>↩️</span> Revert Transaction (Return to Shelf)
+              </button>
+            ` : `
+              <button type="button" class="btn btn-sm btn-redo-tx" data-oid="${escapeHtml(order.order_id)}" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-weight:700; border-radius:8px; padding:0.45rem 0.85rem; cursor:pointer;" title="Re-apply sale and mark all books as SOLD OUT">
+                <span>🔁</span> Redo Sale (Mark Sold Out)
+              </button>
+            `}
+          </div>
+
+          <button type="button" class="btn btn-sm btn-cancel-totally-tx" data-oid="${escapeHtml(order.order_id)}" style="background:#fff; color:#64748b; border:1px solid #cbd5e1; font-size:0.78rem; font-weight:600; padding:0.4rem 0.7rem; border-radius:8px; cursor:pointer;" title="Cancel this purchase totally and remove from records">
+            <span>🗑️</span> Cancel Purchase Totally
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Wire action buttons
+  container.querySelectorAll('.btn-revert-tx').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const oid = btn.getAttribute('data-oid');
+      if (!confirm(`Are you sure you want to revert transaction ${oid}?\n\nAll books in this transaction will be returned to their previous shelf locations and marked as Available.`)) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Reverting...';
+
+      try {
+        const res = await fetch('/api/transactions/revert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: oid, user: 'Staff' })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          clearSearchCache();
+          fetchStats();
+          loadTransactionsTab(true);
+          alert(`✅ Transaction ${oid} reverted!\n\nAll ${data.count} books have been returned to their shelf locations.`);
+        } else {
+          alert('Could not revert transaction: ' + (data.error || 'Server error'));
+          btn.disabled = false;
+          btn.innerHTML = '<span>↩️</span> Revert Transaction (Return to Shelf)';
+        }
+      } catch (err) {
+        alert('Network error while reverting transaction: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<span>↩️</span> Revert Transaction (Return to Shelf)';
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-redo-tx').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const oid = btn.getAttribute('data-oid');
+      if (!confirm(`Are you sure you want to redo sale for transaction ${oid}?\n\nAll books in this transaction will be re-marked as SOLD OUT.`)) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Processing Redo...';
+
+      try {
+        const res = await fetch('/api/transactions/redo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: oid, user: 'Staff' })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          clearSearchCache();
+          fetchStats();
+          loadTransactionsTab(true);
+          alert(`✅ Transaction ${oid} redone!\n\nAll ${data.count} books are marked SOLD OUT again.`);
+        } else {
+          alert('Could not redo transaction: ' + (data.error || 'Server error'));
+          btn.disabled = false;
+          btn.innerHTML = '<span>🔁</span> Redo Sale (Mark Sold Out)';
+        }
+      } catch (err) {
+        alert('Network error while redoing transaction: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<span>🔁</span> Redo Sale (Mark Sold Out)';
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-cancel-totally-tx').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const oid = btn.getAttribute('data-oid');
+      if (!confirm(`Are you sure you want to totally cancel purchase ${oid}?\n\nThis will completely delete this transaction from the records and return any sold books back to the shelf.`)) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Cancelling...';
+
+      try {
+        const res = await fetch('/api/transactions/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: oid, user: 'Staff' })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          clearSearchCache();
+          fetchStats();
+          loadTransactionsTab(true);
+          alert(`✅ Purchase ${oid} totally cancelled and removed from records.`);
+        } else {
+          alert('Could not cancel transaction: ' + (data.error || 'Server error'));
+          btn.disabled = false;
+          btn.innerHTML = '<span>🗑️</span> Cancel Purchase Totally';
+        }
+      } catch (err) {
+        alert('Network error while cancelling transaction: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<span>🗑️</span> Cancel Purchase Totally';
+      }
+    });
+  });
 }
 
 // Utility

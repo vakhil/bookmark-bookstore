@@ -118,6 +118,11 @@ def app(environ, start_response):
             sales = database.get_recent_sales(limit=limit)
             return json_response(start_response, {"sales": sales})
 
+        elif path in ("/api/transactions", "/api/transactions/list"):
+            limit = int(query_params.get("limit", [100])[0])
+            txs = database.get_transactions(limit=limit)
+            return json_response(start_response, {"transactions": txs})
+
         elif path == "/api/audit":
             bid = query_params.get("book_id", [None])[0]
             limit = int(query_params.get("limit", [100])[0])
@@ -311,6 +316,44 @@ def app(environ, start_response):
                 position=position,
                 refund_amount=refund_amount
             )
+            return json_response(start_response, res)
+
+        elif path in ("/api/transactions/revert", "/api/transactions/return"):
+            order_id = body.get("order_id", "")
+            if not order_id:
+                return json_response(start_response, {"error": "Order ID is required."}, 400)
+            res = database.revert_transaction(
+                order_id=order_id,
+                user=body.get("user", "Staff"),
+                notes=body.get("notes", "")
+            )
+            if "error" in res:
+                return json_response(start_response, res, 400)
+            return json_response(start_response, res)
+
+        elif path in ("/api/transactions/redo", "/api/transactions/resell"):
+            order_id = body.get("order_id", "")
+            if not order_id:
+                return json_response(start_response, {"error": "Order ID is required."}, 400)
+            res = database.redo_transaction(
+                order_id=order_id,
+                user=body.get("user", "Staff"),
+                notes=body.get("notes", "")
+            )
+            if "error" in res:
+                return json_response(start_response, res, 400)
+            return json_response(start_response, res)
+
+        elif path in ("/api/transactions/cancel", "/api/transactions/delete"):
+            order_id = body.get("order_id", "")
+            if not order_id:
+                return json_response(start_response, {"error": "Order ID is required."}, 400)
+            res = database.delete_transaction(
+                order_id=order_id,
+                user=body.get("user", "Staff")
+            )
+            if "error" in res:
+                return json_response(start_response, res, 400)
             return json_response(start_response, res)
 
         elif path == "/api/books/update-payment":

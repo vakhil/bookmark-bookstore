@@ -270,6 +270,7 @@ def init_db(force_reseed: bool = False):
             CREATE TABLE IF NOT EXISTS sales_transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 transaction_ref TEXT UNIQUE NOT NULL,
+                order_id TEXT,
                 book_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 author TEXT NOT NULL,
@@ -277,6 +278,7 @@ def init_db(force_reseed: bool = False):
                 sold_at TEXT NOT NULL,
                 sold_by TEXT DEFAULT 'Staff',
                 notes TEXT DEFAULT '',
+                status TEXT DEFAULT 'COMPLETED',
                 synced_to_sheets INTEGER DEFAULT 0
             )
         """)
@@ -322,6 +324,24 @@ def init_db(force_reseed: bool = False):
             conn.commit()
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_simple_genre ON books(simple_genre)")
+
+        # Ensure order_id and status columns exist in sales_transactions
+        cursor.execute("PRAGMA table_info(sales_transactions)")
+        st_cols = [c["name"] for c in cursor.fetchall()]
+        if "order_id" not in st_cols:
+            try:
+                cursor.execute("ALTER TABLE sales_transactions ADD COLUMN order_id TEXT")
+                cursor.execute("UPDATE sales_transactions SET order_id = transaction_ref WHERE order_id IS NULL OR order_id = ''")
+                conn.commit()
+            except Exception:
+                pass
+        if "status" not in st_cols:
+            try:
+                cursor.execute("ALTER TABLE sales_transactions ADD COLUMN status TEXT DEFAULT 'COMPLETED'")
+                conn.commit()
+            except Exception:
+                pass
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_order_id ON sales_transactions(order_id)")
 
         # Backfill simple_genre for existing rows if empty
         cursor.execute("SELECT id, title, genre FROM books WHERE simple_genre IS NULL OR simple_genre = ''")
@@ -1116,11 +1136,11 @@ def sell_book(
         # Step 4: Record sale transaction
         cursor.execute("""
             INSERT INTO sales_transactions (
-                transaction_ref, book_id, title, author,
-                selling_price, sold_at, sold_by, notes, synced_to_sheets
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                transaction_ref, order_id, book_id, title, author,
+                selling_price, sold_at, sold_by, notes, status, synced_to_sheets
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
         """, (
-            tx_ref, book_id, book["title"], book["author"],
+            tx_ref, tx_ref, book_id, book["title"], book["author"],
             selling_price, now_iso, user, notes
         ))
 
@@ -1210,6 +1230,10 @@ def sell_books_bulk(
         cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
         daily_count = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions WHERE transaction_ref LIKE ? OR order_id LIKE ?", (f"TX-{today_code}-%", f"ORD-{today_code}-%"))
+        daily_order_count = cursor.fetchone()[0]
+        order_id = f"ORD-{today_code}-{daily_order_count+1:04d}"
+
         successful_sales = []
         errors = []
         total_amount = 0.0
@@ -1252,11 +1276,11 @@ def sell_books_bulk(
 
             cursor.execute("""
                 INSERT INTO sales_transactions (
-                    transaction_ref, book_id, title, author,
-                    selling_price, sold_at, sold_by, notes, synced_to_sheets
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    transaction_ref, order_id, book_id, title, author,
+                    selling_price, sold_at, sold_by, notes, status, synced_to_sheets
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
             """, (
-                tx_ref, bid, book["title"], book["author"],
+                tx_ref, order_id, bid, book["title"], book["author"],
                 price_val, now_iso, user, notes
             ))
 
@@ -1322,6 +1346,7 @@ def sell_books_bulk(
 
         return {
             "success": True,
+            "order_id": order_id,
             "count": len(successful_sales),
             "total_amount": round(total_amount, 2),
             "sold_books": successful_sales,
@@ -1758,6 +1783,290 @@ def get_recent_sales(limit: int = 100) -> List[Dict[str, Any]]:
     conn.close()
     return rows
 
+def get_transactions(limit: int = 100) -> List[Dict[str, Any]]:
+    """
+    Fetches sales transactions grouped into discrete order transactions.
+    Supports single-book and multi-book sales with member books and locations.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT st.id, st.transaction_ref, COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_id,
+               st.book_id, st.title, st.author, st.selling_price, st.sold_at, st.sold_by, st.notes,
+               COALESCE(st.status, 'COMPLETED') AS status,
+               b.status AS current_book_status, b.location_english, b.rack, b.column_num, b.position
+        FROM sales_transactions st
+        LEFT JOIN books b ON st.book_id = b.book_id
+        ORDER BY st.id DESC
+        LIMIT ?
+    """, (limit * 20,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    orders_map = {}
+    ordered_ids = []
+
+    for r in rows:
+        oid = r["order_id"]
+        if oid not in orders_map:
+            ordered_ids.append(oid)
+            orders_map[oid] = {
+                "order_id": oid,
+                "sold_at": r["sold_at"],
+                "sold_by": r["sold_by"] or "Staff",
+                "notes": r["notes"] or "",
+                "status": r["status"] or "COMPLETED",
+                "total_amount": 0.0,
+                "books": []
+            }
+
+        if r["status"] == "COMPLETED":
+            orders_map[oid]["status"] = "COMPLETED"
+
+        price = r["selling_price"]
+        if price is not None:
+            orders_map[oid]["total_amount"] += float(price)
+
+        loc = r["location_english"]
+        if not loc and (r["rack"] or r["column_num"]):
+            loc = format_location_english(r["rack"], r["column_num"], r["position"])
+
+        orders_map[oid]["books"].append({
+            "book_id": r["book_id"],
+            "title": r["title"],
+            "author": r["author"],
+            "selling_price": price,
+            "status": r["status"],
+            "current_book_status": r["current_book_status"] or ("SOLD OUT" if r["status"] == "COMPLETED" else "Available"),
+            "location_english": loc or "Location Unassigned"
+        })
+
+    result = []
+    for oid in ordered_ids[:limit]:
+        order = orders_map[oid]
+        order["total_amount"] = round(order["total_amount"], 2)
+        order["count"] = len(order["books"])
+        result.append(order)
+
+    return result
+
+def revert_transaction(order_id: str, user: str = "Staff", notes: str = "") -> Dict[str, Any]:
+    """
+    Reverts an entire transaction / purchase order.
+    Returns all member books back to their previous shelf positions as 'Available',
+    marks the transaction status as 'REVERTED', and syncs changes.
+    """
+    if not order_id:
+        return {"error": "Order ID is required."}
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+
+        cursor.execute("""
+            SELECT * FROM sales_transactions
+            WHERE order_id = ? OR transaction_ref = ?
+        """, (order_id, order_id))
+        st_rows = [dict(r) for r in cursor.fetchall()]
+
+        if not st_rows:
+            conn.close()
+            return {"error": f"Transaction '{order_id}' not found."}
+
+        reverted_books = []
+        for row in st_rows:
+            bid = row["book_id"]
+            cursor.execute("SELECT * FROM books WHERE book_id = ?", (bid,))
+            b = cursor.fetchone()
+            if not b:
+                continue
+
+            r_val = b["rack"]
+            c_val = b["column_num"]
+            p_val = b["position"]
+            loc_eng = b["location_english"]
+            if r_val is not None and not loc_eng:
+                loc_eng = format_location_english(r_val, c_val, p_val)
+
+            cursor.execute("""
+                UPDATE books SET
+                    status = 'Available',
+                    selling_price = NULL,
+                    updated_at = ?
+                WHERE book_id = ?
+            """, (now_iso, bid))
+
+            sync_csv_update_status(bid, "")
+
+            cursor.execute("""
+                INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "REVERT_TRANSACTION", bid,
+                json.dumps({"status": b["status"], "selling_price": b["selling_price"]}),
+                json.dumps({"status": "Available", "selling_price": None, "order_id": order_id}),
+                now_iso, user, f"Reverted transaction {order_id} & restored to shelf ({loc_eng or 'Unassigned'}). {notes}".strip()
+            ))
+
+            reverted_books.append({
+                "book_id": bid,
+                "title": b["title"],
+                "author": b["author"],
+                "location_english": loc_eng
+            })
+
+        cursor.execute("""
+            UPDATE sales_transactions
+            SET status = 'REVERTED'
+            WHERE order_id = ? OR transaction_ref = ?
+        """, (order_id, order_id))
+
+        conn.commit()
+        conn.close()
+        notify_inventory_changed()
+
+        return {
+            "success": True,
+            "order_id": order_id,
+            "status": "REVERTED",
+            "count": len(reverted_books),
+            "books": reverted_books,
+            "message": f"Successfully reverted transaction {order_id} and restored {len(reverted_books)} books to their shelf locations."
+        }
+
+def redo_transaction(order_id: str, user: str = "Staff", notes: str = "") -> Dict[str, Any]:
+    """
+    Redoes / re-applies a previously reverted transaction.
+    Marks all member books as 'SOLD OUT', restores their selling prices,
+    and updates transaction status back to 'COMPLETED'.
+    """
+    if not order_id:
+        return {"error": "Order ID is required."}
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+
+        cursor.execute("""
+            SELECT * FROM sales_transactions
+            WHERE order_id = ? OR transaction_ref = ?
+        """, (order_id, order_id))
+        st_rows = [dict(r) for r in cursor.fetchall()]
+
+        if not st_rows:
+            conn.close()
+            return {"error": f"Transaction '{order_id}' not found."}
+
+        sold_books = []
+        for row in st_rows:
+            bid = row["book_id"]
+            price_val = row["selling_price"]
+            cursor.execute("SELECT * FROM books WHERE book_id = ?", (bid,))
+            b = cursor.fetchone()
+            if not b:
+                continue
+
+            cursor.execute("""
+                UPDATE books SET
+                    status = 'SOLD OUT',
+                    selling_price = ?,
+                    updated_at = ?
+                WHERE book_id = ?
+            """, (price_val, now_iso, bid))
+
+            sync_csv_update_status(bid, "SOLD OUT")
+
+            cursor.execute("""
+                INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "REDO_TRANSACTION", bid,
+                json.dumps({"status": b["status"], "selling_price": b["selling_price"]}),
+                json.dumps({"status": "SOLD OUT", "selling_price": price_val, "order_id": order_id}),
+                now_iso, user, f"Redid transaction {order_id} & marked SOLD OUT. {notes}".strip()
+            ))
+
+            sold_books.append({
+                "book_id": bid,
+                "title": b["title"],
+                "author": b["author"],
+                "location_english": b["location_english"]
+            })
+
+        cursor.execute("""
+            UPDATE sales_transactions
+            SET status = 'COMPLETED'
+            WHERE order_id = ? OR transaction_ref = ?
+        """, (order_id, order_id))
+
+        conn.commit()
+        conn.close()
+        notify_inventory_changed()
+
+        return {
+            "success": True,
+            "order_id": order_id,
+            "status": "COMPLETED",
+            "count": len(sold_books),
+            "books": sold_books,
+            "message": f"Successfully redid transaction {order_id} and marked {len(sold_books)} books as SOLD OUT."
+        }
+
+def delete_transaction(order_id: str, user: str = "Staff") -> Dict[str, Any]:
+    """
+    Totally cancels/removes a purchase transaction from the records.
+    If books are currently marked 'SOLD OUT', restores them to 'Available'.
+    Permanently deletes records from sales_transactions.
+    """
+    if not order_id:
+        return {"error": "Order ID is required."}
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+
+        cursor.execute("""
+            SELECT * FROM sales_transactions
+            WHERE order_id = ? OR transaction_ref = ?
+        """, (order_id, order_id))
+        st_rows = [dict(r) for r in cursor.fetchall()]
+
+        if not st_rows:
+            conn.close()
+            return {"error": f"Transaction '{order_id}' not found."}
+
+        for row in st_rows:
+            bid = row["book_id"]
+            cursor.execute("SELECT * FROM books WHERE book_id = ?", (bid,))
+            b = cursor.fetchone()
+            if b and b["status"] == "SOLD OUT":
+                cursor.execute("""
+                    UPDATE books SET
+                        status = 'Available',
+                        selling_price = NULL,
+                        updated_at = ?
+                    WHERE book_id = ?
+                """, (now_iso, bid))
+                sync_csv_update_status(bid, "")
+
+        cursor.execute("""
+            DELETE FROM sales_transactions
+            WHERE order_id = ? OR transaction_ref = ?
+        """, (order_id, order_id))
+
+        conn.commit()
+        conn.close()
+        notify_inventory_changed()
+
+        return {
+            "success": True,
+            "order_id": order_id,
+            "message": f"Transaction {order_id} totally removed and cancelled."
+        }
+
 def get_audit_history(book_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
     """Fetches audit history log."""
     conn = get_db_connection()
@@ -1800,7 +2109,10 @@ def get_inventory_stats() -> Dict[str, Any]:
     cursor.execute("SELECT COUNT(*) FROM sales_transactions")
     total_sales_count = cursor.fetchone()[0]
 
-    cursor.execute("SELECT SUM(selling_price) FROM sales_transactions WHERE selling_price IS NOT NULL")
+    cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions")
+    total_transactions_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT SUM(selling_price) FROM sales_transactions WHERE selling_price IS NOT NULL AND (status IS NULL OR status != 'REVERTED')")
     total_revenue = cursor.fetchone()[0] or 0.0
 
     conn.close()
@@ -1813,6 +2125,7 @@ def get_inventory_stats() -> Dict[str, Any]:
         "unassigned_count": unassigned_count,
         "rack_count": rack_count,
         "total_sales_count": total_sales_count,
+        "total_transactions_count": total_transactions_count,
         "total_revenue": round(total_revenue, 2)
     }
 
