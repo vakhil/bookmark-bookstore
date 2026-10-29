@@ -802,7 +802,7 @@ function createBookTile(book, copy, matchType) {
               ${formatLocationPill(state, locationText, sellingPrice, copy)}
             </div>
             <div class="book-meta-line">
-              <span class="state-chip state-${state.toLowerCase()}"><span class="chip-dot"></span> ${state === 'SOLD' ? 'SOLD OUT' : (state === 'ASSIGNED' ? 'IN STOCK' : 'UNASSIGNED')}</span>
+              ${state === 'SOLD' ? '<span class="state-chip state-sold"><span class="chip-dot"></span> SOLD OUT</span>' : (state === 'UNASSIGNED' ? '<span class="state-chip state-unassigned"><span class="chip-dot"></span> UNASSIGNED</span>' : '')}
               ${(state === 'SOLD' && sellingPrice !== '') ? `
                 <span class="chip sold-price-chip btn-edit-paid-chip" data-bid="${escapeHtml(bookId)}" style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-weight:700; border-radius:9999px; padding:0.26rem 0.75rem; font-size:0.78rem; cursor:pointer;" title="Click to correct payment received">
                   💳 Paid: ₹${escapeHtml(sellingPrice.toString())} <span style="font-size:0.72rem; opacity:0.8;">✏️</span>
@@ -810,7 +810,6 @@ function createBookTile(book, copy, matchType) {
               ` : ''}
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
               ${genre ? `<span class="chip simple-genre-chip">${escapeHtml(genre)}</span>` : ''}
-              <span class="chip book-id-chip">#${escapeHtml(bookId)}</span>
             </div>
           </div>
         </div>
@@ -839,10 +838,6 @@ function createBookTile(book, copy, matchType) {
       </div>
       <div class="book-card-expanded-area">
         <div class="expanded-meta-grid">
-          <div class="expanded-meta-item">
-            <span class="meta-label">Inventory ID</span>
-            <span class="meta-value copy-id-box">${escapeHtml(bookId)}</span>
-          </div>
           <div class="expanded-meta-item">
             <span class="meta-label">Language</span>
             <span class="meta-value">🌐 ${escapeHtml(language)}</span>
@@ -992,7 +987,7 @@ function createBookTile(book, copy, matchType) {
         <div class="book-card-header-left" style="width:100%;">
           <div class="book-edit-form-wrap" style="width:100%; display:flex; flex-direction:column; gap:0.5rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.15rem;">
-              <span class="copy-id-box" style="font-weight:700;">✏️ Editing: ${escapeHtml(bookId)}</span>
+              <span class="copy-id-box" style="font-weight:700;">✏️ Edit Book Details</span>
               ${state === 'SOLD' ? `
                 <span class="state-chip state-sold" style="padding:0.18rem 0.6rem; font-size:0.72rem;">SOLD COPY</span>
               ` : `
