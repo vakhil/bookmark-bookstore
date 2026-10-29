@@ -717,7 +717,7 @@ function formatLocationPreviewText(rack, col, pos) {
   return `Rack ${r} → Column ${c} → ${posText}`;
 }
 
-function formatLocationPill(state, locationText, sellingPrice) {
+function formatLocationPill(state, locationText, sellingPrice, copy = null) {
   if (state === 'SOLD') {
     const priceText = (sellingPrice !== null && sellingPrice !== undefined && sellingPrice !== '') 
       ? ` &bull; Paid: ₹${sellingPrice}` 
@@ -746,26 +746,32 @@ function formatLocationPill(state, locationText, sellingPrice) {
   }
 
   // Parse: Rack 35 → Column 2 → 3rd book from top
-  const parts = locationText.split(/→|->/g).map(p => p.trim()).filter(Boolean);
-  if (parts.length >= 2) {
+  const parts = locationText.split(/→|->|,/g).map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2 || (copy && copy.rack && copy.column_num)) {
     const rackStr = parts[0] || '';
     const colStr = parts[1] || '';
     const posStr = parts[2] || '';
 
-    const rackVal = rackStr.replace(/^Rack\s*/i, '');
-    const colVal = colStr.replace(/^Column\s*/i, '');
-    const posVal = posStr.replace(/\s*book\s*from\s*top$/i, ' from top');
+    let rackVal = (copy && copy.rack !== null && copy.rack !== undefined && copy.rack !== '')
+      ? copy.rack.toString().trim()
+      : rackStr.replace(/^Rack\s*#?\s*/i, '').trim();
+
+    let colVal = (copy && copy.column_num !== null && copy.column_num !== undefined && copy.column_num !== '')
+      ? copy.column_num.toString().trim()
+      : colStr.replace(/^(Column|Col)\.?\s*#?\s*/i, '').trim();
+
+    const posVal = posStr.replace(/\s*book\s*from\s*top$/i, ' from top').trim();
 
     return `
       <div class="wayfinder-hud" title="Physical shelf location">
         <div class="hud-marker">
           <span class="hud-label">RACK</span>
-          <span class="hud-val">Rack ${escapeHtml(rackVal || rackStr)}</span>
+          <span class="hud-val">${escapeHtml(rackVal || rackStr)}</span>
         </div>
         <div class="hud-divider">›</div>
         <div class="hud-marker">
           <span class="hud-label">COLUMN</span>
-          <span class="hud-val">Col ${escapeHtml(colVal || colStr)}</span>
+          <span class="hud-val">${escapeHtml(colVal || colStr)}</span>
         </div>
         ${posStr ? `
           <div class="hud-divider">›</div>
@@ -828,7 +834,7 @@ function createBookTile(book, copy, matchType) {
               <b>${cleanAuthor}</b>
             </div>
             <div class="book-location-hero">
-              ${formatLocationPill(state, locationText, sellingPrice)}
+              ${formatLocationPill(state, locationText, sellingPrice, copy)}
             </div>
             <div class="book-meta-line">
               <span class="state-chip state-${state.toLowerCase()}"><span class="chip-dot"></span> ${state === 'SOLD' ? 'SOLD OUT' : (state === 'ASSIGNED' ? 'IN STOCK' : 'UNASSIGNED')}</span>
