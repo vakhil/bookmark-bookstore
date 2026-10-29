@@ -99,7 +99,7 @@ async function fetchStats() {
       safeSet('tabUnassignedBadge', data.stats.unassigned_count);
       safeSet('unassignedCountLabel', data.stats.unassigned_count);
       safeSet('statSalesCount', data.stats.total_sales_count);
-      safeSet('statRevenue', `$${data.stats.total_revenue.toFixed(2)}`);
+      safeSet('statRevenue', `₹${data.stats.total_revenue.toFixed(2)}`);
     }
     if (data.sync) {
       safeSet('pendingSyncCount', data.sync.pending_count);
@@ -810,10 +810,7 @@ function createBookTile(book, copy, matchType) {
         </div>
         <div class="book-card-actions">
           ${state === 'SOLD' ? `
-            <button class="btn btn-sm btn-return-copy" data-bid="${escapeHtml(bookId)}" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; box-shadow:0 2px 8px rgba(225,29,72,0.3); transition:all 0.15s ease;" title="Cancel sale & return this book to shelf (previous or new position)">
-              <span>↩️</span> Return Book
-            </button>
-            <button class="btn btn-sm btn-edit-payment-copy" data-bid="${escapeHtml(bookId)}" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="Change payment received for this sale (e.g. correct ₹200 to ₹300) without returning">
+            <button class="btn btn-sm btn-edit-payment-copy" data-bid="${escapeHtml(bookId)}" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="Change payment received for this sale (e.g. correct ₹200 to ₹300)">
               <span>💳</span> Edit Payment
             </button>
           ` : `
@@ -821,7 +818,7 @@ function createBookTile(book, copy, matchType) {
               ⚡ Sell
             </button>
           `}
-          <button class="btn btn-sm btn-edit-tile" title="Edit book details & payment / repay">
+          <button class="btn btn-sm btn-edit-tile" title="Edit book details">
             ✏️ Edit
           </button>
           <div class="delete-trigger-container">
@@ -859,15 +856,6 @@ function createBookTile(book, copy, matchType) {
       btnEdit.addEventListener('click', (e) => {
         e.stopPropagation();
         renderEdit();
-      });
-    }
-
-    // Hook up Return Book button (visible on SOLD books)
-    const btnReturn = card.querySelector('.btn-return-copy');
-    if (btnReturn) {
-      btnReturn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openCancelSaleReturnModal(copy, book, renderView);
       });
     }
 
@@ -1049,18 +1037,15 @@ function createBookTile(book, copy, matchType) {
                 </div>
 
                 ${state === 'SOLD' ? `
-                  <button type="button" class="btn btn-sm btn-save-payment-only" style="background:#2563eb; color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 0.95rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(37,99,235,0.3); transition:all 0.15s ease;" title="Update recorded payment without returning book to shelf">
+                  <button type="button" class="btn btn-sm btn-save-payment-only" style="background:#2563eb; color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 0.95rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(37,99,235,0.3); transition:all 0.15s ease;" title="Update recorded payment">
                     <span>💾</span> Update Payment
-                  </button>
-                  <button type="button" class="btn btn-sm btn-repay-copy" style="background:linear-gradient(135deg, #e11d48 0%, #be123c 100%); color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 1.05rem; display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(225, 29, 72, 0.35); transition:all 0.15s ease;" title="Repay/Refund this amount to customer and return book back to Available inventory on shelf">
-                    <span>💸</span> Repay &amp; Return to Shelf
                   </button>
                 ` : ''}
               </div>
 
               ${state === 'SOLD' ? `
                 <div style="font-size:0.72rem; color:#9f1239; margin-top:0.45rem; line-height:1.35;">
-                  💡 <b>Correct Payment Received</b>: Enter the actual amount paid above (e.g. 300) and click <b>Update Payment</b>. <b>Repay &amp; Return</b> refunds the customer and restores the book back to the shelf.
+                  💡 <b>Correct Payment Received</b>: Enter the actual amount paid above (e.g. 300) and click <b>Update Payment</b>.
                 </div>
               ` : ''}
             </div>
@@ -1098,19 +1083,6 @@ function createBookTile(book, copy, matchType) {
       e.stopPropagation();
       renderView();
     });
-
-    // Repay & Return action (for sold books)
-    const btnRepay = card.querySelector('.btn-repay-copy');
-    if (btnRepay) {
-      btnRepay.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openCancelSaleReturnModal(copy, book, renderView, {
-          defaultNewRack: inpRack.value.trim(),
-          defaultNewCol: inpCol.value.trim(),
-          defaultNewPos: inpPos.value.trim()
-        });
-      });
-    }
 
     // Update Payment Only action (for sold books)
     const btnSavePaymentOnly = card.querySelector('.btn-save-payment-only');
@@ -3419,7 +3391,7 @@ function recalculatePosCartTotal() {
   });
   const totalSpan = document.getElementById('posCartTotalPrice');
   if (totalSpan) {
-    totalSpan.textContent = hasPrices ? `$${total.toFixed(2)}` : '$0.00';
+    totalSpan.textContent = hasPrices ? `₹${total.toFixed(2)}` : '₹0.00';
   }
 }
 
@@ -3451,13 +3423,12 @@ function renderPosCart() {
         <div class="pos-cart-item-details">
           <div class="pos-cart-item-title">${escapeHtml(item.title)}</div>
           <div class="pos-cart-item-meta">
-            <span>ID: <b>${escapeHtml(item.book_id)}</b></span>
             ${item.author ? `<span>by ${escapeHtml(item.author)}</span>` : ''}
             <span>📍 ${escapeHtml(item.location_english || 'Unassigned')}</span>
           </div>
         </div>
         <div class="pos-cart-item-price-wrap">
-          <input type="number" step="0.01" min="0" placeholder="Price" 
+          <input type="number" step="any" min="0" placeholder="Price (₹)" 
                  class="pos-cart-item-price-input" 
                  value="${item.price !== null && item.price !== undefined ? item.price : ''}" 
                  oninput="updatePosCartItemPrice(${idx}, this.value)">
@@ -3747,8 +3718,8 @@ function renderPosBatchB() {
               <input type="text" class="candidate-input" value="${escapeHtml(cand.author || '')}" oninput="updatePosCandidateB(${idx}, 'author', this.value)">
             </div>
             <div class="candidate-field-group" style="flex: 1;">
-              <label class="candidate-field-label">Selling Price</label>
-              <input type="number" step="0.01" min="0" placeholder="Optional price" class="candidate-input" value="${cand.price !== null ? cand.price : ''}" oninput="updatePosCandidateB(${idx}, 'price', this.value)">
+              <label class="candidate-field-label">Selling Price (₹)</label>
+              <input type="number" step="any" min="0" placeholder="Optional price (₹)" class="candidate-input" value="${cand.price !== null ? cand.price : ''}" oninput="updatePosCandidateB(${idx}, 'price', this.value)">
             </div>
           </div>
 
@@ -4658,7 +4629,7 @@ function renderDigitalReceipt(saleData) {
 
   // Multi-book sale receipt
   if (saleData.sold_books && saleData.sold_books.length > 0) {
-    const totalAmount = saleData.total_amount ? `$${parseFloat(saleData.total_amount).toFixed(2)}` : '$0.00';
+    const totalAmount = saleData.total_amount ? `₹${parseFloat(saleData.total_amount).toFixed(2)}` : '₹0.00';
     container.innerHTML = `
       <div class="receipt-title">✅ Sale Confirmed — ${saleData.count} Books Marked SOLD OUT</div>
       <div class="receipt-meta">Time: ${new Date().toLocaleString()}</div>
@@ -4672,11 +4643,11 @@ function renderDigitalReceipt(saleData) {
             <div style="font-size:0.85rem; border-bottom:1px dashed #e2e8f0; padding-bottom:0.4rem; display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
                 <div style="font-weight:600; color:#1e293b;">${escapeHtml(b.title)}</div>
-                <div style="font-size:0.75rem; color:#64748b;">ID: <b>${escapeHtml(b.book_id)}</b> | 📍 ${escapeHtml(b.location_english || 'Unassigned')}</div>
+                <div style="font-size:0.75rem; color:#64748b;">📍 ${escapeHtml(b.location_english || 'Unassigned')}</div>
                 <div style="font-size:0.75rem; color:#2563eb;">Ref: ${escapeHtml(b.transaction_ref)}</div>
               </div>
               <div style="font-weight:600; color:#0f172a;">
-                ${b.selling_price ? `$${parseFloat(b.selling_price).toFixed(2)}` : '-'}
+                ${b.selling_price ? `₹${parseFloat(b.selling_price).toFixed(2)}` : '-'}
               </div>
             </div>
           `).join('')}
@@ -4694,7 +4665,7 @@ function renderDigitalReceipt(saleData) {
   }
 
   // Single book sale receipt
-  const priceText = saleData.selling_price !== null && saleData.selling_price !== undefined ? `$${parseFloat(saleData.selling_price).toFixed(2)}` : 'Not recorded (Price omitted)';
+  const priceText = saleData.selling_price !== null && saleData.selling_price !== undefined ? `₹${parseFloat(saleData.selling_price).toFixed(2)}` : 'Not recorded (Price omitted)';
   const bookTitle = saleData.book ? saleData.book.title : 'Book';
   const bookAuthor = saleData.book ? saleData.book.author : '';
   const bookId = saleData.book ? saleData.book.book_id : (saleData.transaction_ref || '');
@@ -4705,7 +4676,6 @@ function renderDigitalReceipt(saleData) {
     <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:1rem; max-width:400px; margin:0 auto 1rem auto; text-align:left;">
       <div><b>Title:</b> ${escapeHtml(bookTitle)}</div>
       <div><b>Author:</b> ${escapeHtml(bookAuthor)}</div>
-      <div><b>Inventory ID:</b> ${escapeHtml(bookId)}</div>
       <div><b>Recorded Price:</b> ${priceText}</div>
       <div><b>Availability:</b> <span class="badge badge-danger">SOLD OUT</span></div>
     </div>
@@ -5122,7 +5092,7 @@ async function fetchSalesAndAudit() {
           <td><b>${escapeHtml(s.book_id)}</b></td>
           <td>${escapeHtml(s.title)}</td>
           <td>${escapeHtml(s.author)}</td>
-          <td><b>${s.selling_price !== null ? `$${parseFloat(s.selling_price).toFixed(2)}` : 'Not recorded'}</b></td>
+          <td><b>${s.selling_price !== null ? `₹${parseFloat(s.selling_price).toFixed(2)}` : 'Not recorded'}</b></td>
           <td>${escapeHtml(s.sold_by || 'Staff')}</td>
         </tr>
       `).join('');
