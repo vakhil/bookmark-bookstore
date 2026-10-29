@@ -87,6 +87,55 @@ def ensure_schema(conn):
     except Exception:
         pass
 
+def generate_unique_transaction_ref(cursor, today_code: str) -> str:
+    """Generates a guaranteed unique transaction reference for today, avoiding any sequence gaps or collisions."""
+    cursor.execute("SELECT transaction_ref FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
+    rows = cursor.fetchall()
+    max_num = 0
+    for r in rows:
+        ref = r[0] if isinstance(r, (list, tuple)) else (r["transaction_ref"] if hasattr(r, "__getitem__") else str(r))
+        try:
+            num = int(str(ref).split("-")[-1])
+            if num > max_num:
+                max_num = num
+        except (ValueError, IndexError):
+            pass
+    num = max_num + 1
+    while True:
+        candidate = f"TX-{today_code}-{num:04d}"
+        cursor.execute("SELECT 1 FROM sales_transactions WHERE transaction_ref = ?", (candidate,))
+        if not cursor.fetchone():
+            return candidate
+        num += 1
+
+def generate_unique_order_id(cursor, today_code: str) -> str:
+    """Generates a guaranteed unique order_id for today, avoiding collisions."""
+    try:
+        cursor.execute("SELECT order_id FROM sales_transactions WHERE order_id LIKE ?", (f"ORD-{today_code}-%",))
+        rows = cursor.fetchall()
+    except Exception:
+        rows = []
+    max_num = 0
+    for r in rows:
+        oid = r[0] if isinstance(r, (list, tuple)) else (r["order_id"] if hasattr(r, "__getitem__") else str(r))
+        if oid:
+            try:
+                num = int(str(oid).split("-")[-1])
+                if num > max_num:
+                    max_num = num
+            except (ValueError, IndexError):
+                pass
+    num = max_num + 1
+    while True:
+        candidate = f"ORD-{today_code}-{num:04d}"
+        try:
+            cursor.execute("SELECT 1 FROM sales_transactions WHERE order_id = ?", (candidate,))
+            if not cursor.fetchone():
+                return candidate
+        except Exception:
+            return candidate
+        num += 1
+
 def get_db_connection() -> Any:
     """Creates a database connection with dictionary row access.
     Automatically connects to Turso Cloud (libSQL) when TURSO_DATABASE_URL and
@@ -1151,9 +1200,7 @@ def sell_book(
 
         # Step 2: Generate unique transaction reference
         today_code = datetime.now().strftime("%Y%m%d")
-        cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
-        daily_count = cursor.fetchone()[0] + 1
-        tx_ref = f"TX-{today_code}-{daily_count:04d}"
+        tx_ref = generate_unique_transaction_ref(cursor, today_code)
 
         # Step 3: Update book status
         cursor.execute("""
@@ -1258,15 +1305,7 @@ def sell_books_bulk(
         now_iso = datetime.now().isoformat()
         today_code = datetime.now().strftime("%Y%m%d")
 
-        cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
-        daily_count = cursor.fetchone()[0]
-
-        try:
-            cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions WHERE transaction_ref LIKE ? OR order_id LIKE ?", (f"TX-{today_code}-%", f"ORD-{today_code}-%"))
-            daily_order_count = cursor.fetchone()[0]
-        except Exception:
-            daily_order_count = daily_count
-        order_id = f"ORD-{today_code}-{daily_order_count+1:04d}"
+        order_id = generate_unique_order_id(cursor, today_code)
 
         successful_sales = []
         errors = []
@@ -1297,8 +1336,7 @@ def sell_books_bulk(
                 errors.append(f"Book '{book['title']}' ({bid}) is already marked as SOLD OUT.")
                 continue
 
-            daily_count += 1
-            tx_ref = f"TX-{today_code}-{daily_count:04d}"
+            tx_ref = generate_unique_transaction_ref(cursor, today_code)
 
             cursor.execute("""
                 UPDATE books SET
@@ -1574,16 +1612,14 @@ def update_sale_payment(
             """, (new_price, book_id))
         else:
             today_code = datetime.now().strftime("%Y%m%d")
-            cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
-            daily_count = cursor.fetchone()[0] + 1
-            tx_ref = f"TX-{today_code}-{daily_count:04d}"
+            tx_ref = generate_unique_transaction_ref(cursor, today_code)
             cursor.execute("""
                 INSERT INTO sales_transactions (
-                    transaction_ref, book_id, title, author,
-                    selling_price, sold_at, sold_by, notes, synced_to_sheets
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    transaction_ref, order_id, book_id, title, author,
+                    selling_price, sold_at, sold_by, notes, status, synced_to_sheets
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
             """, (
-                tx_ref, book_id, book["title"], book["author"],
+                tx_ref, tx_ref, book_id, book["title"], book["author"],
                 new_price, now_iso, user, notes or "Payment updated"
             ))
 
