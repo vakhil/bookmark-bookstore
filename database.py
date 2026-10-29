@@ -2243,14 +2243,16 @@ def get_books_by_genre(genre: str, available_only: bool = False, limit: int = 50
 
 def get_or_fetch_book_cover(title: str, author: str = "") -> Optional[str]:
     """
-    Returns the cached cover URL from SQLite if available.
-    Otherwise queries Open Library / Google Books, caches in SQLite, and returns the URL.
+    Returns the cached cover URL from database if available.
+    Otherwise queries multiple sources (Pinterest, Goodreads, Open Library, Google Books, and Web Images)
+    to determine the best high-definition location URL, caches it into the database, and returns the URL.
     """
     clean_title = (title or "").strip()
+    clean_author = (author or "").strip()
     if not clean_title:
         return None
 
-    # Check local SQLite cache first
+    # Step 1: Check database cache first
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -2267,59 +2269,116 @@ def get_or_fetch_book_cover(title: str, author: str = "") -> Optional[str]:
     except Exception as e:
         print(f"Notice reading cached cover: {e}")
 
-    # Query Open Library Search API
     cover_url = None
-    try:
-        import urllib.request, urllib.parse
-        q_params = f"title={urllib.parse.quote(clean_title)}"
-        if author and author.strip():
-            q_params += f"&author={urllib.parse.quote(author.strip())}"
-        q_url = f"https://openlibrary.org/search.json?{q_params}&limit=1"
-        req = urllib.request.Request(q_url, headers={"User-Agent": "BookstoreApp/2.0 (books@internal)"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-            docs = data.get("docs", [])
-            if docs and docs[0].get("cover_i"):
-                cover_id = docs[0]["cover_i"]
-                cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
-    except Exception as e:
-        pass
+    query_str = f"{clean_title} {clean_author}".strip()
 
-    # Fallback to Bing / Web Image Search
+    import urllib.request, urllib.parse, re, json, http.cookiejar
+
+    mobile_headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    }
+    desktop_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    }
+
+    # Step 2: Try Pinterest (Aesthetic high-res curated book covers)
     if not cover_url:
         try:
-            import urllib.request, urllib.parse, re
-            query_str = f"{clean_title} {author}".strip()
-            url = f"https://www.bing.com/images/search?q={urllib.parse.quote(query_str + ' book cover')}"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            pin_url = f"https://www.pinterest.com/search/pins/?q={urllib.parse.quote(query_str + ' book cover')}"
+            req = urllib.request.Request(pin_url, headers=mobile_headers)
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
-                m = re.findall(r'(https://tse\d\.mm\.bing\.net/th/id/[^\"]+)', html)
-                if m:
-                    cover_url = m[0].replace("&amp;", "&")
+                pin_matches = re.findall(r"https://i\.pinimg\.com/(?:60x60|236x)/([^\s\"\'<>]+\.(?:jpg|png|webp))", html)
+                if pin_matches:
+                    for img_p in pin_matches:
+                        if "d53b014d" not in img_p:  # skip Pinterest static logo
+                            cover_url = f"https://i.pinimg.com/736x/{img_p}"
+                            break
         except Exception:
             pass
 
-    # Fallback to Google Books API
+    # Step 3: Try Goodreads Direct & Index Search
     if not cover_url:
         try:
-            import urllib.request, urllib.parse
+            cookie_jar = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
+            gr_url = "https://www.goodreads.com/search?q=" + urllib.parse.quote(query_str)
+            req = urllib.request.Request(gr_url, headers=desktop_headers)
+            with opener.open(req, timeout=3.5) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                gr_imgs = re.findall(r"(https://m\.media-amazon\.com/images/S/compressed\.photo\.goodreads\.com/books/[^\s\"\'\\\>]+)", html)
+                if not gr_imgs:
+                    gr_imgs = re.findall(r"(https://images-na\.ssl-images-amazon\.com/images/S/compressed\.photo\.goodreads\.com/books/[^\s\"\'\\\>]+)", html)
+                if gr_imgs:
+                    raw_url = gr_imgs[0].split()[0].split("\"")[0]
+                    cover_url = re.sub(r"\._S[XY]\d+_\.", ".", raw_url)
+        except Exception:
+            pass
+
+    if not cover_url:
+        try:
+            gr_bing_url = f"https://www.bing.com/images/search?q={urllib.parse.quote('site:goodreads.com ' + query_str + ' book cover')}"
+            req = urllib.request.Request(gr_bing_url, headers=desktop_headers)
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                tse = re.findall(r'(https://tse\d\.mm\.bing\.net/th/id/[^\"]+)', html)
+                if tse:
+                    cover_url = re.sub(r'w=\d+&h=\d+&c=\d+&r=\d+&o=\d+&', '', tse[0].replace('&amp;', '&'))
+        except Exception:
+            pass
+
+    # Step 4: Try Open Library Covers API
+    if not cover_url:
+        try:
+            ol_params = f"title={urllib.parse.quote(clean_title)}"
+            if clean_author:
+                ol_params += f"&author={urllib.parse.quote(clean_author)}"
+            ol_url = f"https://openlibrary.org/search.json?{ol_params}&limit=1"
+            req = urllib.request.Request(ol_url, headers=desktop_headers)
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                d = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                docs = d.get("docs", [])
+                if docs and docs[0].get("cover_i"):
+                    cid = docs[0]["cover_i"]
+                    cover_url = f"https://covers.openlibrary.org/b/id/{cid}-L.jpg"
+        except Exception:
+            pass
+
+    # Step 5: Try Google Books API
+    if not cover_url:
+        try:
             gb_query = f"intitle:{urllib.parse.quote(clean_title)}"
-            if author and author.strip():
-                gb_query += f"+inauthor:{urllib.parse.quote(author.strip())}"
+            if clean_author:
+                gb_query += f"+inauthor:{urllib.parse.quote(clean_author)}"
             gb_url = f"https://www.googleapis.com/books/v1/volumes?q={gb_query}&maxResults=1"
-            req = urllib.request.Request(gb_url, headers={"User-Agent": "BookstoreApp/2.0 (books@internal)"})
-            with urllib.request.urlopen(req, timeout=4) as resp:
+            req = urllib.request.Request(gb_url, headers=desktop_headers)
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
                 gb_data = json.loads(resp.read().decode("utf-8", errors="ignore"))
                 items = gb_data.get("items", [])
                 if items:
                     images = items[0].get("volumeInfo", {}).get("imageLinks", {})
                     thumb = images.get("thumbnail") or images.get("smallThumbnail")
                     if thumb:
-                        cover_url = thumb.replace("http://", "https://")
-        except Exception as e:
+                        cover_url = thumb.replace("http://", "https://").replace("&edge=curl", "")
+        except Exception:
             pass
 
+    # Step 6: Fallback to Google / Web Images Search (Bing Image CDN)
+    if not cover_url:
+        try:
+            web_url = f"https://www.bing.com/images/search?q={urllib.parse.quote(query_str + ' book cover')}"
+            req = urllib.request.Request(web_url, headers=desktop_headers)
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                tse = re.findall(r'(https://tse\d\.mm\.bing\.net/th/id/[^\"]+)', html)
+                if tse:
+                    cover_url = re.sub(r'w=\d+&h=\d+&c=\d+&r=\d+&o=\d+&', '', tse[0].replace('&amp;', '&'))
+        except Exception:
+            pass
+
+    # Step 7: Cache the determined best cover URL in database for instant future lookups
     if cover_url:
         try:
             with db_lock:
@@ -2331,6 +2390,12 @@ def get_or_fetch_book_cover(title: str, author: str = "") -> Optional[str]:
                 )
                 conn.commit()
                 conn.close()
+            # Also notify search engine to invalidate its cached books
+            try:
+                import search_engine
+                search_engine.invalidate_search_cache()
+            except Exception:
+                pass
         except Exception as e:
             print(f"Notice saving book cover to DB: {e}")
 
