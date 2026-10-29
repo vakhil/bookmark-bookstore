@@ -2579,6 +2579,72 @@ input, select, textarea, button {
   transform: translateY(0);
 }
 
+/* =========================================================================
+   CART TAB & MULTI-BOOK CHECKOUT STYLES
+   ========================================================================= */
+
+#tabCartBadge {
+  background: #10b981;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.12rem 0.45rem;
+  border-radius: 9999px;
+  margin-left: 0.25rem;
+  display: inline-block;
+  line-height: 1.2;
+}
+
+.cart-layout-grid {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 860px) {
+  .cart-layout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cart-item-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+}
+
+.cart-item-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.cart-summary-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.35rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 1rem;
+}
+
+.btn-toggle-cart {
+  transition: all 0.15s ease;
+}
+
+.btn-toggle-cart:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.btn-toggle-cart:active {
+  transform: translateY(0);
+}
+
 
 
 

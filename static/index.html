@@ -48,11 +48,15 @@
     </div>
   </header>
 
-  <!-- Navigation Tabs (Search & Sell, Genre, Book Advisor, Add Book, Shelf Unassigned) -->
+  <!-- Navigation Tabs (Search & Sell, Cart, Genre, Book Advisor, Add Book, Shelf Unassigned) -->
   <nav class="main-tabs simple-nav">
     <button class="tab-btn active" data-tab="tabSearch">
       <span class="tab-icon">🔍</span>
       <span class="tab-label">Search &amp; Sell</span>
+    </button>
+    <button class="tab-btn" data-tab="tabCart" id="tabBtnCart">
+      <span class="tab-icon">🛒</span>
+      <span class="tab-label">Cart (<span id="tabCartBadge">0</span>)</span>
     </button>
     <button class="tab-btn" data-tab="tabGenre">
       <span class="tab-icon">🏷️</span>
@@ -122,6 +126,107 @@
           <div class="prompt-icon">📖</div>
           <h3>Find Any Book Instantly</h3>
           <p>Type a book title, author, or Book ID to see its rack location and sell copies with 1-click.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB: CART (MULTI-BOOK TRANSACTIONS) ==================== -->
+    <section id="tabCart" class="tab-pane">
+      <div class="clean-card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+          <div>
+            <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+              <span>🛒</span> Shopping Cart &amp; Order Checkout
+            </h2>
+            <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
+              Select books across <b>Search &amp; Sell</b> or <b>Genre</b>, review shelf locations, specify the total cost, and complete the order.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button type="button" class="btn btn-sm btn-outline" id="btnCartAddMore" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+              <span>➕</span> Add More Books
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnClearCart" style="color: var(--danger); border-color: #fca5a5; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+              <span>🗑️</span> Clear Cart
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty Cart View -->
+      <div id="cartEmptyView" class="empty-prompt" style="display: none; padding: 3.5rem 1.5rem; text-align: center;">
+        <div class="prompt-icon" style="font-size: 3rem; margin-bottom: 0.75rem;">🛒</div>
+        <h3 style="font-size: 1.2rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.4rem;">Your Cart is Empty</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 440px; margin: 0 auto 1.5rem auto; line-height: 1.5;">
+          Browse <b>Search &amp; Sell</b> or <b>Genre</b>, click <b>🛒 + Cart</b> on any book, then return here to place your order and record the transaction cost.
+        </p>
+        <button type="button" class="btn btn-primary" onclick="switchToSearchTab('')" style="padding: 0.65rem 1.4rem; font-weight: 700;">
+          🔍 Browse &amp; Search Books
+        </button>
+      </div>
+
+      <!-- Non-Empty Cart View -->
+      <div id="cartContentView" style="display: none;">
+        <div class="cart-layout-grid">
+          <!-- Items Column -->
+          <div class="cart-items-column">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding: 0 0.25rem;">
+              <span style="font-weight: 800; font-size: 1rem; color: var(--text-main);">
+                Selected Books (<span id="cartItemsCountText">0</span>)
+              </span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">
+                Items in this transaction
+              </span>
+            </div>
+            <div id="cartItemsList" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <!-- Dynamic cart items rendered here -->
+            </div>
+          </div>
+
+          <!-- Checkout Box Column -->
+          <div class="cart-summary-column">
+            <div class="cart-summary-card">
+              <h3 style="margin: 0 0 1rem 0; font-size: 1.15rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.45rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem;">
+                <span>🧾</span> Order Transaction
+              </h3>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-size: 0.92rem;">
+                <span style="color: var(--text-muted); font-weight: 600;">Total Books Selected:</span>
+                <b id="summaryTotalBooks" style="color: var(--text-main); font-size: 1.05rem;">0 books</b>
+              </div>
+
+              <!-- Total Transaction Cost Input -->
+              <div class="form-field" style="margin-bottom: 1.15rem;">
+                <label style="display: block; font-size: 0.84rem; font-weight: 800; color: #0f172a; margin-bottom: 0.35rem;">
+                  Total Transaction Cost (₹) *
+                </label>
+                <div style="position: relative; display: flex; align-items: center;">
+                  <span style="position: absolute; left: 0.85rem; font-size: 1.25rem; font-weight: 800; color: #059669;">₹</span>
+                  <input type="number" step="any" min="0" id="cartTotalCostInput" class="form-control" placeholder="0.00" style="padding-left: 2.1rem; font-size: 1.35rem; font-weight: 800; color: #064e3b; border: 2px solid #10b981; border-radius: 10px; background: #f0fdf4; height: 48px; width: 100%;">
+                </div>
+                <small style="display: block; color: var(--text-muted); font-size: 0.76rem; margin-top: 0.35rem;">
+                  Enter the total amount paid by the customer
+                </small>
+              </div>
+
+              <!-- Payment Method / Notes -->
+              <div class="form-field" style="margin-bottom: 1.35rem;">
+                <label style="display: block; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.3rem;">
+                  Payment / Customer Note (Optional)
+                </label>
+                <input type="text" id="cartOrderNotes" class="form-control" placeholder="e.g. UPI, Cash, Card, GPay" style="font-size: 0.88rem; width: 100%;">
+              </div>
+
+              <!-- Checkout Submit Button -->
+              <button type="button" class="btn btn-primary" id="btnPlaceCartOrder" style="width: 100%; padding: 0.85rem 1rem; font-size: 1.05rem; font-weight: 800; display: flex; justify-content: center; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; border-radius: 12px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35); cursor: pointer;">
+                <span>⚡</span> Place Order &amp; Complete Sale
+              </button>
+
+              <div style="margin-top: 0.85rem; font-size: 0.76rem; color: #64748b; text-align: center; line-height: 1.4;">
+                ✓ Marks all books <b>SOLD OUT</b> &bull; Records in Sales Ledger
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

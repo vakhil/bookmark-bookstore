@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   safeInit('initExportDropdown', initExportDropdown);
   safeInit('initStats', initStats);
   safeInit('initSearch', initSearch);
+  safeInit('initCart', initCart);
   safeInit('initGenreTab', initGenreTab);
   safeInit('initAdvisorTab', initAdvisorTab);
   safeInit('initSingleAdd', initSingleAdd);
@@ -56,6 +57,7 @@ function initTabs() {
       document.getElementById(tabId).classList.add('active');
       currentTab = tabId;
 
+      if (tabId === 'tabCart') renderCartTab();
       if (tabId === 'tabGenre') loadGenreTab();
       if (tabId === 'tabAdvisor') {
         const inp = document.getElementById('advisorQuestionInput');
@@ -819,7 +821,10 @@ function createBookTile(book, copy, matchType) {
               <span>💳</span> Edit Payment
             </button>
           ` : `
-            <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy">
+            <button class="btn btn-sm btn-toggle-cart ${isBookInCart(bookId) ? 'active' : ''}" data-bid="${escapeHtml(bookId)}" style="background:${isBookInCart(bookId) ? '#059669' : '#ecfdf5'}; color:${isBookInCart(bookId) ? '#ffffff' : '#047857'}; border:1px solid ${isBookInCart(bookId) ? '#059669' : '#a7f3d0'}; font-weight:700; border-radius:10px; padding:0.4rem 0.75rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:32px; transition:all 0.15s ease;" title="${isBookInCart(bookId) ? 'Remove from cart' : 'Add to cart'}">
+              <span>${isBookInCart(bookId) ? '✓ In Cart' : '🛒 + Cart'}</span>
+            </button>
+            <button class="btn btn-sm btn-sell-copy" data-bid="${escapeHtml(bookId)}" title="Sell this copy immediately">
               ⚡ Sell
             </button>
           `}
@@ -877,6 +882,22 @@ function createBookTile(book, copy, matchType) {
       chipPaid.addEventListener('click', (e) => {
         e.stopPropagation();
         openEditSalePaymentModal(copy, book, renderView);
+      });
+    }
+
+    // Hook up Add/Remove from Cart button
+    const btnToggleCart = card.querySelector('.btn-toggle-cart');
+    if (btnToggleCart) {
+      btnToggleCart.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCartBook({
+          book_id: bookId,
+          title: cleanTitle,
+          author: copy.author || book.author || '',
+          location_english: locationText || 'Location Unassigned',
+          genre: genre,
+          image_url: copy.image_url || book.image_url || ''
+        });
       });
     }
 
@@ -4931,13 +4952,15 @@ async function fetchUnassigned() {
   }
 }
 
-window.switchToSearchTab = function(q) {
+window.switchToSearchTab = function(q = '') {
   const searchTabBtn = document.querySelector('.tab-btn[data-tab="tabSearch"]');
   if (searchTabBtn) searchTabBtn.click();
-  const searchInput = document.getElementById('globalSearchInput');
+  const searchInput = document.getElementById('searchInput');
   if (searchInput) {
-    searchInput.value = q;
-    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    if (q) {
+      searchInput.value = q;
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     searchInput.focus();
   }
 };
@@ -5127,6 +5150,259 @@ async function fetchSalesAndAudit() {
     }
   } catch (err) {
     console.error('Failed to load audit history:', err);
+  }
+}
+
+/* =========================================================================
+   CART & MULTI-BOOK ORDER CONTROLLER
+   ========================================================================= */
+
+let storeCart = [];
+
+function loadStoreCart() {
+  try {
+    const raw = localStorage.getItem('bookmark_store_cart');
+    if (raw) storeCart = JSON.parse(raw);
+    if (!Array.isArray(storeCart)) storeCart = [];
+  } catch (e) {
+    storeCart = [];
+  }
+  updateCartBadge();
+}
+
+function saveStoreCart() {
+  try {
+    localStorage.setItem('bookmark_store_cart', JSON.stringify(storeCart));
+  } catch (e) {}
+  updateCartBadge();
+}
+
+function isBookInCart(bookId) {
+  return storeCart.some(item => item.book_id === bookId);
+}
+
+function toggleCartBook(bookData) {
+  const idx = storeCart.findIndex(item => item.book_id === bookData.book_id);
+  if (idx >= 0) {
+    storeCart.splice(idx, 1);
+  } else {
+    storeCart.push(bookData);
+  }
+  saveStoreCart();
+  updateAllCartButtonStates();
+  if (currentTab === 'tabCart') {
+    renderCartTab();
+  }
+}
+
+function removeFromCart(bookId) {
+  storeCart = storeCart.filter(item => item.book_id !== bookId);
+  saveStoreCart();
+  updateAllCartButtonStates();
+  if (currentTab === 'tabCart') {
+    renderCartTab();
+  }
+}
+
+function clearStoreCart() {
+  storeCart = [];
+  saveStoreCart();
+  updateAllCartButtonStates();
+  if (currentTab === 'tabCart') {
+    renderCartTab();
+  }
+}
+
+function updateCartBadge() {
+  const badge = document.getElementById('tabCartBadge');
+  if (badge) {
+    badge.textContent = storeCart.length;
+  }
+}
+
+function updateAllCartButtonStates() {
+  document.querySelectorAll('.btn-toggle-cart').forEach(btn => {
+    const bid = btn.getAttribute('data-bid');
+    const inCart = isBookInCart(bid);
+    if (inCart) {
+      btn.classList.add('active');
+      btn.style.background = '#059669';
+      btn.style.color = '#ffffff';
+      btn.style.borderColor = '#059669';
+      btn.innerHTML = '<span>✓ In Cart</span>';
+      btn.title = 'Remove from cart';
+    } else {
+      btn.classList.remove('active');
+      btn.style.background = '#ecfdf5';
+      btn.style.color = '#047857';
+      btn.style.borderColor = '#a7f3d0';
+      btn.innerHTML = '<span>🛒 + Cart</span>';
+      btn.title = 'Add to cart';
+    }
+  });
+}
+
+function renderCartTab() {
+  const emptyView = document.getElementById('cartEmptyView');
+  const contentView = document.getElementById('cartContentView');
+  const itemsContainer = document.getElementById('cartItemsList');
+  const countText = document.getElementById('cartItemsCountText');
+  const summaryCount = document.getElementById('summaryTotalBooks');
+
+  if (!emptyView || !contentView || !itemsContainer) return;
+
+  if (storeCart.length === 0) {
+    emptyView.style.display = 'block';
+    contentView.style.display = 'none';
+    return;
+  }
+
+  emptyView.style.display = 'none';
+  contentView.style.display = 'block';
+
+  if (countText) countText.textContent = storeCart.length;
+  if (summaryCount) summaryCount.textContent = `${storeCart.length} ${storeCart.length === 1 ? 'book' : 'books'}`;
+
+  itemsContainer.innerHTML = storeCart.map(item => {
+    const cleanTitle = cleanBookTitle(item.title || '');
+    const cleanAuthor = escapeHtml(item.author || 'Author');
+    const genre = item.genre || '';
+    const coverHtml = getBookCoverHtml(cleanTitle, item.author, genre, item.image_url);
+    const locText = (item.location_english || 'Location Unassigned').replace(/->/g, '→');
+
+    return `
+      <div class="cart-item-card" data-bid="${escapeHtml(item.book_id)}">
+        <div style="display: flex; gap: 0.95rem; align-items: center;">
+          <div style="width: 52px; height: 74px; flex-shrink: 0; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+            ${coverHtml}
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <h4 style="margin: 0 0 0.2rem 0; font-size: 0.98rem; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(cleanTitle)}
+            </h4>
+            <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+              by <b>${cleanAuthor}</b>
+            </div>
+            <div style="font-size: 0.82rem; font-weight: 700; color: #064e3b; display: inline-flex; align-items: center; gap: 0.3rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 0.22rem 0.65rem;">
+              <span>📍</span> ${escapeHtml(locText)}
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from cart" style="color: #ef4444; border-color: #fca5a5; padding: 0.4rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0;">
+            <span>🗑️ Remove</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Wire remove buttons
+  itemsContainer.querySelectorAll('.btn-remove-cart-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const bid = btn.getAttribute('data-bid');
+      removeFromCart(bid);
+    });
+  });
+
+  resolveLazyCovers();
+}
+
+function initCart() {
+  loadStoreCart();
+
+  const btnAddMore = document.getElementById('btnCartAddMore');
+  if (btnAddMore) {
+    btnAddMore.addEventListener('click', () => {
+      switchToSearchTab('');
+    });
+  }
+
+  const btnClear = document.getElementById('btnClearCart');
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      if (storeCart.length === 0) return;
+      if (confirm('Are you sure you want to clear all books from your cart?')) {
+        clearStoreCart();
+      }
+    });
+  }
+
+  const btnPlaceOrder = document.getElementById('btnPlaceCartOrder');
+  if (btnPlaceOrder) {
+    btnPlaceOrder.addEventListener('click', async () => {
+      if (storeCart.length === 0) {
+        alert('Your cart is empty. Add books before placing an order.');
+        return;
+      }
+
+      const costInput = document.getElementById('cartTotalCostInput');
+      const costVal = costInput ? costInput.value.trim() : '';
+      if (!costVal) {
+        alert('Please enter the total cost / payment received for this order in rupees (₹).');
+        if (costInput) costInput.focus();
+        return;
+      }
+
+      const totalCost = parseFloat(costVal);
+      if (isNaN(totalCost) || totalCost < 0) {
+        alert('Please enter a valid positive amount.');
+        if (costInput) costInput.focus();
+        return;
+      }
+
+      const notesInput = document.getElementById('cartOrderNotes');
+      const orderNotes = notesInput ? notesInput.value.trim() : '';
+
+      // Distribute total cost evenly across items
+      const numItems = storeCart.length;
+      const basePrice = Math.floor((totalCost / numItems) * 100) / 100;
+      const remainder = Math.round((totalCost - (basePrice * numItems)) * 100) / 100;
+
+      const itemsToSell = storeCart.map((item, index) => {
+        let p = basePrice;
+        if (index === numItems - 1) {
+          p = Math.round((p + remainder) * 100) / 100;
+        }
+        return {
+          book_id: item.book_id,
+          selling_price: p,
+          notes: orderNotes
+        };
+      });
+
+      btnPlaceOrder.disabled = true;
+      btnPlaceOrder.innerHTML = `<span>⏳</span> Processing Order...`;
+
+      try {
+        const res = await fetch('/api/books/sell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            books: itemsToSell,
+            total_amount: totalCost,
+            notes: orderNotes,
+            user: 'Staff'
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          clearStoreCart();
+          if (costInput) costInput.value = '';
+          if (notesInput) notesInput.value = '';
+          fetchStats();
+          clearSearchCache();
+          showSaleConfirmation(data);
+        } else {
+          alert('Could not complete order: ' + (data.error || 'Server error'));
+        }
+      } catch (err) {
+        alert('Order processing error: ' + err.message);
+      } finally {
+        btnPlaceOrder.disabled = false;
+        btnPlaceOrder.innerHTML = `<span>⚡</span> Place Order &amp; Complete Sale`;
+      }
+    });
   }
 }
 
