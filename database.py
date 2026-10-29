@@ -85,6 +85,29 @@ def ensure_schema(conn):
                 except Exception:
                     pass
 
+        # Customer orders table for buyer information and transaction totals
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS customer_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT UNIQUE NOT NULL,
+                    buyer_name TEXT DEFAULT '',
+                    buyer_phone TEXT DEFAULT '',
+                    total_amount REAL DEFAULT 0.0,
+                    created_at TEXT NOT NULL,
+                    status TEXT DEFAULT 'COMPLETED',
+                    notes TEXT DEFAULT '',
+                    sold_by TEXT DEFAULT 'Staff',
+                    synced_to_sheets INTEGER DEFAULT 0
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_order_id ON customer_orders(order_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_phone ON customer_orders(buyer_phone)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_created_at ON customer_orders(created_at DESC)")
+            conn.commit()
+        except Exception:
+            pass
+
         # High-performance database indices for instant queries and joins
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_book_id ON books(book_id)")
@@ -104,10 +127,22 @@ def ensure_schema(conn):
 def generate_unique_transaction_ref(cursor, today_code: str) -> str:
     """Generates a guaranteed unique transaction reference for today, avoiding any sequence gaps or collisions."""
     cursor.execute("SELECT transaction_ref FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
-    rows = cursor.fetchall()
+    rows = list(cursor.fetchall())
+    try:
+        cursor.execute("SELECT order_id FROM customer_orders WHERE order_id LIKE ?", (f"TX-{today_code}-%",))
+        rows.extend(cursor.fetchall())
+    except Exception:
+        pass
+
     max_num = 0
     for r in rows:
-        ref = r[0] if isinstance(r, (list, tuple)) else (r["transaction_ref"] if hasattr(r, "__getitem__") else str(r))
+        if isinstance(r, dict):
+            ref = list(r.values())[0] if r else ""
+        else:
+            try:
+                ref = r[0]
+            except Exception:
+                ref = str(r)
         try:
             num = int(str(ref).split("-")[-1])
             if num > max_num:
@@ -119,6 +154,13 @@ def generate_unique_transaction_ref(cursor, today_code: str) -> str:
         candidate = f"TX-{today_code}-{num:04d}"
         cursor.execute("SELECT 1 FROM sales_transactions WHERE transaction_ref = ?", (candidate,))
         if not cursor.fetchone():
+            try:
+                cursor.execute("SELECT 1 FROM customer_orders WHERE order_id = ?", (candidate,))
+                if cursor.fetchone():
+                    num += 1
+                    continue
+            except Exception:
+                pass
             return candidate
         num += 1
 
@@ -126,12 +168,24 @@ def generate_unique_order_id(cursor, today_code: str) -> str:
     """Generates a guaranteed unique order_id for today, avoiding collisions."""
     try:
         cursor.execute("SELECT order_id FROM sales_transactions WHERE order_id LIKE ?", (f"ORD-{today_code}-%",))
-        rows = cursor.fetchall()
+        rows = list(cursor.fetchall())
     except Exception:
         rows = []
+    try:
+        cursor.execute("SELECT order_id FROM customer_orders WHERE order_id LIKE ?", (f"ORD-{today_code}-%",))
+        rows.extend(cursor.fetchall())
+    except Exception:
+        pass
+
     max_num = 0
     for r in rows:
-        oid = r[0] if isinstance(r, (list, tuple)) else (r["order_id"] if hasattr(r, "__getitem__") else str(r))
+        if isinstance(r, dict):
+            oid = list(r.values())[0] if r else ""
+        else:
+            try:
+                oid = r[0]
+            except Exception:
+                oid = str(r)
         if oid:
             try:
                 num = int(str(oid).split("-")[-1])
@@ -145,6 +199,13 @@ def generate_unique_order_id(cursor, today_code: str) -> str:
         try:
             cursor.execute("SELECT 1 FROM sales_transactions WHERE order_id = ?", (candidate,))
             if not cursor.fetchone():
+                try:
+                    cursor.execute("SELECT 1 FROM customer_orders WHERE order_id = ?", (candidate,))
+                    if cursor.fetchone():
+                        num += 1
+                        continue
+                except Exception:
+                    pass
                 return candidate
         except Exception:
             return candidate
@@ -404,11 +465,29 @@ def init_db(force_reseed: bool = False):
             )
         """)
 
-        # 7. Create indexes for high-speed queries
+        # 7. Customer orders table (Order details, Buyer Name, Phone, and Total Amount)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customer_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT UNIQUE NOT NULL,
+                buyer_name TEXT DEFAULT '',
+                buyer_phone TEXT DEFAULT '',
+                total_amount REAL DEFAULT 0.0,
+                created_at TEXT NOT NULL,
+                status TEXT DEFAULT 'COMPLETED',
+                notes TEXT DEFAULT '',
+                sold_by TEXT DEFAULT 'Staff',
+                synced_to_sheets INTEGER DEFAULT 0
+            )
+        """)
+
+        # 8. Create indexes for high-speed queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_id ON books(book_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_status ON books(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_rack ON books(rack, column_num)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_unassigned ON books(unassigned_since)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_order_id ON customer_orders(order_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_phone ON customer_orders(buyer_phone)")
 
         # Ensure simple_genre column exists in existing database
         cursor.execute("PRAGMA table_info(books)")
@@ -1197,6 +1276,8 @@ def delete_books_bulk(book_ids: List[str], user: str = "Staff") -> Dict[str, Any
 def sell_book(
     book_id: str,
     selling_price: Optional[float] = None,
+    buyer_name: str = "",
+    buyer_phone: str = "",
     user: str = "Staff",
     notes: str = ""
 ) -> Dict[str, Any]:
@@ -1205,8 +1286,9 @@ def sell_book(
     1. Verifies book exists and status is Available.
     2. Marks copy status as 'SOLD OUT'.
     3. Records transaction in sales_transactions table with unique Transaction Ref.
-    4. Records in audit_log.
-    5. Queues Google Sheets update: writes 'SOLD OUT' adjacent to the book and appends to sales sheet.
+    4. Records order details and buyer info into customer_orders table.
+    5. Records in audit_log.
+    6. Queues Google Sheets update: writes 'SOLD OUT' adjacent to the book and appends to sales sheet.
     """
     with db_lock:
         conn = get_db_connection()
@@ -1246,6 +1328,16 @@ def sell_book(
         """, (
             tx_ref, tx_ref, book_id, book["title"], book["author"],
             selling_price, now_iso, user, notes
+        ))
+
+        # Step 4b: Record customer order details
+        order_total = float(selling_price) if (selling_price is not None and str(selling_price).strip() != "") else 0.0
+        cursor.execute("""
+            INSERT OR REPLACE INTO customer_orders (
+                order_id, buyer_name, buyer_phone, total_amount, created_at, status, notes, sold_by
+            ) VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?)
+        """, (
+            tx_ref, buyer_name.strip(), buyer_phone.strip(), order_total, now_iso, notes.strip(), user
         ))
 
         # Step 5: Audit log
@@ -1302,14 +1394,20 @@ def sell_book(
         return {
             "success": True,
             "transaction_ref": tx_ref,
+            "order_id": tx_ref,
             "book": updated_book,
             "selling_price": selling_price,
+            "buyer_name": buyer_name.strip(),
+            "buyer_phone": buyer_phone.strip(),
             "sold_at": now_iso,
             "message": f"Successfully completed sale for {updated_book['title']} ({book_id})."
         }
 
 def sell_books_bulk(
     items: List[Dict[str, Any]],
+    buyer_name: str = "",
+    buyer_phone: str = "",
+    total_amount: Optional[float] = None,
     user: str = "Staff",
     shared_notes: str = ""
 ) -> Dict[str, Any]:
@@ -1320,6 +1418,7 @@ def sell_books_bulk(
       - selling_price: Optional[float]
       - notes: Optional[str]
     Marks each book as 'SOLD OUT', generates transaction references,
+    records order and buyer details into customer_orders table,
     logs into audit_log and sales_transactions, and queues sync to Google Sheets.
     """
     if not items:
@@ -1335,7 +1434,7 @@ def sell_books_bulk(
 
         successful_sales = []
         errors = []
-        total_amount = 0.0
+        calculated_total = 0.0
 
         for item in items:
             bid = (item.get("book_id") or "").strip()
@@ -1424,7 +1523,7 @@ def sell_books_bulk(
 
             sync_csv_update_status(bid, "SOLD OUT")
             if price_val is not None:
-                total_amount += price_val
+                calculated_total += price_val
 
             successful_sales.append({
                 "book_id": bid,
@@ -1434,6 +1533,25 @@ def sell_books_bulk(
                 "selling_price": price_val,
                 "location_english": book["location_english"]
             })
+
+        # Calculate final total amount
+        if total_amount is not None and str(total_amount).strip() != "":
+            try:
+                final_total = float(total_amount)
+            except (ValueError, TypeError):
+                final_total = calculated_total
+        else:
+            final_total = calculated_total
+
+        # Record in customer_orders table
+        if successful_sales:
+            cursor.execute("""
+                INSERT OR REPLACE INTO customer_orders (
+                    order_id, buyer_name, buyer_phone, total_amount, created_at, status, notes, sold_by
+                ) VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?)
+            """, (
+                order_id, buyer_name.strip(), buyer_phone.strip(), round(final_total, 2), now_iso, shared_notes.strip(), user
+            ))
 
         conn.commit()
         conn.close()
@@ -1446,7 +1564,9 @@ def sell_books_bulk(
             "success": True,
             "order_id": order_id,
             "count": len(successful_sales),
-            "total_amount": round(total_amount, 2),
+            "total_amount": round(final_total, 2),
+            "buyer_name": buyer_name.strip(),
+            "buyer_phone": buyer_phone.strip(),
             "sold_books": successful_sales,
             "errors": errors,
             "message": f"Successfully completed sale for {len(successful_sales)} books."
@@ -1528,6 +1648,18 @@ def revert_sale(
                 unassigned_since = ?
             WHERE book_id = ?
         """, (new_rack, new_col, new_pos, new_loc_eng, now_iso, new_unassigned_since, book_id))
+
+        if tx:
+            try:
+                tx_dict = dict(tx)
+                tx_oid = tx_dict.get("order_id")
+                tx_ref = tx_dict.get("transaction_ref")
+                if tx_oid:
+                    cursor.execute("DELETE FROM customer_orders WHERE order_id = ?", (tx_oid,))
+                if tx_ref and tx_ref != tx_oid:
+                    cursor.execute("DELETE FROM customer_orders WHERE order_id = ?", (tx_ref,))
+            except Exception:
+                pass
 
         cursor.execute("DELETE FROM sales_transactions WHERE book_id = ?", (book_id,))
         cursor.execute("DELETE FROM sync_queue WHERE payload LIKE ?", (f'%"{book_id}"%',))
@@ -1882,7 +2014,7 @@ def get_recent_sales(limit: int = 100) -> List[Dict[str, Any]]:
 def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Fetches sales transactions grouped into discrete order transactions.
-    Supports single-book and multi-book sales with member books and locations.
+    Supports single-book and multi-book sales with member books, buyer details, and locations.
     Uses in-memory caching and indexed joins for sub-millisecond retrieval.
     """
     global _TX_CACHE, _TX_CACHE_TIME
@@ -1898,9 +2030,11 @@ def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict
         SELECT st.id, st.transaction_ref, COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_id,
                st.book_id, st.title, st.author, st.selling_price, st.sold_at, st.sold_by, st.notes,
                COALESCE(st.status, 'COMPLETED') AS status,
-               b.status AS current_book_status, b.location_english, b.rack, b.column_num, b.position
+               b.status AS current_book_status, b.location_english, b.rack, b.column_num, b.position,
+               co.buyer_name, co.buyer_phone, co.total_amount AS co_total_amount
         FROM sales_transactions st
         LEFT JOIN books b ON st.book_id = b.book_id
+        LEFT JOIN customer_orders co ON COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) = co.order_id
         ORDER BY st.id DESC
         LIMIT ?
     """, (query_limit,))
@@ -1916,13 +2050,23 @@ def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict
             ordered_ids.append(oid)
             orders_map[oid] = {
                 "order_id": oid,
+                "buyer_name": r.get("buyer_name") or "",
+                "buyer_phone": r.get("buyer_phone") or "",
                 "sold_at": r["sold_at"],
                 "sold_by": r["sold_by"] or "Staff",
                 "notes": r["notes"] or "",
                 "status": r["status"] or "COMPLETED",
+                "co_total_amount": r.get("co_total_amount"),
                 "total_amount": 0.0,
                 "books": []
             }
+
+        if r.get("buyer_name") and not orders_map[oid]["buyer_name"]:
+            orders_map[oid]["buyer_name"] = r["buyer_name"]
+        if r.get("buyer_phone") and not orders_map[oid]["buyer_phone"]:
+            orders_map[oid]["buyer_phone"] = r["buyer_phone"]
+        if r.get("co_total_amount") is not None and orders_map[oid]["co_total_amount"] is None:
+            orders_map[oid]["co_total_amount"] = r["co_total_amount"]
 
         if r["status"] == "COMPLETED":
             orders_map[oid]["status"] = "COMPLETED"
@@ -1948,7 +2092,12 @@ def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict
     result = []
     for oid in ordered_ids:
         order = orders_map[oid]
-        order["total_amount"] = round(order["total_amount"], 2)
+        co_amt = order.get("co_total_amount")
+        if co_amt is not None and float(co_amt) > 0:
+            order["total_amount"] = round(float(co_amt), 2)
+        else:
+            order["total_amount"] = round(order["total_amount"], 2)
+        order.pop("co_total_amount", None)
         order["count"] = len(order["books"])
         result.append(order)
 
@@ -2027,6 +2176,12 @@ def revert_transaction(order_id: str, user: str = "Staff", notes: str = "") -> D
             SET status = 'REVERTED'
             WHERE order_id = ? OR transaction_ref = ?
         """, (order_id, order_id))
+
+        cursor.execute("""
+            UPDATE customer_orders
+            SET status = 'REVERTED'
+            WHERE order_id = ?
+        """, (order_id,))
 
         conn.commit()
         conn.close()
@@ -2107,6 +2262,12 @@ def redo_transaction(order_id: str, user: str = "Staff", notes: str = "") -> Dic
             WHERE order_id = ? OR transaction_ref = ?
         """, (order_id, order_id))
 
+        cursor.execute("""
+            UPDATE customer_orders
+            SET status = 'COMPLETED'
+            WHERE order_id = ?
+        """, (order_id,))
+
         conn.commit()
         conn.close()
         notify_inventory_changed()
@@ -2124,7 +2285,7 @@ def delete_transaction(order_id: str, user: str = "Staff") -> Dict[str, Any]:
     """
     Totally cancels/removes a purchase transaction from the records.
     If books are currently marked 'SOLD OUT', restores them to 'Available'.
-    Permanently deletes records from sales_transactions.
+    Permanently deletes records from sales_transactions and customer_orders.
     """
     if not order_id:
         return {"error": "Order ID is required."}
@@ -2162,6 +2323,11 @@ def delete_transaction(order_id: str, user: str = "Staff") -> Dict[str, Any]:
             DELETE FROM sales_transactions
             WHERE order_id = ? OR transaction_ref = ?
         """, (order_id, order_id))
+
+        cursor.execute("""
+            DELETE FROM customer_orders
+            WHERE order_id = ?
+        """, (order_id,))
 
         conn.commit()
         conn.close()

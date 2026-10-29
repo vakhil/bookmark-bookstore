@@ -267,10 +267,17 @@ def _app_dispatch(environ, start_response):
             return json_response(start_response, res)
 
         elif path in ("/api/books/sell", "/api/books/sell-bulk"):
+            buyer_name = body.get("buyer_name", "")
+            buyer_phone = body.get("buyer_phone") or body.get("phone") or body.get("mobile_number", "")
+            total_amount = body.get("total_amount")
+
             # Multi-book bulk sale support
             if body.get("books") and isinstance(body.get("books"), list):
                 res = database.sell_books_bulk(
                     items=body["books"],
+                    buyer_name=buyer_name,
+                    buyer_phone=buyer_phone,
+                    total_amount=total_amount,
                     user=body.get("user", "Staff"),
                     shared_notes=body.get("notes", "")
                 )
@@ -293,7 +300,13 @@ def _app_dispatch(environ, start_response):
                 except ValueError:
                     return json_response(start_response, {"error": "Invalid selling price format."}, 400)
 
-            res = database.sell_book(book_id, selling_price=price_val, notes=notes)
+            res = database.sell_book(
+                book_id,
+                selling_price=price_val,
+                buyer_name=buyer_name,
+                buyer_phone=buyer_phone,
+                notes=notes
+            )
             if "error" in res:
                 return json_response(start_response, res, 400)
             return json_response(start_response, res)

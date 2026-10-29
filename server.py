@@ -344,10 +344,17 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
 
         # 6. Selling Workflow (Req 3.1 - 3.3, Multi-Book Sale)
         elif path in ("/api/books/sell", "/api/books/sell-bulk"):
+            buyer_name = body.get("buyer_name", "")
+            buyer_phone = body.get("buyer_phone") or body.get("phone") or body.get("mobile_number", "")
+            total_amount = body.get("total_amount")
+
             # Multi-book bulk sale support
             if body.get("books") and isinstance(body.get("books"), list):
                 res = database.sell_books_bulk(
                     items=body["books"],
+                    buyer_name=buyer_name,
+                    buyer_phone=buyer_phone,
+                    total_amount=total_amount,
                     user=body.get("user", "Staff"),
                     shared_notes=body.get("notes", "")
                 )
@@ -375,7 +382,13 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
                     self._send_json({"error": "Invalid selling price format."}, 400)
                     return
 
-            res = database.sell_book(book_id, selling_price=price_val, notes=notes)
+            res = database.sell_book(
+                book_id,
+                selling_price=price_val,
+                buyer_name=buyer_name,
+                buyer_phone=buyer_phone,
+                notes=notes
+            )
             if "error" in res:
                 self._send_json(res, 400)
             else:

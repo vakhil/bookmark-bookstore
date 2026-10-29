@@ -4730,10 +4730,17 @@ function renderDigitalReceipt(saleData) {
   // Multi-book sale receipt
   if (saleData.sold_books && saleData.sold_books.length > 0) {
     const totalAmount = saleData.total_amount ? `₹${parseFloat(saleData.total_amount).toFixed(2)}` : '₹0.00';
+    const buyerInfoHtml = (saleData.buyer_name || saleData.buyer_phone)
+      ? `<div style="font-size:0.85rem; color:#0369a1; background:#f0f9ff; border:1px solid #bae6fd; padding:0.35rem 0.65rem; border-radius:6px; margin-bottom:0.75rem; display:flex; gap:0.75rem; flex-wrap:wrap;">
+          ${saleData.buyer_name ? `<span>👤 <b>${escapeHtml(saleData.buyer_name)}</b></span>` : ''}
+          ${saleData.buyer_phone ? `<span>📞 <b>${escapeHtml(saleData.buyer_phone)}</b></span>` : ''}
+        </div>`
+      : '';
     container.innerHTML = `
       <div class="receipt-title">✅ Sale Confirmed — ${saleData.count} Books Marked SOLD OUT</div>
       <div class="receipt-meta">Time: ${new Date().toLocaleString()}</div>
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:1rem; max-width:540px; margin:0.75rem auto 1rem auto; text-align:left;">
+        ${buyerInfoHtml}
         <div style="display:flex; justify-content:space-between; margin-bottom:0.75rem; border-bottom:1px solid #e2e8f0; padding-bottom:0.5rem;">
           <b>Total Books Sold: ${saleData.count}</b>
           <b style="color:#059669; font-size:1.1rem;">Total: ${totalAmount}</b>
@@ -5316,6 +5323,29 @@ function updateAllCartButtonStates() {
   });
 }
 
+function updateCartTotalsFromIndividualPrices() {
+  const costInput = document.getElementById('cartTotalCostInput');
+  const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
+  if (!costInput) return;
+
+  let sum = 0;
+  let hasAnyCustomPrice = false;
+  for (const item of storeCart) {
+    if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
+      const p = parseFloat(item.selling_price);
+      if (!isNaN(p) && p >= 0) {
+        sum += p;
+        hasAnyCustomPrice = true;
+      }
+    }
+  }
+
+  if (hasAnyCustomPrice) {
+    costInput.value = sum > 0 ? sum.toFixed(2) : '';
+    if (liveTotal) liveTotal.textContent = `₹${sum.toFixed(2)}`;
+  }
+}
+
 function renderCartTab() {
   const emptyView = document.getElementById('cartEmptyView');
   const contentView = document.getElementById('cartContentView');
@@ -5352,14 +5382,15 @@ function renderCartTab() {
     const genre = item.genre || '';
     const coverHtml = getBookCoverHtml(cleanTitle, item.author, genre, item.image_url);
     const locText = (item.location_english || 'Location Unassigned').replace(/->/g, '→');
+    const currentPrice = (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') ? item.selling_price : '';
 
     return `
       <div class="cart-item-card" data-bid="${escapeHtml(item.book_id)}">
-        <div style="display: flex; gap: 0.95rem; align-items: center;">
+        <div style="display: flex; gap: 0.95rem; align-items: center; flex-wrap: wrap;">
           <div style="width: 52px; height: 74px; flex-shrink: 0; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
             ${coverHtml}
           </div>
-          <div style="flex: 1; min-width: 0;">
+          <div style="flex: 1; min-width: 170px;">
             <h4 style="margin: 0 0 0.2rem 0; font-size: 0.98rem; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
               ${escapeHtml(cleanTitle)}
             </h4>
@@ -5370,6 +5401,13 @@ function renderCartTab() {
               <span>📍</span> ${escapeHtml(locText)}
             </div>
           </div>
+
+          <!-- Individual Book Fee/Price Input -->
+          <div style="display: flex; align-items: center; gap: 0.4rem; background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.35rem 0.65rem; border-radius: 8px;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569; margin: 0;">Fee (₹):</label>
+            <input type="number" step="any" min="0" class="cart-item-price-input form-control" data-bid="${escapeHtml(item.book_id)}" value="${currentPrice}" placeholder="Price (₹)" style="width: 88px; padding: 0.25rem 0.45rem; font-size: 0.88rem; font-weight: 700; color: #064e3b; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px;">
+          </div>
+
           <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from cart" style="color: #ef4444; border-color: #fca5a5; padding: 0.4rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0;">
             <span>🗑️ Remove</span>
           </button>
@@ -5377,6 +5415,21 @@ function renderCartTab() {
       </div>
     `;
   }).join('');
+
+  // Wire price input listeners for each book
+  itemsContainer.querySelectorAll('.cart-item-price-input').forEach(input => {
+    input.addEventListener('input', () => {
+      const bid = input.getAttribute('data-bid');
+      const val = input.value.trim();
+      const num = parseFloat(val);
+      const targetItem = storeCart.find(i => i.book_id === bid);
+      if (targetItem) {
+        targetItem.selling_price = (!isNaN(num) && num >= 0) ? num : (val === '' ? '' : 0);
+        saveStoreCart();
+      }
+      updateCartTotalsFromIndividualPrices();
+    });
+  });
 
   // Wire remove buttons
   itemsContainer.querySelectorAll('.btn-remove-cart-item').forEach(btn => {
@@ -5441,25 +5494,64 @@ function initCart() {
         return;
       }
 
+      const buyerNameInput = document.getElementById('cartBuyerName');
+      const buyerName = buyerNameInput ? buyerNameInput.value.trim() : '';
+
+      const buyerPhoneInput = document.getElementById('cartBuyerPhone');
+      const buyerPhone = buyerPhoneInput ? buyerPhoneInput.value.trim() : '';
+
       const notesInput = document.getElementById('cartOrderNotes');
       const orderNotes = notesInput ? notesInput.value.trim() : '';
 
-      // Distribute total cost evenly across items
+      // Determine individual prices
       const numItems = storeCart.length;
-      const basePrice = Math.floor((totalCost / numItems) * 100) / 100;
-      const remainder = Math.round((totalCost - (basePrice * numItems)) * 100) / 100;
-
-      const itemsToSell = storeCart.map((item, index) => {
-        let p = basePrice;
-        if (index === numItems - 1) {
-          p = Math.round((p + remainder) * 100) / 100;
+      let explicitSum = 0;
+      let explicitCount = 0;
+      storeCart.forEach(item => {
+        if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
+          const p = parseFloat(item.selling_price);
+          if (!isNaN(p) && p >= 0) {
+            explicitSum += p;
+            explicitCount++;
+          }
         }
-        return {
-          book_id: item.book_id,
-          selling_price: p,
-          notes: orderNotes
-        };
       });
+
+      let itemsToSell;
+      if (explicitCount === numItems) {
+        // All items have individual prices
+        itemsToSell = storeCart.map(item => ({
+          book_id: item.book_id,
+          selling_price: Math.round(parseFloat(item.selling_price) * 100) / 100,
+          notes: orderNotes
+        }));
+      } else {
+        // Distribute total cost or remaining evenly
+        const remainingCost = Math.max(0, totalCost - explicitSum);
+        const unassignedCount = numItems - explicitCount;
+        const baseUnassigned = unassignedCount > 0 ? Math.floor((remainingCost / unassignedCount) * 100) / 100 : 0;
+        const remainder = unassignedCount > 0 ? Math.round((remainingCost - (baseUnassigned * unassignedCount)) * 100) / 100 : 0;
+
+        let unassignedSeen = 0;
+        itemsToSell = storeCart.map((item) => {
+          let p;
+          if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
+            const val = parseFloat(item.selling_price);
+            p = (!isNaN(val) && val >= 0) ? Math.round(val * 100) / 100 : 0;
+          } else {
+            unassignedSeen++;
+            p = baseUnassigned;
+            if (unassignedSeen === unassignedCount) {
+              p = Math.round((p + remainder) * 100) / 100;
+            }
+          }
+          return {
+            book_id: item.book_id,
+            selling_price: p,
+            notes: orderNotes
+          };
+        });
+      }
 
       btnPlaceOrder.disabled = true;
       btnPlaceOrder.innerHTML = `<span>⏳</span> Processing Order...`;
@@ -5471,6 +5563,8 @@ function initCart() {
           body: JSON.stringify({
             books: itemsToSell,
             total_amount: totalCost,
+            buyer_name: buyerName,
+            buyer_phone: buyerPhone,
             notes: orderNotes,
             user: 'Staff'
           })
@@ -5507,9 +5601,11 @@ function initCart() {
           // Clear client search cache so fresh requests don't show old available status
           clearSearchCache();
 
-          // Clear cart
+          // Clear cart and input fields
           clearStoreCart();
           if (costInput) costInput.value = '';
+          if (buyerNameInput) buyerNameInput.value = '';
+          if (buyerPhoneInput) buyerPhoneInput.value = '';
           if (notesInput) notesInput.value = '';
           if (liveTotal) liveTotal.textContent = '₹0.00';
 
@@ -5527,7 +5623,8 @@ function initCart() {
           }
 
           renderDigitalReceipt(data);
-          alert(`✅ Order Completed!\n\nAll ${data.count} books are now marked SOLD OUT.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}`);
+          const buyerMsg = buyerName ? `\nBuyer: ${buyerName}` : '';
+          alert(`✅ Order Completed!\n\nAll ${data.count} books are now marked SOLD OUT.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}${buyerMsg}`);
         } else {
           alert('Could not complete order: ' + (data.error || 'Server error'));
         }
@@ -5617,13 +5714,14 @@ function renderTransactionsList() {
   if (q) {
     list = list.filter(t => {
       const matchOid = (t.order_id || '').toLowerCase().includes(q);
+      const matchBuyer = (t.buyer_name || '').toLowerCase().includes(q) || (t.buyer_phone || '').includes(q);
       const matchNotes = (t.notes || '').toLowerCase().includes(q);
       const matchBooks = (t.books || []).some(b => 
         (b.title || '').toLowerCase().includes(q) ||
         (b.author || '').toLowerCase().includes(q) ||
         (b.location_english || '').toLowerCase().includes(q)
       );
-      return matchOid || matchNotes || matchBooks;
+      return matchOid || matchBuyer || matchNotes || matchBooks;
     });
   }
 
@@ -5643,6 +5741,13 @@ function renderTransactionsList() {
     const statusBadge = isReverted
       ? '<span style="background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; font-size:0.75rem; font-weight:800; padding:0.2rem 0.6rem; border-radius:9999px;">↩️ REVERTED</span>'
       : '<span style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-size:0.75rem; font-weight:800; padding:0.2rem 0.6rem; border-radius:9999px;">✓ COMPLETED</span>';
+
+    const buyerBadge = (order.buyer_name || order.buyer_phone)
+      ? `<div style="font-size:0.82rem; color:#0369a1; background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px; padding:0.2rem 0.55rem; display:inline-flex; align-items:center; gap:0.45rem; margin-top:0.35rem;">
+          ${order.buyer_name ? `<span>👤 <b>${escapeHtml(order.buyer_name)}</b></span>` : ''}
+          ${order.buyer_phone ? `<span>📞 <a href="tel:${escapeHtml(order.buyer_phone)}" style="color:#0284c7; text-decoration:none; font-weight:600;">${escapeHtml(order.buyer_phone)}</a></span>` : ''}
+        </div>`
+      : '';
 
     const booksHtml = (order.books || []).map(b => {
       const isBookSold = (b.current_book_status || '').toUpperCase() === 'SOLD OUT';
@@ -5676,6 +5781,7 @@ function renderTransactionsList() {
               <h3 style="margin:0; font-size:1.05rem; font-weight:800; color:#0f172a;">${escapeHtml(order.order_id)}</h3>
               ${statusBadge}
             </div>
+            ${buyerBadge ? `<div>${buyerBadge}</div>` : ''}
             <div style="font-size:0.78rem; color:#64748b; margin-top:0.25rem;">
               📅 ${new Date(order.sold_at).toLocaleString()} &bull; Sold by: <b>${escapeHtml(order.sold_by || 'Staff')}</b>
               ${order.notes ? ` &bull; <i>${escapeHtml(order.notes)}</i>` : ''}

@@ -306,6 +306,86 @@ class TestBookstoreSystem(unittest.TestCase):
         self.assertIn("Sale payment adjusted from ₹200 to ₹300", audit_row["notes"])
         conn.close()
 
+    def test_05e_customer_orders_and_buyer_details(self):
+        """Test customer_orders table, buyer name, mobile number, individual book fees, and transaction sync."""
+        b1 = database.add_book(title="Buyer Test Book 1", author="Author 1", rack=8, column_num=1, position=2)
+        b2 = database.add_book(title="Buyer Test Book 2", author="Author 2", rack=8, column_num=1, position=3)
+
+        res = database.sell_books_bulk(
+            items=[
+                {"book_id": b1["book_id"], "selling_price": 250.0},
+                {"book_id": b2["book_id"], "selling_price": 350.0}
+            ],
+            buyer_name="Aarav Patel",
+            buyer_phone="+91 9876543210",
+            total_amount=600.0,
+            shared_notes="Paid via UPI"
+        )
+
+        self.assertTrue(res["success"])
+        order_id = res["order_id"]
+        self.assertEqual(res["total_amount"], 600.0)
+        self.assertEqual(res["buyer_name"], "Aarav Patel")
+        self.assertEqual(res["buyer_phone"], "+91 9876543210")
+
+        # 1. Verify customer_orders table directly
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM customer_orders WHERE order_id = ?", (order_id,))
+        co_row = c.fetchone()
+        self.assertIsNotNone(co_row)
+        self.assertEqual(co_row["buyer_name"], "Aarav Patel")
+        self.assertEqual(co_row["buyer_phone"], "+91 9876543210")
+        self.assertEqual(co_row["total_amount"], 600.0)
+        self.assertEqual(co_row["status"], "COMPLETED")
+        self.assertIn("Paid via UPI", co_row["notes"])
+
+        # 2. Verify individual selling prices in sales_transactions
+        c.execute("SELECT book_id, selling_price FROM sales_transactions WHERE order_id = ?", (order_id,))
+        st_rows = {r["book_id"]: r["selling_price"] for r in c.fetchall()}
+        self.assertEqual(st_rows[b1["book_id"]], 250.0)
+        self.assertEqual(st_rows[b2["book_id"]], 350.0)
+        conn.close()
+
+        # 3. Verify get_transactions() joins and surfaces buyer details and member books
+        txs = database.get_transactions(force_refresh=True)
+        matching_tx = next((t for t in txs if t["order_id"] == order_id), None)
+        self.assertIsNotNone(matching_tx)
+        self.assertEqual(matching_tx["buyer_name"], "Aarav Patel")
+        self.assertEqual(matching_tx["buyer_phone"], "+91 9876543210")
+        self.assertEqual(matching_tx["total_amount"], 600.0)
+        self.assertEqual(len(matching_tx["books"]), 2)
+
+        # 4. Verify revert transaction updates customer_orders status
+        rev_res = database.revert_transaction(order_id)
+        self.assertTrue(rev_res["success"])
+
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT status FROM customer_orders WHERE order_id = ?", (order_id,))
+        self.assertEqual(c.fetchone()["status"], "REVERTED")
+        conn.close()
+
+        # 5. Verify redo transaction restores customer_orders status
+        redo_res = database.redo_transaction(order_id)
+        self.assertTrue(redo_res["success"])
+
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT status FROM customer_orders WHERE order_id = ?", (order_id,))
+        self.assertEqual(c.fetchone()["status"], "COMPLETED")
+        conn.close()
+
+        # 6. Verify delete transaction purges from customer_orders
+        del_res = database.delete_transaction(order_id)
+        self.assertTrue(del_res["success"])
+
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM customer_orders WHERE order_id = ?", (order_id,))
+        self.assertIsNone(c.fetchone())
+        conn.close()
+
     def test_06_unassigned_books_and_bulk_assignment_req1_7(self):
         """Req 1.7: Unassigned books section and bulk location assignment."""
         # Add 2 books with unassigned locations
