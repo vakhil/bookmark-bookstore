@@ -1065,13 +1065,14 @@ function createBookTile(book, copy, matchType) {
   }
 
   function renderEdit() {
+    const state = getBookState(book, copy);
     const bookId = copy.book_id || book.book_id || '';
     const curTitle = copy.title || book.title || '';
     const curAuthor = copy.author || book.author || '';
     const curLang = copy.language || book.language || 'English';
-    const curRack = copy.rack !== null && copy.rack !== undefined ? copy.rack : '';
-    const curCol = copy.column_num !== null && copy.column_num !== undefined ? copy.column_num : '';
-    const curPos = copy.position !== null && copy.position !== undefined ? copy.position : '';
+    const curRack = copy.rack !== null && copy.rack !== undefined ? copy.rack : (book.rack !== null && book.rack !== undefined ? book.rack : '');
+    const curCol = copy.column_num !== null && copy.column_num !== undefined ? copy.column_num : (book.column_num !== null && book.column_num !== undefined ? book.column_num : '');
+    const curPos = copy.position !== null && copy.position !== undefined ? copy.position : (book.position !== null && book.position !== undefined ? book.position : '');
     const curPrice = copy.selling_price !== null && copy.selling_price !== undefined ? copy.selling_price : (book.selling_price || '');
     const initialPreview = formatLocationPreviewText(curRack, curCol, curPos);
 
@@ -1090,7 +1091,7 @@ function createBookTile(book, copy, matchType) {
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
               <div>
-                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Book's Title</label>
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Book Title</label>
                 <input type="text" class="form-control form-control-sm inp-edit-title" value="${escapeHtml(curTitle)}" placeholder="Book title..." style="width:100%; padding:0.4rem 0.6rem; font-size:0.88rem; font-weight:600;">
               </div>
               <div>
@@ -1104,17 +1105,17 @@ function createBookTile(book, copy, matchType) {
                 <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Language</label>
                 <input type="text" class="form-control form-control-sm inp-edit-lang" value="${escapeHtml(curLang)}" placeholder="Language" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
               </div>
-              <div style="width:100px;">
-                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Rack</label>
-                <input type="text" class="form-control form-control-sm inp-edit-rack" value="${escapeHtml(curRack.toString())}" placeholder="e.g. 36" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              <div style="width:95px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Rack (No.)</label>
+                <input type="number" min="0" step="1" class="form-control form-control-sm inp-edit-rack" value="${escapeHtml(curRack.toString())}" placeholder="e.g. 3" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
               </div>
-              <div style="width:75px;">
-                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Column</label>
-                <input type="text" class="form-control form-control-sm inp-edit-col" value="${escapeHtml(curCol.toString())}" placeholder="e.g. 4" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              <div style="width:95px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Column (No.)</label>
+                <input type="number" min="0" step="1" class="form-control form-control-sm inp-edit-col" value="${escapeHtml(curCol.toString())}" placeholder="e.g. 2" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
               </div>
-              <div style="width:75px;">
-                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Position</label>
-                <input type="text" class="form-control form-control-sm inp-edit-pos" value="${escapeHtml(curPos.toString())}" placeholder="e.g. 8" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+              <div style="flex:1; min-width:125px;">
+                <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Book from Top (3rd Col)</label>
+                <input type="number" min="0" step="1" class="form-control form-control-sm inp-edit-pos" value="${escapeHtml(curPos.toString())}" placeholder="e.g. 5" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
               </div>
             </div>
 
@@ -1287,6 +1288,40 @@ function createBookTile(book, copy, matchType) {
           book.location_english = data.book.location_english;
           copy.selling_price = data.book.selling_price;
           copy.status = data.book.status;
+
+          // If search results data is currently cached in window, update it
+          if (window.currentSearchResultsData && Array.isArray(window.currentSearchResultsData.exact_matches)) {
+            window.currentSearchResultsData.exact_matches.forEach(g => {
+              if (g.copies && Array.isArray(g.copies)) {
+                g.copies.forEach(c => {
+                  if (c.book_id === bookId) {
+                    c.title = data.book.title;
+                    c.author = data.book.author;
+                    c.rack = data.book.rack;
+                    c.column_num = data.book.column_num;
+                    c.position = data.book.position;
+                    c.location_english = data.book.location_english;
+                    c.language = data.book.language;
+                    c.selling_price = data.book.selling_price;
+                  }
+                });
+              }
+              if (g.book_id === bookId) {
+                g.title = data.book.title;
+                g.author = data.book.author;
+                g.rack = data.book.rack;
+                g.column_num = data.book.column_num;
+                g.position = data.book.position;
+                g.location_english = data.book.location_english;
+                g.language = data.book.language;
+                g.selling_price = data.book.selling_price;
+              }
+            });
+          }
+
+          // Clear client search cache so fresh requests reflect the new title/author/location
+          clearSearchCache();
+
           renderView();
           fetchStats();
         } else {
@@ -5320,7 +5355,6 @@ function updateAllCartButtonStates() {
 }
 
 function updateCartTotalsFromIndividualPrices() {
-  const costInput = document.getElementById('cartTotalCostInput');
   const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
 
   let sum = 0;
@@ -5333,9 +5367,6 @@ function updateCartTotalsFromIndividualPrices() {
     }
   }
 
-  if (costInput) {
-    costInput.value = sum > 0 ? sum.toFixed(2) : '';
-  }
   if (liveTotal) {
     liveTotal.textContent = `₹${sum.toFixed(2)}`;
   }
@@ -5347,7 +5378,6 @@ function renderCartTab() {
   const itemsContainer = document.getElementById('cartItemsList');
   const countText = document.getElementById('cartItemsCountText');
   const summaryCount = document.getElementById('summaryTotalBooks');
-  const costInput = document.getElementById('cartTotalCostInput');
   const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
 
   if (!emptyView || !contentView || !itemsContainer) return;
@@ -5436,15 +5466,6 @@ function renderCartTab() {
 function initCart() {
   loadStoreCart();
 
-  const costInput = document.getElementById('cartTotalCostInput');
-  const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
-  if (costInput && liveTotal) {
-    costInput.addEventListener('input', () => {
-      const val = parseFloat(costInput.value);
-      liveTotal.textContent = (!isNaN(val) && val >= 0) ? `₹${val.toFixed(2)}` : '₹0.00';
-    });
-  }
-
   const btnAddMore = document.getElementById('btnCartAddMore');
   if (btnAddMore) {
     btnAddMore.addEventListener('click', () => {
@@ -5466,21 +5487,7 @@ function initCart() {
   if (btnPlaceOrder) {
     btnPlaceOrder.addEventListener('click', async () => {
       if (storeCart.length === 0) {
-        alert('Your cart is empty. Add books before placing an order.');
-        return;
-      }
-
-      const costVal = costInput ? costInput.value.trim() : '';
-      if (!costVal) {
-        alert('Please enter the Total Transaction amount in rupees (₹).');
-        if (costInput) costInput.focus();
-        return;
-      }
-
-      const totalCost = parseFloat(costVal);
-      if (isNaN(totalCost) || totalCost < 0) {
-        alert('Please enter a valid positive amount.');
-        if (costInput) costInput.focus();
+        alert('Your cart is empty. Add books before selling.');
         return;
       }
 
@@ -5493,58 +5500,27 @@ function initCart() {
       const notesInput = document.getElementById('cartOrderNotes');
       const orderNotes = notesInput ? notesInput.value.trim() : '';
 
-      // Determine individual prices
-      const numItems = storeCart.length;
-      let explicitSum = 0;
-      let explicitCount = 0;
-      storeCart.forEach(item => {
+      // Calculate total transaction amount directly from individual book fees
+      let totalCost = 0;
+      const itemsToSell = storeCart.map(item => {
+        let p = 0;
         if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
-          const p = parseFloat(item.selling_price);
-          if (!isNaN(p) && p >= 0) {
-            explicitSum += p;
-            explicitCount++;
+          const val = parseFloat(item.selling_price);
+          if (!isNaN(val) && val >= 0) {
+            p = Math.round(val * 100) / 100;
           }
         }
-      });
-
-      let itemsToSell;
-      if (explicitCount === numItems) {
-        // All items have individual prices
-        itemsToSell = storeCart.map(item => ({
+        totalCost += p;
+        return {
           book_id: item.book_id,
-          selling_price: Math.round(parseFloat(item.selling_price) * 100) / 100,
+          selling_price: p,
           notes: orderNotes
-        }));
-      } else {
-        // Distribute total cost or remaining evenly
-        const remainingCost = Math.max(0, totalCost - explicitSum);
-        const unassignedCount = numItems - explicitCount;
-        const baseUnassigned = unassignedCount > 0 ? Math.floor((remainingCost / unassignedCount) * 100) / 100 : 0;
-        const remainder = unassignedCount > 0 ? Math.round((remainingCost - (baseUnassigned * unassignedCount)) * 100) / 100 : 0;
-
-        let unassignedSeen = 0;
-        itemsToSell = storeCart.map((item) => {
-          let p;
-          if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
-            const val = parseFloat(item.selling_price);
-            p = (!isNaN(val) && val >= 0) ? Math.round(val * 100) / 100 : 0;
-          } else {
-            unassignedSeen++;
-            p = baseUnassigned;
-            if (unassignedSeen === unassignedCount) {
-              p = Math.round((p + remainder) * 100) / 100;
-            }
-          }
-          return {
-            book_id: item.book_id,
-            selling_price: p,
-            notes: orderNotes
-          };
-        });
-      }
+        };
+      });
+      totalCost = Math.round(totalCost * 100) / 100;
 
       btnPlaceOrder.disabled = true;
-      btnPlaceOrder.innerHTML = `<span>⏳</span> Processing Order...`;
+      btnPlaceOrder.innerHTML = `<span>⏳</span> Selling...`;
 
       try {
         const res = await fetch('/api/books/sell', {
@@ -5593,10 +5569,10 @@ function initCart() {
 
           // Clear cart and input fields
           clearStoreCart();
-          if (costInput) costInput.value = '';
           if (buyerNameInput) buyerNameInput.value = '';
           if (buyerPhoneInput) buyerPhoneInput.value = '';
           if (notesInput) notesInput.value = '';
+          const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
           if (liveTotal) liveTotal.textContent = '₹0.00';
 
           fetchStats();
@@ -5622,7 +5598,7 @@ function initCart() {
         alert('Order processing error: ' + err.message);
       } finally {
         btnPlaceOrder.disabled = false;
-        btnPlaceOrder.innerHTML = `<span>⚡</span> Place Order &amp; Mark SOLD OUT`;
+        btnPlaceOrder.innerHTML = `<span>⚡</span> Sell`;
       }
     });
   }

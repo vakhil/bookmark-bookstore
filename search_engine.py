@@ -214,6 +214,8 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         grouped_map[key]["copies"].append({
             "id": b["id"],
             "book_id": b["book_id"],
+            "title": clean_title,
+            "author": b["author"],
             "rack": b["rack"],
             "column_num": b["column_num"],
             "position": b["position"],
