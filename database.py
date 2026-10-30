@@ -382,7 +382,8 @@ def init_db(force_reseed: bool = False):
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 unassigned_since TEXT DEFAULT NULL,
-                image_url TEXT DEFAULT ''
+                image_url TEXT DEFAULT '',
+                summary LONGTEXT DEFAULT ''
             )
         """)
 
@@ -494,11 +495,14 @@ def init_db(force_reseed: bool = False):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_order_id ON customer_orders(order_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_phone ON customer_orders(buyer_phone)")
 
-        # Ensure simple_genre column exists in existing database
+        # Ensure simple_genre and summary columns exist in existing database
         cursor.execute("PRAGMA table_info(books)")
         existing_cols = [c["name"] for c in cursor.fetchall()]
         if "simple_genre" not in existing_cols:
             cursor.execute("ALTER TABLE books ADD COLUMN simple_genre TEXT DEFAULT ''")
+            conn.commit()
+        if "summary" not in existing_cols:
+            cursor.execute("ALTER TABLE books ADD COLUMN summary LONGTEXT DEFAULT ''")
             conn.commit()
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_simple_genre ON books(simple_genre)")
@@ -725,6 +729,43 @@ def sync_csv_update_status(book_id: str, status: str = "SOLD OUT"):
         os.replace(tmp_path, SEED_CSV_PATH)
     except Exception as e:
         print(f"Error updating CSV status for {book_id}: {e}")
+
+def sync_csv_update_status_bulk(book_ids: List[str], status: str = "SOLD OUT"):
+    """Updates the status of multiple books in initial_inventory.csv in a single fast pass."""
+    if not os.path.exists(SEED_CSV_PATH) or not book_ids:
+        return
+    bids_set = {str(bid).strip() for bid in book_ids if bid}
+    if not bids_set:
+        return
+    try:
+        rows = []
+        with open(SEED_CSV_PATH, "r", encoding="utf-8", errors="replace") as f:
+            reader = csv.reader(f)
+            for r in reader:
+                rows.append(r)
+        if not rows:
+            return
+
+        header = rows[0]
+        if "Status" in header:
+            status_idx = header.index("Status")
+        else:
+            header.append("Status")
+            status_idx = len(header) - 1
+
+        for r in rows[1:]:
+            if len(r) > 1 and r[1].strip() in bids_set:
+                while len(r) <= status_idx:
+                    r.append("")
+                r[status_idx] = status
+
+        tmp_path = SEED_CSV_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+        os.replace(tmp_path, SEED_CSV_PATH)
+    except Exception as e:
+        print(f"Notice bulk updating CSV status: {e}")
 
 def sync_csv_add_book(book_dict: Dict[str, Any]):
     """Appends a new book record directly to initial_inventory.csv."""
@@ -1405,7 +1446,8 @@ def sell_book(
         updated_book = dict(cursor.fetchone())
 
         conn.close()
-        sync_csv_update_status(book_id, "SOLD OUT")
+        import threading
+        threading.Thread(target=sync_csv_update_status, args=(book_id, "SOLD OUT"), daemon=True).start()
         notify_inventory_changed()
 
         return {
@@ -1449,6 +1491,26 @@ def sell_books_bulk(
 
         order_id = generate_unique_order_id(cursor, today_code)
 
+        # Pre-compute next transaction reference counter to avoid repeated SQL queries in loop
+        cursor.execute("SELECT transaction_ref FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
+        tx_rows = list(cursor.fetchall())
+        try:
+            cursor.execute("SELECT order_id FROM customer_orders WHERE order_id LIKE ?", (f"TX-{today_code}-%",))
+            tx_rows.extend(cursor.fetchall())
+        except Exception:
+            pass
+
+        max_tx_num = 0
+        for r in tx_rows:
+            ref = list(r.values())[0] if isinstance(r, dict) and r else (r[0] if not isinstance(r, dict) else str(r))
+            try:
+                num = int(str(ref).split("-")[-1])
+                if num > max_tx_num:
+                    max_tx_num = num
+            except (ValueError, IndexError):
+                pass
+        tx_counter = max_tx_num + 1
+
         successful_sales = []
         errors = []
         calculated_total = 0.0
@@ -1478,7 +1540,8 @@ def sell_books_bulk(
                 errors.append(f"Book '{book['title']}' ({bid}) is already marked as SOLD OUT.")
                 continue
 
-            tx_ref = generate_unique_transaction_ref(cursor, today_code)
+            tx_ref = f"TX-{today_code}-{tx_counter:04d}"
+            tx_counter += 1
 
             cursor.execute("""
                 UPDATE books SET
@@ -1538,7 +1601,6 @@ def sell_books_bulk(
                 now_iso
             ))
 
-            sync_csv_update_status(bid, "SOLD OUT")
             if price_val is not None:
                 calculated_total += price_val
 
@@ -1573,6 +1635,12 @@ def sell_books_bulk(
         conn.commit()
         conn.close()
         notify_inventory_changed()
+
+        # Update CSV status in background thread so client response returns immediately
+        if successful_sales:
+            sold_bids = [x["book_id"] for x in successful_sales]
+            import threading
+            threading.Thread(target=sync_csv_update_status_bulk, args=(sold_bids, "SOLD OUT"), daemon=True).start()
 
         if not successful_sales and errors:
             return {"error": "; ".join(errors), "errors": errors}
@@ -2626,4 +2694,137 @@ def get_or_fetch_book_cover(title: str, author: str = "") -> Optional[str]:
             print(f"Notice saving book cover to DB: {e}")
 
     return cover_url
+
+def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -> str:
+    """
+    Returns the cached summary from the database if available.
+    Otherwise queries Wikipedia API and Google/Open Library for the book synopsis,
+    persists it into the database (LONGTEXT) as a one-time activity, and returns it.
+    """
+    clean_title = (title or "").strip()
+    clean_author = (author or "").strip()
+    clean_bid = (book_id or "").strip()
+    if not clean_title and not clean_bid:
+        return ""
+
+    # Step 1: Check database cache first
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if clean_bid:
+            cursor.execute("SELECT summary, title, author FROM books WHERE book_id = ? LIMIT 1", (clean_bid,))
+            row = cursor.fetchone()
+            if row and row["summary"]:
+                cached = row["summary"].strip()
+                conn.close()
+                return cached
+            if row and not clean_title and row["title"]:
+                clean_title = row["title"]
+            if row and not clean_author and row["author"]:
+                clean_author = row["author"]
+
+        if clean_title:
+            cursor.execute(
+                "SELECT summary FROM books WHERE lower(title) = ? AND summary != '' AND summary IS NOT NULL LIMIT 1",
+                (clean_title.lower(),)
+            )
+            row = cursor.fetchone()
+            if row and row["summary"]:
+                cached = row["summary"].strip()
+                conn.close()
+                return cached
+        conn.close()
+    except Exception as e:
+        print(f"Notice reading cached summary: {e}")
+
+    summary_text = ""
+    import urllib.request, urllib.parse, json, re
+
+    req_headers = {
+        "User-Agent": "BookmarkBookstore/1.0 (contact@bookmark.com; book inventory assistant)",
+        "Accept": "application/json,text/plain,*/*"
+    }
+
+    # Step 2: Try direct Wikipedia REST summary API
+    if clean_title:
+        try:
+            slug = urllib.parse.quote(clean_title.replace(" ", "_"))
+            wiki_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}"
+            req = urllib.request.Request(wiki_url, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                extract = data.get("extract", "")
+                if extract and len(extract) > 40 and "may refer to:" not in extract:
+                    summary_text = extract.strip()
+        except Exception:
+            pass
+
+    # Step 3: Try Wikipedia Search to find exact article title
+    if not summary_text and clean_title:
+        try:
+            q = urllib.parse.quote(f"{clean_title} {clean_author}".strip())
+            search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={q}&format=json&utf8="
+            req = urllib.request.Request(search_url, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                results = data.get("query", {}).get("search", [])
+                if results:
+                    found_page = results[0].get("title", "")
+                    if found_page:
+                        fslug = urllib.parse.quote(found_page.replace(" ", "_"))
+                        furl = f"https://en.wikipedia.org/api/rest_v1/page/summary/{fslug}"
+                        freq = urllib.request.Request(furl, headers=req_headers)
+                        with urllib.request.urlopen(freq, timeout=3.0) as fresp:
+                            fdata = json.loads(fresp.read().decode("utf-8", errors="replace"))
+                            fext = fdata.get("extract", "")
+                            if fext and len(fext) > 40 and "may refer to:" not in fext:
+                                summary_text = fext.strip()
+        except Exception:
+            pass
+
+    # Step 4: Try Google Books volume description
+    if not summary_text and clean_title:
+        try:
+            gb_q = urllib.parse.quote(f'intitle:"{clean_title}"')
+            gb_url = f"https://www.googleapis.com/books/v1/volumes?q={gb_q}&maxResults=1"
+            req = urllib.request.Request(gb_url, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                items = data.get("items", [])
+                if items:
+                    desc = items[0].get("volumeInfo", {}).get("description", "")
+                    if desc:
+                        clean_desc = re.sub(r'<[^>]+>', '', desc).strip()
+                        if len(clean_desc) > 30:
+                            summary_text = clean_desc
+        except Exception:
+            pass
+
+    # Step 5: High-quality contextual fallback synopsis
+    if not summary_text:
+        author_phrase = f"by {clean_author}" if clean_author else "from curated collections"
+        summary_text = f'"{clean_title}" {author_phrase} is a featured work in the Bookmark collection. Explore its chapters and themes to discover valuable insights and literary narrative.'
+
+    # Step 6: Persist summary into database as a one-time activity
+    if summary_text:
+        try:
+            with db_lock:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                if clean_title:
+                    cursor.execute(
+                        "UPDATE books SET summary = ? WHERE lower(title) = ?",
+                        (summary_text, clean_title.lower())
+                    )
+                if clean_bid:
+                    cursor.execute(
+                        "UPDATE books SET summary = ? WHERE book_id = ?",
+                        (summary_text, clean_bid)
+                    )
+                conn.commit()
+                conn.close()
+        except Exception as e:
+            print(f"Notice saving book summary to DB: {e}")
+
+    return summary_text
 

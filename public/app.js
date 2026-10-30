@@ -778,6 +778,33 @@ function formatLocationPill(state, locationText, sellingPrice, copy = null) {
   `;
 }
 
+const bookSummaryCache = new Map();
+window.bookSummaryCache = bookSummaryCache;
+
+async function fetchBookSummary(title, author, bookId) {
+  const cleanT = (title || '').trim();
+  const cleanA = (author || '').trim();
+  const cleanB = (bookId || '').trim();
+  const cacheKey = (cleanB || cleanT).toLowerCase();
+  if (!cacheKey) return '';
+  if (bookSummaryCache.has(cacheKey)) {
+    return bookSummaryCache.get(cacheKey);
+  }
+  try {
+    const res = await fetch(`/api/books/summary?title=${encodeURIComponent(cleanT)}&author=${encodeURIComponent(cleanA)}&book_id=${encodeURIComponent(cleanB)}`);
+    const data = await res.json();
+    if (data && data.summary) {
+      bookSummaryCache.set(cacheKey, data.summary);
+      if (cleanT) bookSummaryCache.set(cleanT.toLowerCase(), data.summary);
+      if (cleanB) bookSummaryCache.set(cleanB.toLowerCase(), data.summary);
+      return data.summary;
+    }
+  } catch (err) {
+    console.warn('Notice fetching book summary:', err);
+  }
+  return '';
+}
+
 /**
  * Creates a single, independent tile for one physical book copy.
  * Each copy gets its own separate card with editable fields and Sell button.
@@ -803,6 +830,7 @@ function createBookTile(book, copy, matchType) {
     const bookId = copy.book_id || book.book_id || '';
     const language = copy.language || book.language || 'English';
     const sellingPrice = (copy.selling_price !== null && copy.selling_price !== undefined && copy.selling_price !== '') ? copy.selling_price : (book.selling_price || '');
+    const existingSummary = copy.summary || book.summary || bookSummaryCache.get(bookId.toLowerCase()) || bookSummaryCache.get(cleanTitle.toLowerCase()) || '';
 
     card.innerHTML = `
       <div class="book-card-main">
@@ -811,7 +839,10 @@ function createBookTile(book, copy, matchType) {
             ${coverHtml}
           </div>
           <div class="book-info">
-            <h3 class="book-title">${escapeHtml(cleanTitle)}</h3>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.2rem;">
+              <h3 class="book-title" style="margin: 0; line-height: 1.3;">${escapeHtml(cleanTitle)}</h3>
+              <span class="copy-id-chip" title="Physical Inventory Book ID" style="font-family: monospace; font-size: 0.78rem; font-weight: 800; background: #f1f5f9; color: #1e293b; border: 1.5px solid #cbd5e1; padding: 0.15rem 0.55rem; border-radius: 6px; flex-shrink: 0;">🆔 ${escapeHtml(bookId)}</span>
+            </div>
             <div class="book-author">
               <span class="author-prefix">by</span>
               <b>${cleanAuthor}</b>
@@ -820,6 +851,7 @@ function createBookTile(book, copy, matchType) {
               ${formatLocationPill(state, locationText, sellingPrice, copy)}
             </div>
             <div class="book-meta-line">
+              <span class="copy-id-chip-mini" style="font-family: monospace; font-size: 0.75rem; font-weight: 800; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 0.12rem 0.45rem; border-radius: 6px;">ID: ${escapeHtml(bookId)}</span>
               ${state === 'UNASSIGNED' ? '<span class="state-chip state-unassigned"><span class="chip-dot"></span> UNASSIGNED</span>' : ''}
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
               ${genre ? `<span class="chip simple-genre-chip">${escapeHtml(genre)}</span>` : ''}
@@ -850,26 +882,28 @@ function createBookTile(book, copy, matchType) {
         </div>
       </div>
       <div class="book-card-expanded-area">
-        <div class="expanded-meta-grid">
-          <div class="expanded-meta-item">
-            <span class="meta-label">Language</span>
-            <span class="meta-value">🌐 ${escapeHtml(language)}</span>
+        <div class="book-summary-box" style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0.85rem 1rem; margin-top: 0.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.35rem;">
+            <span style="font-size: 0.86rem; font-weight: 800; color: #064e3b; display: flex; align-items: center; gap: 0.35rem;">
+              <span>📖</span> Book Overview &amp; Synopsis
+            </span>
+            <span style="font-family: monospace; font-size: 0.75rem; font-weight: 700; color: #64748b;">
+              ID: ${escapeHtml(bookId)}
+            </span>
           </div>
-          <div class="expanded-meta-item">
-            <span class="meta-label">Genre</span>
-            <span class="meta-value">${escapeHtml(genre || 'General')}</span>
-          </div>
-          <div class="expanded-meta-item">
-            <span class="meta-label">Availability</span>
-            <span class="meta-value">${state === 'ASSIGNED' ? '✅ Ready on Shelf' : (state === 'SOLD' ? `❌ Sold${sellingPrice ? ` (₹${sellingPrice})` : ''}` : '⚠️ Unassigned')}</span>
-          </div>
-        </div>
-        <div class="expanded-summary-placeholder">
-          <span style="font-size:1.15rem;">📖</span>
-          <span>Book overview & synopsis slot &bull; <i style="opacity:0.8;">(Summary held for future update)</i></span>
+          <p class="book-summary-text" style="margin: 0; font-size: 0.88rem; line-height: 1.6; color: #334155;">
+            ${existingSummary ? escapeHtml(existingSummary) : '<span style="color:#64748b; font-style:italic;">Loading book synopsis...</span>'}
+          </p>
         </div>
       </div>
     `;
+
+    // Set initial title attribute for hover preview if summary is available
+    if (existingSummary) {
+      card.setAttribute('title', `📖 ${cleanTitle} by ${cleanAuthor}\nID: ${bookId}\n\nSummary:\n${existingSummary}`);
+    } else {
+      card.setAttribute('title', `📖 ${cleanTitle} by ${cleanAuthor}\nID: ${bookId}\n(Hover or click to view synopsis)`);
+    }
 
     // Hook up Edit button
     const btnEdit = card.querySelector('.btn-edit-tile');
@@ -1103,7 +1137,12 @@ function createBookTile(book, copy, matchType) {
             <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end;">
               <div style="flex:1; min-width:110px;">
                 <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Language</label>
-                <input type="text" class="form-control form-control-sm inp-edit-lang" value="${escapeHtml(curLang)}" placeholder="Language" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem;">
+                <select class="form-control form-control-sm inp-edit-lang" style="width:100%; padding:0.4rem 0.6rem; font-size:0.85rem; height:34px; background:#ffffff;">
+                  <option value="English" ${(curLang || '').toLowerCase() === 'english' ? 'selected' : ''}>English</option>
+                  <option value="Telugu" ${(curLang || '').toLowerCase() === 'telugu' ? 'selected' : ''}>Telugu</option>
+                  <option value="Urdu" ${(curLang || '').toLowerCase() === 'urdu' ? 'selected' : ''}>Urdu</option>
+                  <option value="Hindi" ${(curLang || '').toLowerCase() === 'hindi' ? 'selected' : ''}>Hindi</option>
+                </select>
               </div>
               <div style="width:95px;">
                 <label style="display:block; font-size:0.75rem; font-weight:600; margin-bottom:0.2rem; color:var(--text-muted);">Rack (No.)</label>
@@ -1123,43 +1162,37 @@ function createBookTile(book, copy, matchType) {
               <span>📍</span> <span class="lbl-loc-preview" style="font-weight:600;">${escapeHtml(initialPreview)}</span>
             </div>
 
-            <!-- Payment & Repayment Section -->
-            <div class="edit-payment-container" style="margin-top:0.35rem; padding:0.75rem 0.95rem; background:${state === 'SOLD' ? '#fff1f2' : '#f8fafc'}; border:1.5px solid ${state === 'SOLD' ? '#fecdd3' : '#e2e8f0'}; border-radius:12px;">
+            ${state === 'SOLD' ? `
+            <!-- Payment Correction Section (Visible ONLY for Sold Copies to rectify recorded payment) -->
+            <div class="edit-payment-container" style="margin-top:0.35rem; padding:0.75rem 0.95rem; background:#fff1f2; border:1.5px solid #fecdd3; border-radius:12px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                <span style="font-size:0.82rem; font-weight:700; color:${state === 'SOLD' ? '#be123c' : '#334155'}; display:inline-flex; align-items:center; gap:0.35rem;">
-                  <span>💳</span> ${state === 'SOLD' ? 'Sale Payment Recorded' : 'Price Setting'}
+                <span style="font-size:0.82rem; font-weight:700; color:#be123c; display:inline-flex; align-items:center; gap:0.35rem;">
+                  <span>💳</span> Sale Payment Recorded
                 </span>
-                ${state === 'SOLD' ? `
-                  <span style="font-size:0.74rem; font-weight:700; color:#9f1239;">Recorded Sale Amount</span>
-                ` : `
-                  <span style="font-size:0.72rem; color:var(--text-muted);">(Optional price tag)</span>
-                `}
+                <span style="font-size:0.74rem; font-weight:700; color:#9f1239;">Recorded Sale Amount</span>
               </div>
 
               <div style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
                 <div style="width:140px;">
-                  <label style="display:block; font-size:0.72rem; font-weight:700; color:${state === 'SOLD' ? '#9f1239' : '#64748b'}; margin-bottom:0.2rem;">
-                    ${state === 'SOLD' ? 'Amount Paid (₹)' : 'Price (₹)'}
+                  <label style="display:block; font-size:0.72rem; font-weight:700; color:#9f1239; margin-bottom:0.2rem;">
+                    Amount Paid (₹)
                   </label>
                   <div style="position:relative; display:flex; align-items:center;">
-                    <span style="position:absolute; left:0.55rem; font-weight:700; color:${state === 'SOLD' ? '#be123c' : '#64748b'}; font-size:0.9rem;">₹</span>
-                    <input type="number" step="any" min="0" class="form-control form-control-sm inp-edit-price" value="${escapeHtml(curPrice.toString())}" placeholder="${state === 'SOLD' ? '0.00' : 'Price...'}" style="width:100%; padding-left:1.45rem; font-weight:700; font-size:0.92rem; ${state === 'SOLD' ? 'color:#881337; border-color:#fca5a5; background:#ffffff;' : ''}">
+                    <span style="position:absolute; left:0.55rem; font-weight:700; color:#be123c; font-size:0.9rem;">₹</span>
+                    <input type="number" step="any" min="0" class="form-control form-control-sm inp-edit-price" value="${escapeHtml(curPrice.toString())}" placeholder="0.00" style="width:100%; padding-left:1.45rem; font-weight:700; font-size:0.92rem; color:#881337; border-color:#fca5a5; background:#ffffff;">
                   </div>
                 </div>
 
-                ${state === 'SOLD' ? `
-                  <button type="button" class="btn btn-sm btn-save-payment-only" style="background:#2563eb; color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 0.95rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(37,99,235,0.3); transition:all 0.15s ease;" title="Update recorded payment">
-                    <span>💾</span> Update Payment
-                  </button>
-                ` : ''}
+                <button type="button" class="btn btn-sm btn-save-payment-only" style="background:#2563eb; color:#ffffff; font-weight:700; border:none; border-radius:10px; padding:0.48rem 0.95rem; display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer; height:34px; box-shadow:0 2px 8px rgba(37,99,235,0.3); transition:all 0.15s ease;" title="Update recorded payment">
+                  <span>💾</span> Update Payment
+                </button>
               </div>
 
-              ${state === 'SOLD' ? `
-                <div style="font-size:0.72rem; color:#9f1239; margin-top:0.45rem; line-height:1.35;">
-                  💡 <b>Correct Payment Received</b>: Enter the actual amount paid above (e.g. 300) and click <b>Update Payment</b>.
-                </div>
-              ` : ''}
+              <div style="font-size:0.72rem; color:#9f1239; margin-top:0.45rem; line-height:1.35;">
+                💡 <b>Correct Payment Received</b>: Enter the actual amount paid above (e.g. 300) and click <b>Update Payment</b>.
+              </div>
             </div>
+            ` : ''}
           </div>
         </div>
 
@@ -1247,7 +1280,8 @@ function createBookTile(book, copy, matchType) {
       const newRack = inpRack.value.trim();
       const newCol = inpCol.value.trim();
       const newPos = inpPos.value.trim();
-      const newPrice = card.querySelector('.inp-edit-price') ? card.querySelector('.inp-edit-price').value.trim() : '';
+      const priceInp = card.querySelector('.inp-edit-price');
+      const newPrice = priceInp ? priceInp.value.trim() : undefined;
 
       if (!newTitle) {
         alert('Book Title cannot be empty.');
@@ -1257,20 +1291,24 @@ function createBookTile(book, copy, matchType) {
       btnSave.disabled = true;
       btnSave.textContent = 'Saving...';
 
+      const updatePayload = {
+        book_id: bookId,
+        title: newTitle,
+        author: newAuthor,
+        language: newLang,
+        rack: newRack,
+        column_num: newCol,
+        position: newPos
+      };
+      if (newPrice !== undefined && newPrice !== '') {
+        updatePayload.selling_price = newPrice;
+      }
+
       try {
         const res = await fetch('/api/books/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            book_id: bookId,
-            title: newTitle,
-            author: newAuthor,
-            language: newLang,
-            rack: newRack,
-            column_num: newCol,
-            position: newPos,
-            selling_price: newPrice
-          })
+          body: JSON.stringify(updatePayload)
         });
         const data = await res.json();
         if (data.success && data.book) {
@@ -1337,7 +1375,30 @@ function createBookTile(book, copy, matchType) {
     });
   }
 
-  // Card click to expand / select (tile gets bigger with extra details)
+  // Hover on tile to fetch and display book synopsis
+  card.addEventListener('mouseenter', () => {
+    const cleanTitle = cleanBookTitle(copy.title || book.title || '');
+    const cleanAuthor = copy.author || book.author || '';
+    const bookId = copy.book_id || book.book_id || '';
+    const existingSummary = copy.summary || book.summary || bookSummaryCache.get(bookId.toLowerCase()) || bookSummaryCache.get(cleanTitle.toLowerCase());
+    if (existingSummary) {
+      card.setAttribute('title', `📖 ${cleanTitle} by ${cleanAuthor}\nID: ${bookId}\n\nSummary:\n${existingSummary}`);
+    } else {
+      fetchBookSummary(cleanTitle, cleanAuthor, bookId).then(sum => {
+        if (sum) {
+          copy.summary = sum;
+          book.summary = sum;
+          card.setAttribute('title', `📖 ${cleanTitle} by ${cleanAuthor}\nID: ${bookId}\n\nSummary:\n${sum}`);
+          const sumEl = card.querySelector('.book-summary-text');
+          if (sumEl && sumEl.textContent.includes('Loading book synopsis')) {
+            sumEl.textContent = sum;
+          }
+        }
+      });
+    }
+  });
+
+  // Card click to expand / select (tile displays full synopsis)
   card.addEventListener('click', (e) => {
     // If the click is on an interactive button, input, or inside edit mode, don't toggle selection
     if (e.target.closest('button, input, select, textarea, .book-card-actions, .edit-active-card, .delete-trigger-container')) {
@@ -1351,6 +1412,20 @@ function createBookTile(book, copy, matchType) {
       card.classList.remove('is-selected');
     } else {
       card.classList.add('is-selected');
+      const sumEl = card.querySelector('.book-summary-text');
+      if (sumEl && (sumEl.textContent.includes('Loading book synopsis') || !copy.summary)) {
+        const cleanTitle = cleanBookTitle(copy.title || book.title || '');
+        const cleanAuthor = copy.author || book.author || '';
+        const bookId = copy.book_id || book.book_id || '';
+        fetchBookSummary(cleanTitle, cleanAuthor, bookId).then(sum => {
+          if (sum && sumEl) {
+            sumEl.textContent = sum;
+            copy.summary = sum;
+            book.summary = sum;
+            card.setAttribute('title', `📖 ${cleanTitle} by ${cleanAuthor}\nID: ${bookId}\n\nSummary:\n${sum}`);
+          }
+        });
+      }
     }
   });
 
@@ -5406,29 +5481,36 @@ function renderCartTab() {
 
     return `
       <div class="cart-item-card" data-bid="${escapeHtml(item.book_id)}">
-        <div style="display: flex; gap: 0.95rem; align-items: center; flex-wrap: wrap;">
-          <div style="width: 52px; height: 74px; flex-shrink: 0; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+        <div class="cart-item-row-top" style="display: flex; gap: 0.85rem; align-items: flex-start;">
+          <div style="width: 50px; height: 70px; flex-shrink: 0; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1); background: #f1f5f9;">
             ${coverHtml}
           </div>
-          <div style="flex: 1; min-width: 170px;">
-            <h4 style="margin: 0 0 0.2rem 0; font-size: 0.98rem; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
+              <span class="copy-id-chip" style="font-family: monospace; font-size: 0.74rem; font-weight: 800; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 0.1rem 0.45rem; border-radius: 6px;">🆔 ${escapeHtml(item.book_id)}</span>
+              <span style="font-size: 0.75rem; font-weight: 700; color: #064e3b; display: inline-flex; align-items: center; gap: 0.25rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 0.12rem 0.55rem;">
+                <span>📍</span> ${escapeHtml(locText)}
+              </span>
+            </div>
+            <h4 style="margin: 0 0 0.15rem 0; font-size: 0.95rem; font-weight: 700; color: var(--text-main); line-height: 1.35; word-break: break-word;">
               ${escapeHtml(cleanTitle)}
             </h4>
-            <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
               by <b>${cleanAuthor}</b>
             </div>
-            <div style="font-size: 0.82rem; font-weight: 700; color: #064e3b; display: inline-flex; align-items: center; gap: 0.3rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 0.22rem 0.65rem;">
-              <span>📍</span> ${escapeHtml(locText)}
+          </div>
+        </div>
+
+        <div class="cart-item-row-bottom" style="display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid #f1f5f9; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 170px;">
+            <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin: 0; white-space: nowrap;">Fee / Price (₹):</label>
+            <div style="position: relative; flex: 1; max-width: 140px; display: flex; align-items: center;">
+              <span style="position: absolute; left: 0.5rem; font-weight: 700; color: #059669; font-size: 0.88rem;">₹</span>
+              <input type="number" step="any" min="0" class="cart-item-price-input form-control" data-bid="${escapeHtml(item.book_id)}" value="${currentPrice}" placeholder="e.g. 150" style="width: 100%; padding-left: 1.35rem; padding-right: 0.4rem; font-size: 0.92rem; font-weight: 700; color: #064e3b; height: 34px; border: 1.5px solid #cbd5e1; border-radius: 8px;">
             </div>
           </div>
 
-          <!-- Individual Book Fee/Price Input -->
-          <div style="display: flex; align-items: center; gap: 0.4rem; background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.35rem 0.65rem; border-radius: 8px;">
-            <label style="font-size: 0.78rem; font-weight: 700; color: #475569; margin: 0;">Fee (₹):</label>
-            <input type="number" step="any" min="0" class="cart-item-price-input form-control" data-bid="${escapeHtml(item.book_id)}" value="${currentPrice}" placeholder="Price (₹)" style="width: 88px; padding: 0.25rem 0.45rem; font-size: 0.88rem; font-weight: 700; color: #064e3b; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px;">
-          </div>
-
-          <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from cart" style="color: #ef4444; border-color: #fca5a5; padding: 0.4rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0;">
+          <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from cart" style="color: #ef4444; border-color: #fca5a5; padding: 0.35rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0; font-size: 0.78rem; font-weight: 600;">
             <span>🗑️ Remove</span>
           </button>
         </div>
@@ -5500,16 +5582,39 @@ function initCart() {
       const notesInput = document.getElementById('cartOrderNotes');
       const orderNotes = notesInput ? notesInput.value.trim() : '';
 
+      // 1. Indian Contact Phone Number Validation (+91... or 10-digit number like 944090...)
+      const cleanedPhone = buyerPhone.replace(/[\s\-\(\)]/g, '');
+      const isIndianPhone = /^(\+91[0-9]{10}|91[6-9][0-9]{9}|0[6-9][0-9]{9}|[6-9][0-9]{9}|[0-9]{10})$/.test(cleanedPhone);
+      if (!cleanedPhone || !isIndianPhone) {
+        alert('Please enter a valid Indian contact number (e.g. starting with +91 or a 10-digit number like 9440901234).');
+        if (buyerPhoneInput) {
+          buyerPhoneInput.focus();
+          buyerPhoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      // 2. Validate that each individual item in the cart has a positive price added
+      for (let i = 0; i < storeCart.length; i++) {
+        const item = storeCart[i];
+        const itemTitle = cleanBookTitle(item.title || item.book_id || `Book #${i+1}`);
+        const priceVal = item.selling_price;
+        const num = (priceVal !== undefined && priceVal !== null && priceVal !== '') ? parseFloat(priceVal) : NaN;
+        if (isNaN(num) || num <= 0) {
+          alert(`Price has to be added for "${itemTitle}". For any item, price has to be added.`);
+          const itemInp = document.querySelector(`.cart-item-price-input[data-bid="${item.book_id}"]`);
+          if (itemInp) {
+            itemInp.focus();
+            itemInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          return;
+        }
+      }
+
       // Calculate total transaction amount directly from individual book fees
       let totalCost = 0;
       const itemsToSell = storeCart.map(item => {
-        let p = 0;
-        if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
-          const val = parseFloat(item.selling_price);
-          if (!isNaN(val) && val >= 0) {
-            p = Math.round(val * 100) / 100;
-          }
-        }
+        const p = Math.round(parseFloat(item.selling_price) * 100) / 100;
         totalCost += p;
         return {
           book_id: item.book_id,

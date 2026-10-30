@@ -194,6 +194,7 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "simple_genre": b.get("simple_genre") or "",
                 "language": b.get("language", "English"),
                 "image_url": b.get("image_url") or "",
+                "summary": b.get("summary") or "",
                 "total_copies": 0,
                 "available_copies": 0,
                 "sold_copies": 0,
@@ -202,6 +203,8 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         if not grouped_map[key]["image_url"] and b.get("image_url"):
             grouped_map[key]["image_url"] = b["image_url"]
+        if not grouped_map[key]["summary"] and b.get("summary"):
+            grouped_map[key]["summary"] = b["summary"]
 
         grouped_map[key]["total_copies"] += 1
         if b["status"] == "Available":
@@ -224,7 +227,8 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "status": b["status"],
             "selling_price": b.get("selling_price"),
             "simple_genre": b.get("simple_genre") or "",
-            "language": b.get("language") or "English"
+            "language": b.get("language") or "English",
+            "summary": b.get("summary") or ""
         })
 
     return list(grouped_map.values())

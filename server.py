@@ -155,6 +155,14 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json({"title": title, "cover_url": cover_url})
             return
 
+        elif path == "/api/books/summary":
+            title = query_params.get("title", [""])[0]
+            author = query_params.get("author", [""])[0]
+            book_id = query_params.get("book_id", [""])[0]
+            summary = database.get_or_fetch_book_summary(title, author, book_id)
+            self._send_json({"title": title, "book_id": book_id, "summary": summary})
+            return
+
         elif path == "/api/books/suggest-genre":
             title = query_params.get("title", [""])[0]
             author = query_params.get("author", [""])[0]

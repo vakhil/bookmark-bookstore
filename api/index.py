@@ -152,6 +152,13 @@ def _app_dispatch(environ, start_response):
             cover_url = database.get_or_fetch_book_cover(title, author)
             return json_response(start_response, {"title": title, "cover_url": cover_url})
 
+        elif path == "/api/books/summary":
+            title = query_params.get("title", [""])[0]
+            author = query_params.get("author", [""])[0]
+            book_id = query_params.get("book_id", [""])[0]
+            summary = database.get_or_fetch_book_summary(title, author, book_id)
+            return json_response(start_response, {"title": title, "book_id": book_id, "summary": summary}, cache_control="public, max-age=3600, s-maxage=86400")
+
         elif path == "/api/books/suggest-genre":
             title = query_params.get("title", [""])[0]
             author = query_params.get("author", [""])[0]

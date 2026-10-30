@@ -2598,15 +2598,33 @@ input, select, textarea, button {
 
 .cart-layout-grid {
   display: grid;
-  grid-template-columns: 1fr 350px;
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1.25rem;
   align-items: flex-start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 860px) {
   .cart-layout-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
   }
+}
+
+.cart-items-column {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cart-summary-column {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cart-item-card {
@@ -2616,6 +2634,10 @@ input, select, textarea, button {
   padding: 0.85rem 1rem;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
   transition: all 0.2s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .cart-item-card:hover {
@@ -2631,6 +2653,8 @@ input, select, textarea, button {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
   position: sticky;
   top: 1rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .btn-toggle-cart {

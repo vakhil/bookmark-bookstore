@@ -17,8 +17,9 @@
 <body>
   <!-- Clean, Minimal Header -->
   <header class="simple-header">
-    <div class="brand">📚 Bookstore</div>
+    <div class="brand">🔖 Bookmark</div>
     <div class="header-right-actions" style="display: flex; align-items: center; gap: 0.65rem;">
+      <span class="store-top-name" style="font-weight: 800; font-size: 0.88rem; color: #064e3b; background: #ecfdf5; border: 1.5px solid #a7f3d0; padding: 0.35rem 0.75rem; border-radius: 9999px; letter-spacing: 0.02em;">🔖 Bookmark</span>
       <button class="tab-btn header-shelf-btn" data-tab="tabUnassigned" id="topHeaderShelfBtn" title="View unassigned inventory">
         <span class="tab-icon">📍</span>
         <span class="tab-label">Unassigned (<span id="topUnassignedBadge">0</span>)</span>
@@ -451,7 +452,12 @@
                 </div>
                 <div class="form-field half">
                   <label style="font-weight: 700; color: #1e293b;">Language</label>
-                  <input type="text" id="manualLanguage" value="English">
+                  <select id="manualLanguage" class="form-control" style="font-size: 0.95rem; height: 42px; background: #ffffff;">
+                    <option value="English" selected>English</option>
+                    <option value="Telugu">Telugu</option>
+                    <option value="Urdu">Urdu</option>
+                    <option value="Hindi">Hindi</option>
+                  </select>
                 </div>
               </div>
 
@@ -554,7 +560,12 @@
                   </div>
                   <div class="form-field half">
                     <label style="font-weight: 700; color: #1e293b;">Language</label>
-                    <input type="text" id="pictureLanguage" value="English">
+                    <select id="pictureLanguage" class="form-control" style="font-size: 0.95rem; height: 42px; background: #ffffff;">
+                      <option value="English" selected>English</option>
+                      <option value="Telugu">Telugu</option>
+                      <option value="Urdu">Urdu</option>
+                      <option value="Hindi">Hindi</option>
+                    </select>
                   </div>
                 </div>
 
