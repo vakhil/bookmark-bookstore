@@ -597,6 +597,21 @@ class TestBookstoreSystem(unittest.TestCase):
         )
         self.assertTrue(bool(new_book["genre"]))
 
+    def test_search_by_book_id(self):
+        """Verifies searching inventory specifically by Book ID (e.g. BK-005 or 005)."""
+        search_engine.invalidate_search_cache()
+        # Search by exact full book_id
+        res1 = search_engine.search_books("BK-005", search_type="id", include_sold=True)
+        self.assertGreater(len(res1["exact_matches"]), 0)
+        copy_ids = [c["book_id"] for c in res1["exact_matches"][0]["copies"]]
+        self.assertIn("BK-005", copy_ids)
+
+        # Search by number without 'BK-' prefix
+        res2 = search_engine.search_books("005", search_type="id", include_sold=True)
+        self.assertGreater(len(res2["exact_matches"]), 0)
+        copy_ids2 = [c["book_id"] for c in res2["exact_matches"][0]["copies"]]
+        self.assertIn("BK-005", copy_ids2)
+
 if __name__ == "__main__":
     unittest.main()
 

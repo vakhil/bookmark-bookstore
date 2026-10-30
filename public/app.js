@@ -217,6 +217,8 @@ function initSearch() {
 
       if (currentSearchType === 'author') {
         input.placeholder = "Type or speak author's name (e.g. Tony Robbins, Scott Young)...";
+      } else if (currentSearchType === 'id') {
+        input.placeholder = "Type Book ID (e.g. BK-11347 or 11347)...";
       } else {
         input.placeholder = "Type or speak book title (e.g. Awaken the Giant Within)...";
       }
@@ -470,7 +472,9 @@ async function performSearch(query) {
     }
     const hint = currentSearchType === 'author' 
       ? "Enter an author's name above to see all their books." 
-      : "Enter a book title above to find matching books in stock.";
+      : (currentSearchType === 'id'
+        ? "Enter a Book ID (e.g. BK-11347 or 11347) above to locate a book copy."
+        : "Enter a book title above to find matching books in stock.");
     container.innerHTML = `<div class="empty-state-card">${hint}</div>`;
     return;
   }
@@ -524,7 +528,7 @@ function renderSearchResults(data) {
   const { exact_matches, query, search_type } = data;
 
   if (!exact_matches || exact_matches.length === 0) {
-    const typeLabel = search_type === 'author' ? 'author' : (search_type === 'title' ? 'title' : 'books');
+    const typeLabel = search_type === 'author' ? 'author' : (search_type === 'id' ? 'Book ID' : (search_type === 'title' ? 'title' : 'books'));
     container.innerHTML = `
       <div class="empty-prompt">
         <div class="prompt-icon">🔍</div>
@@ -553,6 +557,9 @@ function renderSearchResults(data) {
   } else if (search_type === 'title') {
     badgeText = 'TITLE MATCH';
     categoryTitle = `📖 Books Matching Title "${escapeHtml(query)}" (${shownText})`;
+  } else if (search_type === 'id') {
+    badgeText = 'BOOK ID MATCH';
+    categoryTitle = `🆔 Book Copy with ID "${escapeHtml(query)}" (${shownText})`;
   }
 
   // Exact Matches Only - each physical copy rendered as an independent tile via DocumentFragment for batch DOM injection
@@ -839,10 +846,7 @@ function createBookTile(book, copy, matchType) {
             ${coverHtml}
           </div>
           <div class="book-info">
-            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.2rem;">
-              <h3 class="book-title" style="margin: 0; line-height: 1.3;">${escapeHtml(cleanTitle)}</h3>
-              <span class="copy-id-chip" title="Physical Inventory Book ID" style="font-family: monospace; font-size: 0.78rem; font-weight: 800; background: #f1f5f9; color: #1e293b; border: 1.5px solid #cbd5e1; padding: 0.15rem 0.55rem; border-radius: 6px; flex-shrink: 0;">🆔 ${escapeHtml(bookId)}</span>
-            </div>
+            <h3 class="book-title" style="margin: 0 0 0.2rem 0; line-height: 1.3;">${escapeHtml(cleanTitle)}</h3>
             <div class="book-author">
               <span class="author-prefix">by</span>
               <b>${cleanAuthor}</b>
@@ -851,7 +855,7 @@ function createBookTile(book, copy, matchType) {
               ${formatLocationPill(state, locationText, sellingPrice, copy)}
             </div>
             <div class="book-meta-line">
-              <span class="copy-id-chip-mini" style="font-family: monospace; font-size: 0.75rem; font-weight: 800; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 0.12rem 0.45rem; border-radius: 6px;">ID: ${escapeHtml(bookId)}</span>
+              <span class="copy-id-chip-mini" style="font-family: monospace; font-size: 0.76rem; font-weight: 800; background: #e0f2fe; color: #0369a1; border: 1.5px solid #bae6fd; padding: 0.14rem 0.5rem; border-radius: 6px;">🆔 ${escapeHtml(bookId)}</span>
               ${state === 'UNASSIGNED' ? '<span class="state-chip state-unassigned"><span class="chip-dot"></span> UNASSIGNED</span>' : ''}
               <span class="chip book-lang-chip">🌐 ${escapeHtml(language)}</span>
               ${genre ? `<span class="chip simple-genre-chip">${escapeHtml(genre)}</span>` : ''}

@@ -259,25 +259,39 @@ def search_books(
     norm_query = normalize_text(clean_query)
     all_books = get_all_books_cached()
 
-    # Step 1: Direct ID Match Check (e.g. BK-10151)
-    if clean_query.upper().startswith("BK-") or "BK-" in clean_query.upper():
+    # Step 1: Direct ID Match Check (e.g. BK-10151, 10151, or search_type in ('id', 'book_id'))
+    is_id_search = search_type in ("id", "book_id") or clean_query.upper().startswith("BK-") or "BK-" in clean_query.upper()
+    if is_id_search:
         upper_id = clean_query.upper().strip()
+        id_matches = []
         if _ID_MAP and upper_id in _ID_MAP:
             id_matches = [all_books[i] for i in _ID_MAP[upper_id] if i < len(all_books)]
+        elif _ID_MAP and f"BK-{upper_id}" in _ID_MAP:
+            id_matches = [all_books[i] for i in _ID_MAP[f"BK-{upper_id}"] if i < len(all_books)]
         else:
-            id_matches = [b for b in all_books if b.get("_id") == upper_id]
-        if not id_matches:
-            id_matches = [b for b in all_books if upper_id in b.get("_id", "")]
+            for b in all_books:
+                bid = b.get("_id", "")
+                if bid == upper_id or bid == f"BK-{upper_id}":
+                    id_matches.append(b)
+            if not id_matches:
+                for b in all_books:
+                    bid = b.get("_id", "")
+                    if upper_id in bid or f"BK-{upper_id}" in bid:
+                        id_matches.append(b)
+
         if not include_sold:
             id_matches = [b for b in id_matches if b.get("status") != "SOLD OUT"]
-        if id_matches:
+
+        if id_matches or search_type in ("id", "book_id"):
             grouped = group_physical_copies(id_matches)
             return {
                 "query": query,
+                "search_type": search_type,
                 "exact_matches": grouped,
                 "possible_matches": [],
                 "related_books": [],
-                "total_results": len(grouped)
+                "total_results": len(grouped),
+                "total_exact_count": len(grouped)
             }
 
     exact_candidates = []
