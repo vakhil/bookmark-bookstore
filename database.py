@@ -112,6 +112,9 @@ def ensure_schema(conn):
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_book_id ON books(book_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_status ON books(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_title ON books(title)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_author ON books(author)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_simple_genre ON books(simple_genre)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_order_id ON sales_transactions(order_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_book_id ON sales_transactions(book_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_st_id_desc ON sales_transactions(id DESC)")
@@ -484,6 +487,8 @@ def init_db(force_reseed: bool = False):
         # 8. Create indexes for high-speed queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_id ON books(book_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_status ON books(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_title ON books(title)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_author ON books(author)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_rack ON books(rack, column_num)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_unassigned ON books(unassigned_since)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_co_order_id ON customer_orders(order_id)")
@@ -925,15 +930,27 @@ _TX_CACHE = None
 _TX_CACHE_TIME = 0.0
 _TX_CACHE_TTL = 60.0  # 60 seconds TTL
 
+# In-memory genre distribution cache for sub-millisecond tab switching
+_GENRE_CACHE = None
+_GENRE_CACHE_TIME = 0.0
+_GENRE_CACHE_TTL = 120.0  # 2 minutes TTL
+
 def invalidate_transactions_cache():
     """Invalidates the in-memory transactions cache on any sale, revert, or redo."""
     global _TX_CACHE, _TX_CACHE_TIME
     _TX_CACHE = None
     _TX_CACHE_TIME = 0.0
 
+def invalidate_genre_cache():
+    """Invalidates the in-memory genre distribution cache."""
+    global _GENRE_CACHE, _GENRE_CACHE_TIME
+    _GENRE_CACHE = None
+    _GENRE_CACHE_TIME = 0.0
+
 def notify_inventory_changed():
-    """Invalidates the in-memory book search and transactions cache on writes."""
+    """Invalidates the in-memory book search, transactions, and genre cache on writes."""
     invalidate_transactions_cache()
+    invalidate_genre_cache()
     try:
         import search_engine
         search_engine.invalidate_search_cache()
@@ -2408,8 +2425,13 @@ def get_inventory_stats() -> Dict[str, Any]:
         "total_revenue": round(total_revenue, 2)
     }
 
-def get_genre_distribution() -> List[Dict[str, Any]]:
-    """Returns all canonical simple genres with book counts and availability."""
+def get_genre_distribution(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Returns all canonical simple genres with book counts and availability (cached for fast response)."""
+    global _GENRE_CACHE, _GENRE_CACHE_TIME
+    now = time.time()
+    if not force_refresh and _GENRE_CACHE is not None and (now - _GENRE_CACHE_TIME < _GENRE_CACHE_TTL):
+        return _GENRE_CACHE
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -2426,6 +2448,8 @@ def get_genre_distribution() -> List[Dict[str, Any]]:
     """)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
+    _GENRE_CACHE = rows
+    _GENRE_CACHE_TIME = now
     return rows
 
 def get_books_by_genre(genre: str, available_only: bool = False, limit: int = 500) -> List[Dict[str, Any]]:

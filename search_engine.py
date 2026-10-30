@@ -230,7 +230,7 @@ def group_physical_copies(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def search_books(
     query: str,
     search_type: str = "all",  # 'all', 'title', 'author', 'genre', 'id'
-    include_sold: bool = True,
+    include_sold: bool = False,
     include_recommendations: bool = False,
     include_fuzzy: bool = False,
     limit: int = 80
@@ -238,6 +238,7 @@ def search_books(
     """
     Executes search across the store inventory.
     Strictly returns EXACT matches by default (no recommendations, no fuzzy matches).
+    Filters out SOLD OUT copies by default so only available books appear in search.
     """
     clean_query = query.strip()
     if not clean_query:
@@ -256,11 +257,13 @@ def search_books(
     if clean_query.upper().startswith("BK-") or "BK-" in clean_query.upper():
         upper_id = clean_query.upper().strip()
         if _ID_MAP and upper_id in _ID_MAP:
-            id_matches = [all_books[i] for i in _ID_MAP[upper_id]]
+            id_matches = [all_books[i] for i in _ID_MAP[upper_id] if i < len(all_books)]
         else:
             id_matches = [b for b in all_books if b.get("_id") == upper_id]
         if not id_matches:
             id_matches = [b for b in all_books if upper_id in b.get("_id", "")]
+        if not include_sold:
+            id_matches = [b for b in id_matches if b.get("status") != "SOLD OUT"]
         if id_matches:
             grouped = group_physical_copies(id_matches)
             return {
@@ -304,9 +307,11 @@ def search_books(
                                 next_cands.update(idxs)
                         if next_cands:
                             candidate_indices.intersection_update(next_cands)
-                search_pool = [all_books[i] for i in candidate_indices]
+                search_pool = [all_books[i] for i in candidate_indices if i < len(all_books)]
 
     for b in search_pool:
+        if not include_sold and b.get("status") == "SOLD OUT":
+            continue
         bid = b["book_id"]
         norm_title = b.get("_nt") or normalize_text(b["title"])
         norm_author = b.get("_na") or normalize_text(b["author"])
@@ -466,6 +471,11 @@ def search_books(
     exact_grouped = group_physical_copies(exact_candidates)
     possible_grouped = group_physical_copies(possible_candidates)
     related_grouped = group_physical_copies(related_candidates)
+
+    if not include_sold:
+        exact_grouped = [g for g in exact_grouped if g.get("available_copies", 0) > 0]
+        possible_grouped = [g for g in possible_grouped if g.get("available_copies", 0) > 0]
+        related_grouped = [g for g in related_grouped if g.get("available_copies", 0) > 0]
 
     total_exact_count = len(exact_grouped)
     total_results = total_exact_count + len(possible_grouped) + len(related_grouped)

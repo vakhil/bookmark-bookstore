@@ -102,9 +102,10 @@ def _app_dispatch(environ, start_response):
 
         elif path == "/api/search":
             q = query_params.get("q", [""])[0]
-            stype = query_params.get("type", ["all"])[0]
+            stype = query_params.get("type", ["title"])[0]
+            include_sold = query_params.get("include_sold", ["false"])[0].lower() in ("true", "1")
             limit = int(query_params.get("limit", [80])[0])
-            results = search_engine.search_books(q, search_type=stype, limit=limit)
+            results = search_engine.search_books(q, search_type=stype, include_sold=include_sold, limit=limit)
             return json_response(start_response, results, cache_control="public, max-age=15, s-maxage=30, stale-while-revalidate=60")
 
         elif path == "/api/unassigned":
@@ -135,7 +136,7 @@ def _app_dispatch(environ, start_response):
 
         elif path == "/api/genres":
             dist = database.get_genre_distribution()
-            return json_response(start_response, {"genres": dist})
+            return json_response(start_response, {"genres": dist}, cache_control="public, max-age=60, s-maxage=120, stale-while-revalidate=300")
 
         elif path == "/api/books/by-genre":
             genre = query_params.get("genre", [""])[0]
@@ -143,7 +144,7 @@ def _app_dispatch(environ, start_response):
             limit = int(query_params.get("limit", [500])[0])
             raw_books = database.get_books_by_genre(genre, available_only=avail_only, limit=limit)
             grouped = search_engine.group_physical_copies(raw_books)
-            return json_response(start_response, {"genre": genre, "total_books": len(grouped), "books": grouped})
+            return json_response(start_response, {"genre": genre, "total_books": len(grouped), "books": grouped}, cache_control="public, max-age=30, s-maxage=60, stale-while-revalidate=120")
 
         elif path == "/api/books/cover":
             title = query_params.get("title", [""])[0]

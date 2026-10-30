@@ -569,7 +569,7 @@ class TestBookstoreSystem(unittest.TestCase):
         # Pre-seed cover cache in SQLite for existing book
         conn = database.get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE books SET image_url = ? WHERE lower(title) = ?", (mock_cover, target_title.lower()))
+        cursor.execute("UPDATE books SET image_url = ?, status = 'Available' WHERE lower(title) = ?", (mock_cover, target_title.lower()))
         conn.commit()
         conn.close()
 

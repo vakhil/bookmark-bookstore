@@ -19,9 +19,9 @@
   <header class="simple-header">
     <div class="brand">📚 Bookstore</div>
     <div class="header-right-actions" style="display: flex; align-items: center; gap: 0.65rem;">
-      <button class="tab-btn header-shelf-btn" data-tab="tabUnassigned" id="topHeaderShelfBtn" title="View shelf unassigned inventory">
+      <button class="tab-btn header-shelf-btn" data-tab="tabUnassigned" id="topHeaderShelfBtn" title="View unassigned inventory">
         <span class="tab-icon">📍</span>
-        <span class="tab-label">Shelf (<span id="topUnassignedBadge">0</span>)</span>
+        <span class="tab-label">Unassigned (<span id="topUnassignedBadge">0</span>)</span>
       </button>
       <div class="export-dropdown-wrap">
         <button id="btnExportMenu" class="btn btn-export" type="button" aria-haspopup="true" aria-expanded="false" title="Export live database as spreadsheet">
@@ -77,8 +77,8 @@
       <span class="tab-label">Advisor</span>
     </button>
     <button class="tab-btn" data-tab="tabTransactions" id="tabBtnTransactions">
-      <span class="tab-icon">🧾</span>
-      <span class="tab-label">Transactions (<span id="tabTransactionsBadge">0</span>)</span>
+      <span class="tab-icon">📊</span>
+      <span class="tab-label">Reports (<span id="tabTransactionsBadge">0</span>)</span>
     </button>
   </nav>
 
@@ -87,17 +87,16 @@
 
     <!-- ==================== TAB 1: SEARCH & SELL (CORE PRIORITY) ==================== -->
     <section id="tabSearch" class="tab-pane active">
-      <!-- Search Mode Pills (All, Title, Author) -->
+      <!-- Search Mode Pills (Book Title [Default], Author) -->
       <div class="search-mode-bar" id="searchModeBar">
         <span class="search-mode-label">Search by:</span>
-        <button type="button" class="search-mode-pill active" data-type="all">🔍 All</button>
-        <button type="button" class="search-mode-pill" data-type="title">📖 Book Title</button>
+        <button type="button" class="search-mode-pill active" data-type="title">📖 Book Title</button>
         <button type="button" class="search-mode-pill" data-type="author">✍️ Author's Name</button>
       </div>
 
       <div class="search-box">
         <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" placeholder="Search by title, author, or Book ID (e.g. BK-10151)..." autocomplete="off" autofocus>
+        <input type="text" id="searchInput" placeholder="Search by book title (e.g. Awaken the Giant Within)..." autocomplete="off" autofocus>
         <button type="button" class="btn-voice-search" id="btnVoiceSearch" title="Speak book title or author">
           <span class="mic-icon">🎙️</span>
         </button>
@@ -220,26 +219,20 @@
                 </div>
               </div>
 
-              <!-- Total Transaction Cost Input in Price Menu -->
-              <div class="form-field" style="margin-bottom: 1.15rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.95rem;">
+              <!-- Total Transaction Widget (Derived from Individual Book Fees) -->
+              <div class="form-field" style="margin-bottom: 1.15rem; background: #f8fafc; border: 1.5px solid #10b981; border-radius: 12px; padding: 0.95rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
-                  <label style="display: block; font-size: 0.88rem; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em; margin: 0;">
-                    Total Transaction (₹) *
+                  <label style="display: block; font-size: 0.88rem; font-weight: 800; color: #064e3b; text-transform: uppercase; letter-spacing: 0.03em; margin: 0;">
+                    Total Transaction (₹)
                   </label>
-                  <span id="priceMenuBookCountPill" style="font-size: 0.75rem; font-weight: 700; color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 0.15rem 0.55rem; border-radius: 9999px;">
-                    0 Books Selected
+                  <span id="cartPriceMenuLiveTotal" style="font-size: 1.35rem; font-weight: 900; color: #059669;">
+                    ₹0.00
                   </span>
                 </div>
                 <div style="position: relative; display: flex; align-items: center;">
                   <span style="position: absolute; left: 0.85rem; font-size: 1.35rem; font-weight: 800; color: #059669;">₹</span>
-                  <input type="number" step="any" min="0" id="cartTotalCostInput" class="form-control" placeholder="Total Transaction Amount" style="padding-left: 2.1rem; font-size: 1.35rem; font-weight: 800; color: #064e3b; border: 2px solid #10b981; border-radius: 10px; background: #ffffff; height: 48px; width: 100%;">
+                  <input type="number" step="any" min="0" id="cartTotalCostInput" class="form-control" placeholder="0.00" style="padding-left: 2.1rem; font-size: 1.35rem; font-weight: 800; color: #064e3b; border: 2px solid #10b981; border-radius: 10px; background: #ffffff; height: 48px; width: 100%;">
                 </div>
-                <div id="cartPriceMenuSummary" style="font-size: 0.85rem; font-weight: 700; color: #059669; margin-top: 0.5rem; display: flex; align-items: center; gap: 0.35rem;">
-                  <span>💳</span> Total Transaction: <span id="cartPriceMenuLiveTotal">₹0.00</span>
-                </div>
-                <small style="display: block; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.35rem;">
-                  Enter the total transaction amount paid for all selected books
-                </small>
               </div>
 
               <!-- Payment Method / Notes -->
@@ -264,16 +257,16 @@
       </div>
     </section>
 
-    <!-- ==================== TAB: TRANSACTIONS (PURCHASE HISTORY & REVERT/REDO) ==================== -->
+    <!-- ==================== TAB: REPORTS (PURCHASE HISTORY, TRANSACTIONS & REVERT/REDO) ==================== -->
     <section id="tabTransactions" class="tab-pane">
       <div class="clean-card" style="margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
           <div>
             <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
-              <span>🧾</span> Order Transactions
+              <span>📊</span> Sales Reports &amp; Order Transactions
             </h2>
             <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
-              All previous sales transactions (single book or multi-book bulk orders). Revert any transaction to return books to their shelf locations or redo sales.
+              All previous sales reports (single book or multi-book bulk orders). Revert any transaction to return books to their shelf locations or redo sales.
             </p>
           </div>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -285,7 +278,7 @@
 
         <!-- Filter bar -->
         <div style="display: flex; gap: 0.6rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
-          <input type="text" id="transactionsSearchInput" class="form-control" placeholder="Search by Order ID, Book Title, Author, or Notes..." style="flex: 1; min-width: 240px; font-size: 0.88rem; padding: 0.55rem 0.85rem;">
+          <input type="text" id="transactionsSearchInput" class="form-control" placeholder="Search by Order ID, Buyer Name, Phone, Title, Author..." style="flex: 1; min-width: 240px; font-size: 0.88rem; padding: 0.55rem 0.85rem;">
           <div style="display: flex; gap: 0.35rem;">
             <button class="btn btn-sm btn-outline tx-filter-btn active" data-filter="all">All</button>
             <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="completed">Completed</button>
@@ -294,9 +287,9 @@
         </div>
       </div>
 
-      <!-- Transactions List Container -->
+      <!-- Reports List Container -->
       <div id="transactionsListContainer" style="display: flex; flex-direction: column; gap: 1rem;">
-        <!-- Dynamic transaction cards rendered here -->
+        <!-- Dynamic report cards rendered here -->
       </div>
     </section>
 
@@ -470,19 +463,19 @@
 
               <!-- Shelf Location -->
               <div class="shelf-box" style="margin-top: 1rem;">
-                <div class="shelf-box-title">📍 Shelf Location (Optional — leave blank if not shelved yet)</div>
+                <div class="shelf-box-title">📍 Shelf Location (Optional — numbers only, e.g. 3, 2, 5)</div>
                 <div class="form-row">
                   <div class="form-field third">
-                    <label>Rack</label>
-                    <input type="text" id="manualRack" placeholder="e.g. Rack 50">
+                    <label>Rack (Number)</label>
+                    <input type="number" min="1" step="1" id="manualRack" placeholder="e.g. 3">
                   </div>
                   <div class="form-field third">
-                    <label>Column</label>
-                    <input type="text" id="manualColumn" placeholder="e.g. Column 2">
+                    <label>Column (Number)</label>
+                    <input type="number" min="1" step="1" id="manualColumn" placeholder="e.g. 2">
                   </div>
                   <div class="form-field third">
-                    <label>Book Position</label>
-                    <input type="text" id="manualPosition" placeholder="e.g. 1 = Top, 5 = 5th">
+                    <label>Book from Top (Number)</label>
+                    <input type="number" min="1" step="1" id="manualPosition" placeholder="e.g. 5">
                   </div>
                 </div>
                 <div class="english-loc-preview" id="manualLocationPreview">
@@ -573,19 +566,19 @@
 
                 <!-- Shelf Location -->
                 <div class="shelf-box">
-                  <div class="shelf-box-title">📍 Shelf Location (Optional — leave blank if not shelved yet)</div>
+                  <div class="shelf-box-title">📍 Shelf Location (Optional — numbers only, e.g. 3, 2, 5)</div>
                   <div class="form-row">
                     <div class="form-field third">
-                      <label>Rack</label>
-                      <input type="text" id="pictureRack" placeholder="e.g. Rack 50">
+                      <label>Rack (Number)</label>
+                      <input type="number" min="1" step="1" id="pictureRack" placeholder="e.g. 3">
                     </div>
                     <div class="form-field third">
-                      <label>Column</label>
-                      <input type="text" id="pictureColumn" placeholder="e.g. Column 2">
+                      <label>Column (Number)</label>
+                      <input type="number" min="1" step="1" id="pictureColumn" placeholder="e.g. 2">
                     </div>
                     <div class="form-field third">
-                      <label>Position</label>
-                      <input type="text" id="picturePosition" placeholder="e.g. 1 = Top">
+                      <label>Book from Top (Number)</label>
+                      <input type="number" min="1" step="1" id="picturePosition" placeholder="e.g. 5">
                     </div>
                   </div>
                   <div class="english-loc-preview" id="pictureLocationPreview">

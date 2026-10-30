@@ -157,7 +157,7 @@ function initStats() {
    2. INTELLIGENT SEARCH CONTROLLER (Req 2)
    ========================================================================= */
 
-let currentSearchType = 'all';
+let currentSearchType = 'title';
 
 /**
  * Downscales an image to a maximum dimension to ensure fast mobile processing,
@@ -213,14 +213,12 @@ function initSearch() {
     pill.addEventListener('click', () => {
       modePills.forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
-      currentSearchType = pill.getAttribute('data-type') || 'all';
+      currentSearchType = pill.getAttribute('data-type') || 'title';
 
       if (currentSearchType === 'author') {
         input.placeholder = "Type or speak author's name (e.g. Tony Robbins, Scott Young)...";
-      } else if (currentSearchType === 'title') {
-        input.placeholder = "Type or speak book title (e.g. Awaken the Giant Within)...";
       } else {
-        input.placeholder = "Search or speak title, author, or Book ID (e.g. BK-10151)...";
+        input.placeholder = "Type or speak book title (e.g. Awaken the Giant Within)...";
       }
 
       if (input.value.trim()) {
@@ -434,7 +432,7 @@ async function processCoverSearchImage(fileOrB64, fallbackName = 'cover.jpg') {
   }
 }
 
-function setSearch(query, searchType = 'all') {
+function setSearch(query, searchType = 'title') {
   const input = document.getElementById('searchInput');
   input.value = query;
   currentSearchType = searchType;
@@ -472,9 +470,7 @@ async function performSearch(query) {
     }
     const hint = currentSearchType === 'author' 
       ? "Enter an author's name above to see all their books." 
-      : (currentSearchType === 'title' 
-          ? "Enter a book title above." 
-          : "Enter a book title, author, niche genre, or Inventory ID above.");
+      : "Enter a book title above to find matching books in stock.";
     container.innerHTML = `<div class="empty-state-card">${hint}</div>`;
     return;
   }
@@ -5326,23 +5322,22 @@ function updateAllCartButtonStates() {
 function updateCartTotalsFromIndividualPrices() {
   const costInput = document.getElementById('cartTotalCostInput');
   const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
-  if (!costInput) return;
 
   let sum = 0;
-  let hasAnyCustomPrice = false;
   for (const item of storeCart) {
     if (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') {
       const p = parseFloat(item.selling_price);
       if (!isNaN(p) && p >= 0) {
         sum += p;
-        hasAnyCustomPrice = true;
       }
     }
   }
 
-  if (hasAnyCustomPrice) {
+  if (costInput) {
     costInput.value = sum > 0 ? sum.toFixed(2) : '';
-    if (liveTotal) liveTotal.textContent = `₹${sum.toFixed(2)}`;
+  }
+  if (liveTotal) {
+    liveTotal.textContent = `₹${sum.toFixed(2)}`;
   }
 }
 
@@ -5352,7 +5347,6 @@ function renderCartTab() {
   const itemsContainer = document.getElementById('cartItemsList');
   const countText = document.getElementById('cartItemsCountText');
   const summaryCount = document.getElementById('summaryTotalBooks');
-  const countPill = document.getElementById('priceMenuBookCountPill');
   const costInput = document.getElementById('cartTotalCostInput');
   const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
 
@@ -5369,12 +5363,8 @@ function renderCartTab() {
 
   if (countText) countText.textContent = storeCart.length;
   if (summaryCount) summaryCount.textContent = `${storeCart.length} ${storeCart.length === 1 ? 'book' : 'books'}`;
-  if (countPill) countPill.textContent = `${storeCart.length} ${storeCart.length === 1 ? 'Book' : 'Books'} Selected`;
 
-  if (costInput && liveTotal) {
-    const val = parseFloat(costInput.value);
-    liveTotal.textContent = (!isNaN(val) && val >= 0) ? `₹${val.toFixed(2)}` : '₹0.00';
-  }
+  updateCartTotalsFromIndividualPrices();
 
   itemsContainer.innerHTML = storeCart.map(item => {
     const cleanTitle = cleanBookTitle(item.title || '');
@@ -5728,9 +5718,9 @@ function renderTransactionsList() {
   if (list.length === 0) {
     container.innerHTML = `
       <div class="empty-prompt">
-        <div class="prompt-icon">🧾</div>
-        <h3>No Transactions Found</h3>
-        <p>No transactions match your search or filter criteria.</p>
+        <div class="prompt-icon">📊</div>
+        <h3>No Reports Found</h3>
+        <p>No sales reports match your search or filter criteria.</p>
       </div>
     `;
     return;

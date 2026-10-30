@@ -96,9 +96,10 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/search":
             q = query_params.get("q", [""])[0]
-            stype = query_params.get("type", ["all"])[0]
+            stype = query_params.get("type", ["title"])[0]
+            include_sold = query_params.get("include_sold", ["false"])[0].lower() in ("true", "1")
             limit = int(query_params.get("limit", [80])[0])
-            results = search_engine.search_books(q, search_type=stype, limit=limit)
+            results = search_engine.search_books(q, search_type=stype, include_sold=include_sold, limit=limit)
             self._send_json(results)
             return
 
