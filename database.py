@@ -214,22 +214,40 @@ def generate_unique_order_id(cursor, today_code: str) -> str:
             return candidate
         num += 1
 
+# Singleton persistent Turso connection — reused across all requests to avoid
+# paying TCP+TLS handshake overhead on every single database call.
+_turso_singleton: Any = None
+_turso_lock = threading.Lock()
+
 def get_db_connection() -> Any:
-    """Creates a database connection with dictionary row access.
-    Automatically connects to Turso Cloud (libSQL) when TURSO_DATABASE_URL and
-    TURSO_AUTH_TOKEN are set; otherwise connects to local SQLite bookstore.db.
+    """Returns a database connection with dictionary row access.
+    When Turso credentials are present, returns a singleton persistent connection
+    so that each request reuses the existing HTTPS pipeline instead of opening
+    a fresh TCP+TLS handshake every time.
+    Falls back to local SQLite when credentials are absent.
     """
+    global _turso_singleton
+
     turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
     turso_token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
 
     if turso_url and turso_token:
-        try:
-            import turso_client
-            conn = turso_client.connect(turso_url, turso_token)
-            ensure_schema(conn)
-            return conn
-        except Exception as e:
-            print(f"Warning: Turso connection failed ({e}), falling back to local SQLite.")
+        # Fast path: return existing singleton without locking
+        if _turso_singleton is not None:
+            return _turso_singleton
+        # Slow path: first initialisation — acquire lock to avoid duplicate creation
+        with _turso_lock:
+            if _turso_singleton is None:
+                try:
+                    import turso_client
+                    conn = turso_client.connect(turso_url, turso_token)
+                    ensure_schema(conn)
+                    _turso_singleton = conn
+                    print("Turso: persistent connection established (singleton mode).")
+                except Exception as e:
+                    print(f"Warning: Turso connection failed ({e}), falling back to local SQLite.")
+            if _turso_singleton is not None:
+                return _turso_singleton
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -1164,8 +1182,8 @@ def add_books_batch(
             """, (
                 "INSERT_ROW",
                 json.dumps({
-                    "book_id": book_id, "rack": rack, "column": column_num,
-                    "position": position, "title": title, "author": author,
+                    "book_id": book_id, "rack": r_int, "column": c_int,
+                    "position": p_int, "title": title, "author": author,
                     "genre": genre, "notes": notes, "status": "Available"
                 }),
                 now_iso

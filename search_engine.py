@@ -16,7 +16,7 @@ import database
 # In-memory book cache to eliminate expensive remote database transfers during searches
 _CACHE_BOOKS: Optional[List[Dict[str, Any]]] = None
 _CACHE_TIMESTAMP: float = 0.0
-_CACHE_TTL: float = 300.0  # Keep warm in memory for 5 minutes (invalidated instantly on any write mutation)
+_CACHE_TTL: float = 1800.0  # Keep warm in memory for 30 minutes (invalidated instantly on any write mutation)
 _INVERTED_WORDS: Optional[Dict[str, List[int]]] = None
 _ID_MAP: Optional[Dict[str, List[int]]] = None
 
@@ -27,6 +27,20 @@ def invalidate_search_cache():
     _CACHE_TIMESTAMP = 0.0
     _INVERTED_WORDS = None
     _ID_MAP = None
+
+def warm_cache():
+    """Pre-loads the full book inventory into memory.
+    Call once at server startup so the first real search request is instant
+    instead of blocking on a cold Turso HTTPS round-trip.
+    """
+    import threading
+    def _load():
+        try:
+            get_all_books_cached(force_refresh=True)
+            print(f"Search cache warmed: {len(_CACHE_BOOKS or [])} books indexed in memory.")
+        except Exception as e:
+            print(f"Warning: search cache warm-up failed ({e}). Cache will load on first request.")
+    threading.Thread(target=_load, daemon=True).start()
 
 def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
     """Retrieves all books with in-memory caching and pre-computed token index."""

@@ -583,6 +583,10 @@ def run_server(port: int = 8088, use_ssl: bool = False, enable_dual_https: bool 
     os.makedirs(STATIC_DIR, exist_ok=True)
     database.init_db()
 
+    # Warm the search index in the background immediately after startup so the
+    # first search request hits the in-memory cache instead of Turso cold-start.
+    search_engine.warm_cache()
+
     cert_file = os.path.join(os.path.dirname(__file__), "cert.pem")
     key_file = os.path.join(os.path.dirname(__file__), "key.pem")
     ensure_ssl_certs(cert_file, key_file)
