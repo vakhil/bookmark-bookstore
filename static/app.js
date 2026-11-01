@@ -1868,6 +1868,148 @@ function initManualAdd() {
   });
 }
 
+let pictureQueue = [];
+
+function renderPictureQueue() {
+  const queueWrap = document.getElementById('pictureBatchQueueWrap');
+  const queueCount = document.getElementById('pictureQueueCount');
+  const saveCount = document.getElementById('pictureSaveCount');
+  const listEl = document.getElementById('pictureCandidatesList');
+  const singleFormWrap = document.getElementById('pictureFormWrap');
+
+  if (!queueWrap || !listEl) return;
+
+  const validCount = pictureQueue.filter(p => !p.skipped).length;
+  if (queueCount) queueCount.textContent = pictureQueue.length;
+  if (saveCount) saveCount.textContent = validCount;
+
+  if (pictureQueue.length === 0) {
+    queueWrap.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  // Hide the old single-book form when we have queue items
+  if (singleFormWrap) singleFormWrap.style.display = 'none';
+  queueWrap.style.display = 'block';
+
+  listEl.innerHTML = pictureQueue.map((item, idx) => {
+    return `
+      <div class="candidate-card ${item.skipped ? 'is-skipped' : ''}" id="picCard_${item.id}" style="border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 0.85rem; padding: 1rem; background: #fff;">
+        <div class="candidate-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${item.image_data ? `<img src="${item.image_data}" alt="thumb" style="width: 38px; height: 38px; object-fit: cover; border-radius: 4px; border: 1px solid #e2e8f0;">` : ''}
+            <span class="spine-num" style="font-weight: 700; color: #1e293b; font-size: 0.95rem;">📸 Photo #${idx + 1}</span>
+          </div>
+          <div style="display: flex; gap: 0.4rem;">
+            <button type="button" class="btn btn-sm ${item.skipped ? 'btn-primary' : 'btn-outline'}" onclick="window.toggleSkipPictureItem('${item.id}')" style="font-size: 0.8rem; padding: 0.25rem 0.6rem;">
+              ${item.skipped ? '↩ Restore' : '✕ Skip'}
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" style="color:var(--danger); border-color:#fca5a5; font-size: 0.8rem; padding: 0.25rem 0.6rem;" onclick="window.removePictureItem('${item.id}')" title="Delete photo">
+              🗑️
+            </button>
+          </div>
+        </div>
+
+        <div class="candidate-card-body">
+          <div class="candidate-field-group" style="margin-bottom: 0.5rem;">
+            <label style="font-size: 0.82rem; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Book Title *</label>
+            <input type="text" class="candidate-input" value="${escapeHtml(item.title || '')}" oninput="window.updatePictureItem('${item.id}', 'title', this.value)" placeholder="Book Title" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+          </div>
+
+          <div class="candidate-field-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <div style="flex: 1.2;">
+              <label style="font-size: 0.82rem; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Author *</label>
+              <input type="text" class="candidate-input" value="${escapeHtml(item.author || '')}" oninput="window.updatePictureItem('${item.id}', 'author', this.value)" placeholder="Author" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+            </div>
+            <div style="flex: 1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: #475569; margin: 0;">Genre</label>
+                <button type="button" onclick="window.suggestGenreForPictureItem('${item.id}')" style="font-size:0.7rem; color:#4f46e5; background:none; border:none; cursor:pointer; font-weight:700; padding:0;">✨ LLM</button>
+              </div>
+              <input type="text" class="candidate-input" value="${escapeHtml(item.genre || '')}" oninput="window.updatePictureItem('${item.id}', 'genre', this.value)" placeholder="Genre" list="commonGenresList" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+            </div>
+          </div>
+
+          <div class="candidate-field-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <div style="flex: 1;">
+              <label style="font-size: 0.82rem; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Rack (Opt)</label>
+              <input type="number" min="1" step="1" class="candidate-input" value="${escapeHtml(item.rack || '')}" oninput="window.updatePictureItem('${item.id}', 'rack', this.value)" placeholder="e.g. 3" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 0.82rem; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Column (Opt)</label>
+              <input type="number" min="1" step="1" class="candidate-input" value="${escapeHtml(item.column_num || '')}" oninput="window.updatePictureItem('${item.id}', 'column_num', this.value)" placeholder="e.g. 2" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+            </div>
+            <div style="flex: 1.2;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: #475569; margin: 0;">Position (Opt)</label>
+                <button type="button" onclick="window.suggestLocationForPictureItem('${item.id}')" style="font-size:0.7rem; color:#059669; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:4px; padding:0.1rem 0.35rem; cursor:pointer; font-weight:700;">🎲 Suggest</button>
+              </div>
+              <input type="number" min="1" step="1" class="candidate-input" value="${escapeHtml(item.position || '')}" oninput="window.updatePictureItem('${item.id}', 'position', this.value)" placeholder="e.g. 5" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+            </div>
+          </div>
+
+          ${item.rack && item.column_num && item.position ? `<div style="font-size:0.76rem; color:#059669; font-weight:600;">📍 Location: Rack ${escapeHtml(item.rack)} → Column ${escapeHtml(item.column_num)} → Book #${escapeHtml(item.position)}</div>` : ''}
+          ${item.skipped ? `<div style="font-size:0.78rem; color:#64748b; font-style:italic;">This photo is skipped and will not be saved.</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.updatePictureItem = function(id, field, value) {
+  const found = pictureQueue.find(p => p.id === id);
+  if (found) {
+    found[field] = value;
+  }
+};
+
+window.removePictureItem = function(id) {
+  pictureQueue = pictureQueue.filter(p => p.id !== id);
+  renderPictureQueue();
+};
+
+window.toggleSkipPictureItem = function(id) {
+  const found = pictureQueue.find(p => p.id === id);
+  if (found) {
+    found.skipped = !found.skipped;
+    renderPictureQueue();
+  }
+};
+
+window.suggestGenreForPictureItem = async function(id) {
+  const found = pictureQueue.find(p => p.id === id);
+  if (!found || !found.title) return;
+  try {
+    const res = await fetch(`/api/books/suggest-genre?title=${encodeURIComponent(found.title)}&author=${encodeURIComponent(found.author || '')}`);
+    const data = await res.json();
+    if (data && data.genre) {
+      found.genre = data.genre;
+      renderPictureQueue();
+    }
+  } catch (e) {
+    console.warn('Auto-genre error:', e);
+  }
+};
+
+window.suggestLocationForPictureItem = async function(id) {
+  const found = pictureQueue.find(p => p.id === id);
+  if (!found) return;
+  try {
+    const res = await fetch('/api/locations/random-empty?count=1');
+    const data = await res.json();
+    if (data && data.locations && data.locations.length > 0) {
+      const loc = data.locations[0];
+      found.rack = String(loc.rack);
+      found.column_num = String(loc.column_num);
+      found.position = String(loc.position);
+      renderPictureQueue();
+    }
+  } catch (err) {
+    alert('Could not find empty location: ' + err.message);
+  }
+};
+
 function initPictureAdd() {
   const cameraInput = document.getElementById('pictureCameraInput') || document.getElementById('singleBookCamera');
   const fileInput = document.getElementById('pictureFileInput') || document.getElementById('singleBookFile');
@@ -1947,68 +2089,88 @@ function initPictureAdd() {
   if (colInp) colInp.addEventListener('input', updateLocPreview);
   if (posInp) posInp.addEventListener('input', updateLocPreview);
 
-  const handlePictureFile = async (file) => {
-    if (!file) return;
+  const handlePictureFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
+
     if (previewWrap) previewWrap.style.display = 'block';
-    if (ocrStatus) ocrStatus.textContent = 'Reading photo...';
-    if (matchBadge) matchBadge.innerHTML = '';
-    if (formWrap) formWrap.style.display = 'none';
+    if (ocrStatus) ocrStatus.textContent = `Processing ${fileList.length} photo(s)...`;
 
-    try {
-      const downscaledB64 = await downscaleImage(file, 1200, 0.85);
-      if (previewImg) previewImg.src = downscaledB64;
-      if (ocrStatus) ocrStatus.textContent = '🌟 Analyzing book cover with AI...';
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      try {
+        const downscaledB64 = await downscaleImage(file, 1200, 0.85);
+        if (previewImg) previewImg.src = downscaledB64;
+        if (ocrStatus) ocrStatus.textContent = `🌟 Reading book photo ${i + 1} of ${fileList.length} with AI...`;
 
-      const res = await fetch('/api/books/ocr-extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        const res = await fetch('/api/books/ocr-extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_data: downscaledB64,
+            raw_text: file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ")
+          })
+        });
+        const cand = await res.json();
+        const cleanTitle = (cand && cand.title && cand.title.length > 1) 
+          ? cleanBookTitle(cand.title) 
+          : file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ");
+        const author = (cand && cand.author) ? cand.author : 'Author';
+        let genre = (cand && cand.genre) ? cand.genre : 'General Non-Fiction';
+        const lang = (cand && cand.language) ? cand.language : 'English';
+
+        const newItem = {
+          id: 'pic_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          title: cleanTitle,
+          author: author,
+          genre: genre,
+          language: lang,
+          rack: '',
+          column_num: '',
+          position: '',
+          notes: '',
           image_data: downscaledB64,
-          raw_text: file.name.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " ")
-        })
-      });
-      const cand = await res.json();
+          skipped: false
+        };
 
-      if (cand && cand.title && cand.title.length > 2) {
-        const cleanTitle = cleanBookTitle(cand.title);
-        const titleInp = document.getElementById('pictureTitle');
-        const authorInp = document.getElementById('pictureAuthor');
-        const genreInp = document.getElementById('pictureGenre');
-        const langInp = document.getElementById('pictureLanguage');
+        // Append to pictureQueue so earlier photos are NEVER lost or overwritten
+        pictureQueue.push(newItem);
+        renderPictureQueue();
 
-        if (titleInp) titleInp.value = cleanTitle;
-        if (authorInp) authorInp.value = cand.author || 'Author';
-        if (genreInp) genreInp.value = cand.genre || 'General Non-Fiction';
-        if (langInp) langInp.value = cand.language || 'English';
-
-        // Auto-fetch standard genre via LLM / internet if unassigned or generic
+        // Background LLM query to assign standard genre
         if (cleanTitle) {
-          fetch(`/api/books/suggest-genre?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cand.author || '')}`)
+          fetch(`/api/books/suggest-genre?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(author)}`)
             .then(r => r.json())
             .then(gdata => {
-              if (gdata && gdata.genre && genreInp) {
-                genreInp.value = gdata.genre;
+              if (gdata && gdata.genre) {
+                const found = pictureQueue.find(p => p.id === newItem.id);
+                if (found) {
+                  found.genre = gdata.genre;
+                  renderPictureQueue();
+                }
               }
             })
             .catch(() => {});
         }
 
-        if (ocrStatus) ocrStatus.textContent = '✅ Book Recognized via AI!';
-        if (matchBadge) {
-          matchBadge.innerHTML = `📖 <b>"${escapeHtml(cleanTitle)}"</b> by <b>${escapeHtml(cand.author || 'Author')}</b>`;
-        }
-        if (formWrap) formWrap.style.display = 'block';
-        updateLocPreview();
-      } else {
-        if (ocrStatus) ocrStatus.textContent = '⚠️ Could not read title clearly. Please type details below:';
-        if (formWrap) formWrap.style.display = 'block';
+        if (ocrStatus) ocrStatus.textContent = `✅ Book #${pictureQueue.length} Recognized: "${cleanTitle}"`;
+      } catch (err) {
+        console.warn('Error reading picture photo:', err);
+        if (ocrStatus) ocrStatus.textContent = 'Error: ' + err.message;
       }
-    } catch (err) {
-      if (ocrStatus) ocrStatus.textContent = 'Error processing photo: ' + err.message;
-    } finally {
-      if (cameraInput) cameraInput.value = '';
-      if (fileInput) fileInput.value = '';
     }
+
+    if (cameraInput) cameraInput.value = '';
+    if (fileInput) fileInput.value = '';
+    if (previewWrap) {
+      setTimeout(() => {
+        if (previewWrap) previewWrap.style.display = 'none';
+      }, 3500);
+    }
+  };
+
+  const handlePictureFile = (file) => {
+    if (file) handlePictureFiles([file]);
   };
 
   const btnPicAutoGenre = document.getElementById('btnPictureAutoGenre');
@@ -2056,8 +2218,87 @@ function initPictureAdd() {
     });
   }
 
-  if (cameraInput) cameraInput.addEventListener('change', (e) => handlePictureFile(e.target.files[0]));
-  if (fileInput) fileInput.addEventListener('change', (e) => handlePictureFile(e.target.files[0]));
+  if (cameraInput) {
+    cameraInput.addEventListener('change', (e) => {
+      handlePictureFiles(e.target.files);
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+      handlePictureFiles(e.target.files);
+    });
+  }
+
+  const btnAddAnotherSnap = document.getElementById('btnPictureAddAnotherSnap');
+  if (btnAddAnotherSnap && cameraInput) {
+    btnAddAnotherSnap.addEventListener('click', (e) => {
+      e.preventDefault();
+      cameraInput.click();
+    });
+  }
+
+  const btnClearQueue = document.getElementById('btnClearPictureQueue');
+  if (btnClearQueue) {
+    btnClearQueue.addEventListener('click', () => {
+      if (confirm('Clear all captured photos?')) {
+        pictureQueue = [];
+        renderPictureQueue();
+      }
+    });
+  }
+
+  const btnSaveAllPictures = document.getElementById('btnSaveAllPictureBooks');
+  if (btnSaveAllPictures) {
+    btnSaveAllPictures.addEventListener('click', async () => {
+      const validBooks = pictureQueue
+        .filter(b => b.title && b.title.trim() && !b.skipped)
+        .map(b => {
+          const r = (b.rack || '').trim();
+          const c = (b.column_num || '').trim();
+          return {
+            title: cleanBookTitle(b.title),
+            author: b.author || 'Author',
+            genre: b.genre || 'General Non-Fiction',
+            language: b.language || 'English',
+            rack: r,
+            column_num: c,
+            position: (r || c) ? (b.position || '').trim() : '',
+            notes: b.notes || '',
+            image_data: b.image_data || ''
+          };
+        });
+
+      if (validBooks.length === 0) {
+        alert('No valid books to save in the list.');
+        return;
+      }
+
+      btnSaveAllPictures.disabled = true;
+      btnSaveAllPictures.textContent = 'Saving Books to Inventory...';
+
+      try {
+        const res = await fetch('/api/books/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ books: validBooks })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`🎉 Successfully added ${data.count} book(s) to inventory!`);
+          pictureQueue = [];
+          renderPictureQueue();
+          fetchStats();
+        } else {
+          alert('Failed to save books: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error saving books: ' + err.message);
+      } finally {
+        btnSaveAllPictures.disabled = false;
+        btnSaveAllPictures.textContent = '💾 Confirm & Save All Books to Inventory';
+      }
+    });
+  }
 
   if (form) {
     form.addEventListener('submit', async (e) => {
