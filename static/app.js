@@ -6578,7 +6578,7 @@ function escapeHtml(text) {
 }
 
 /* =========================================================================
-   AUTHENTICATION CONTROLLER (Login, Logout, Session State)
+   AUTHENTICATION CONTROLLER (Guarded Lock Screen, Login, Logout)
    ========================================================================= */
 
 let currentUser = null;
@@ -6594,15 +6594,82 @@ function initAuth() {
   const usernameInp = document.getElementById('loginUsername');
   const passwordInp = document.getElementById('loginPassword');
 
+  // Full Screen Lock Elements
+  const formLockScreen = document.getElementById('formLockScreenLogin');
+  const lockUsernameInp = document.getElementById('lockUsername');
+  const lockPasswordInp = document.getElementById('lockPassword');
+  const lockErrorAlert = document.getElementById('lockErrorAlert');
+  const btnSubmitLock = document.getElementById('btnSubmitLockLogin');
+
   // Restore session from localStorage
   try {
     const savedUser = localStorage.getItem('bookmark_user');
     if (savedUser) {
       currentUser = JSON.parse(savedUser);
-      updateAuthUI();
     }
   } catch (e) {
     currentUser = null;
+  }
+
+  // Update initial lock state
+  updateAuthUI();
+
+  // Full Screen Lock Form Submit
+  if (formLockScreen) {
+    formLockScreen.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const u = lockUsernameInp ? lockUsernameInp.value.trim() : '';
+      const p = lockPasswordInp ? lockPasswordInp.value.trim() : '';
+
+      if (!u || !p) {
+        if (lockErrorAlert) {
+          lockErrorAlert.textContent = 'Please enter both username and password.';
+          lockErrorAlert.style.display = 'block';
+        }
+        return;
+      }
+
+      if (btnSubmitLock) {
+        btnSubmitLock.disabled = true;
+        btnSubmitLock.textContent = '⏳ Verifying Credentials...';
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+
+        if (data.success && data.user) {
+          currentUser = data.user;
+          localStorage.setItem('bookmark_user', JSON.stringify(data.user));
+          if (data.token) localStorage.setItem('bookmark_token', data.token);
+          if (lockErrorAlert) lockErrorAlert.style.display = 'none';
+          updateAuthUI();
+          // Load app data once unlocked
+          fetchStats();
+          fetchUnassigned();
+          fetchSalesAndAudit();
+        } else {
+          if (lockErrorAlert) {
+            lockErrorAlert.textContent = data.error || 'Invalid credentials. Default: admin / admin.';
+            lockErrorAlert.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        if (lockErrorAlert) {
+          lockErrorAlert.textContent = 'Connection error: ' + err.message;
+          lockErrorAlert.style.display = 'block';
+        }
+      } finally {
+        if (btnSubmitLock) {
+          btnSubmitLock.disabled = false;
+          btnSubmitLock.textContent = '🔓 Unlock Website';
+        }
+      }
+    });
   }
 
   function openLoginModal() {
@@ -6634,7 +6701,7 @@ function initAuth() {
   if (btnHeaderLogout) {
     btnHeaderLogout.addEventListener('click', async (e) => {
       e.preventDefault();
-      if (!confirm('Are you sure you want to log out?')) return;
+      if (!confirm('Are you sure you want to log out and lock the website?')) return;
       try {
         await fetch('/api/auth/logout', { method: 'POST' });
       } catch (err) {}
@@ -6642,7 +6709,6 @@ function initAuth() {
       localStorage.removeItem('bookmark_user');
       localStorage.removeItem('bookmark_token');
       updateAuthUI();
-      alert('You have been logged out.');
     });
   }
 
@@ -6680,7 +6746,9 @@ function initAuth() {
           if (data.token) localStorage.setItem('bookmark_token', data.token);
           closeLoginModal();
           updateAuthUI();
-          alert(`🎉 Welcome, ${currentUser.name || currentUser.username}!\nYou are logged in as ${currentUser.role}.`);
+          fetchStats();
+          fetchUnassigned();
+          fetchSalesAndAudit();
         } else {
           if (loginError) {
             loginError.textContent = data.error || 'Invalid credentials. Default: admin / admin.';
@@ -6706,16 +6774,32 @@ function updateAuthUI() {
   const btnLogin = document.getElementById('btnHeaderLogin');
   const badgeWrap = document.getElementById('authUserBadgeWrap');
   const nameSpan = document.getElementById('authUserName');
+  const lockOverlay = document.getElementById('lockScreenOverlay');
+  const appGuarded = document.getElementById('appGuardedContent');
 
   if (currentUser) {
+    // Authenticated State: Unlock the app
+    document.body.classList.remove('is-locked');
+    if (lockOverlay) lockOverlay.style.display = 'none';
+    if (appGuarded) appGuarded.style.display = 'block';
     if (btnLogin) btnLogin.style.display = 'none';
     if (badgeWrap) badgeWrap.style.display = 'flex';
     if (nameSpan) nameSpan.textContent = currentUser.name || currentUser.username;
   } else {
+    // Unauthenticated State: Fully lock the app screen
+    document.body.classList.add('is-locked');
+    if (lockOverlay) lockOverlay.style.display = 'flex';
+    if (appGuarded) appGuarded.style.display = 'none';
     if (btnLogin) btnLogin.style.display = 'inline-flex';
     if (badgeWrap) badgeWrap.style.display = 'none';
+    const lockPass = document.getElementById('lockPassword');
+    if (lockPass) lockPass.value = '';
   }
 }
+
+window.getCurrentUser = function() {
+  return currentUser;
+};
 
 window.getCurrentUser = function() {
   return currentUser;
