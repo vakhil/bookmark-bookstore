@@ -138,6 +138,15 @@ def _app_dispatch(environ, start_response):
             dist = database.get_genre_distribution()
             return json_response(start_response, {"genres": dist}, cache_control="public, max-age=60, s-maxage=120, stale-while-revalidate=300")
 
+        elif path == "/api/locations/random-empty":
+            count = 1
+            try:
+                count = max(1, min(100, int(query_params.get("count", ["1"])[0])))
+            except Exception:
+                pass
+            locs = database.get_random_empty_locations(count=count)
+            return json_response(start_response, {"locations": locs})
+
         elif path == "/api/books/by-genre":
             genre = query_params.get("genre", [""])[0]
             avail_only = query_params.get("available_only", ["true"])[0].lower() in ("true", "1")

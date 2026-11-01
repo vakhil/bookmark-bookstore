@@ -139,6 +139,16 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json({"genres": dist})
             return
 
+        elif path == "/api/locations/random-empty":
+            count = 1
+            try:
+                count = max(1, min(100, int(params.get("count", ["1"])[0])))
+            except Exception:
+                pass
+            locs = database.get_random_empty_locations(count=count)
+            self._send_json({"locations": locs})
+            return
+
         elif path == "/api/books/by-genre":
             genre = query_params.get("genre", [""])[0]
             avail_only = query_params.get("available_only", ["true"])[0].lower() in ("true", "1")

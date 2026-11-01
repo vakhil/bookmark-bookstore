@@ -1973,6 +1973,25 @@ function initPictureAdd() {
         if (genreInp) genreInp.value = cand.genre || 'General Non-Fiction';
         if (langInp) langInp.value = cand.language || 'English';
 
+        // Auto-allocate random empty location if fields are empty
+        const rkInp = document.getElementById('pictureRack');
+        const clInp = document.getElementById('pictureColumn');
+        const psInp = document.getElementById('picturePosition');
+        if (rkInp && clInp && psInp && (!rkInp.value || !clInp.value || !psInp.value)) {
+          try {
+            const locRes = await fetch('/api/locations/random-empty?count=1');
+            const locData = await locRes.json();
+            if (locData && locData.locations && locData.locations.length > 0) {
+              const emptyLoc = locData.locations[0];
+              rkInp.value = emptyLoc.rack;
+              clInp.value = emptyLoc.column_num;
+              psInp.value = emptyLoc.position;
+            }
+          } catch (locErr) {
+            console.warn('Notice auto-allocating empty location:', locErr);
+          }
+        }
+
         if (ocrStatus) ocrStatus.textContent = '✅ Book Recognized via AI!';
         if (matchBadge) {
           matchBadge.innerHTML = `📖 <b>"${escapeHtml(cleanTitle)}"</b> by <b>${escapeHtml(cand.author || 'Author')}</b>`;
@@ -3250,16 +3269,32 @@ async function processAllStackPhotos() {
 
       // Filter duplicates and tag items
       const uniqueFromShot = shotCandidates.filter(deduplicateCandidate);
-      const tagged = uniqueFromShot.map((cand, idx) => ({
-        ...cand,
-        stack_num: stackCountB,
-        stack_index: idx,
-        stack_total: uniqueFromShot.length,
-        rack: '',
-        column_num: '',
-        position: '',
-        skipped: false
-      }));
+
+      // Fetch guaranteed empty shelf coordinates for each detected book
+      let emptySlots = [];
+      try {
+        const slotRes = await fetch(`/api/locations/random-empty?count=${uniqueFromShot.length}`);
+        const slotData = await slotRes.json();
+        if (slotData && slotData.locations) {
+          emptySlots = slotData.locations;
+        }
+      } catch (slotErr) {
+        console.warn('Notice fetching empty locations:', slotErr);
+      }
+
+      const tagged = uniqueFromShot.map((cand, idx) => {
+        const allocated = emptySlots[idx] || null;
+        return {
+          ...cand,
+          stack_num: stackCountB,
+          stack_index: idx,
+          stack_total: uniqueFromShot.length,
+          rack: allocated ? String(allocated.rack) : '',
+          column_num: allocated ? String(allocated.column_num) : '',
+          position: allocated ? String(allocated.position) : '',
+          skipped: false
+        };
+      });
       accumulatedFromShots = accumulatedFromShots.concat(tagged);
     }
 
@@ -3517,14 +3552,19 @@ function renderBatchTableB() {
 
           <div class="candidate-field-row">
             <div class="candidate-field-group" style="flex: 1;">
-              <label class="candidate-field-label">Rack (Optional)</label>
-              <input type="text" class="candidate-input" value="${escapeHtml(cand.rack || '')}" oninput="updateBatchItemB(${idx}, 'rack', this.value)" placeholder="Leave blank if unassigned">
+              <label class="candidate-field-label">Rack</label>
+              <input type="text" class="candidate-input" value="${escapeHtml(cand.rack || '')}" oninput="updateBatchItemB(${idx}, 'rack', this.value)" placeholder="e.g. 5">
             </div>
             <div class="candidate-field-group" style="flex: 1;">
-              <label class="candidate-field-label">Column (Optional)</label>
-              <input type="text" class="candidate-input" value="${escapeHtml(cand.column_num || '')}" oninput="updateBatchItemB(${idx}, 'column_num', this.value)" placeholder="Leave blank if unassigned">
+              <label class="candidate-field-label">Column</label>
+              <input type="text" class="candidate-input" value="${escapeHtml(cand.column_num || '')}" oninput="updateBatchItemB(${idx}, 'column_num', this.value)" placeholder="e.g. 2">
+            </div>
+            <div class="candidate-field-group" style="flex: 1;">
+              <label class="candidate-field-label">Position / Shelf</label>
+              <input type="text" class="candidate-input" value="${escapeHtml(cand.position || '')}" oninput="updateBatchItemB(${idx}, 'position', this.value)" placeholder="e.g. 8">
             </div>
           </div>
+          ${cand.rack && cand.column_num && cand.position ? `<div style="font-size:0.75rem; color:#059669; margin-top:-0.3rem; margin-bottom:0.4rem; font-weight:600;">✨ Auto-allocated Empty Location: Rack ${escapeHtml(cand.rack)} → Col ${escapeHtml(cand.column_num)} → Shelf ${escapeHtml(cand.position)}</div>` : ''}
 
           ${cand.existing_in_inventory ? `<div class="candidate-existing-tag">ℹ️ Matches existing title in catalog (will add as an additional copy)</div>` : ''}
           ${cand.skipped ? `<div style="font-size:0.78rem; color:#64748b; font-style:italic;">This spine is skipped and will not be saved. Click "Restore" above if you want to include it.</div>` : ''}

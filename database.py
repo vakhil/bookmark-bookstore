@@ -2846,3 +2846,44 @@ def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -
 
     return summary_text
 
+def get_random_empty_locations(count: int = 1, exclude_locations: Optional[List[Tuple[int, int, int]]] = None) -> List[Dict[str, int]]:
+    """
+    Finds truly unoccupied (rack, column_num, position) shelf coordinates where
+    no book currently exists in the database.
+    """
+    import random
+    exclude_set = set(exclude_locations or [])
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT rack, column_num, position FROM books WHERE rack IS NOT NULL AND column_num IS NOT NULL AND position IS NOT NULL")
+        occupied = set()
+        for r in cursor.fetchall():
+            try:
+                # Support dictionary row or tuple
+                rk = r["rack"] if hasattr(r, "__getitem__") and not isinstance(r, tuple) else r[0]
+                col = r["column_num"] if hasattr(r, "__getitem__") and not isinstance(r, tuple) else r[1]
+                pos = r["position"] if hasattr(r, "__getitem__") and not isinstance(r, tuple) else r[2]
+                if rk is not None and col is not None and pos is not None:
+                    occupied.add((int(rk), int(col), int(pos)))
+            except Exception:
+                pass
+        conn.close()
+
+    occupied.update(exclude_set)
+
+    # Search through standard bookstore racks (1-40), columns (1-4), positions (1-20)
+    candidates = []
+    for r in range(1, 41):
+        for col in range(1, 5):
+            for p in range(1, 21):
+                loc = (r, col, p)
+                if loc not in occupied:
+                    candidates.append(loc)
+
+    random.shuffle(candidates)
+    selected = candidates[:count]
+    return [{"rack": loc[0], "column_num": loc[1], "position": loc[2]} for loc in selected]
+
+
