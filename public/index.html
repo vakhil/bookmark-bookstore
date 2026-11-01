@@ -507,19 +507,19 @@
                 Point your camera at any book cover or spine. The AI will instantly read the title, author, and genre!
               </p>
 
-              <!-- Two Easy Action Buttons for Taking/Uploading Photos -->
+              <!-- Action Buttons for Taking/Uploading Photos -->
               <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.25rem;">
                 <button type="button" class="btn btn-primary" id="btnPictureCamera" style="font-size: 1rem; padding: 0.75rem 1.25rem; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <span>📸</span> Take Photo with Camera
+                  <span>📸</span> Take Photo (One After Another)
                 </button>
                 <button type="button" class="btn btn-outline" id="btnPictureFile" style="font-size: 1rem; padding: 0.75rem 1.25rem; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <span>📁</span> Upload Photo from Device
+                  <span>📁</span> Upload Photos (Multiple Allowed)
                 </button>
               </div>
 
               <!-- Dedicated File & Camera Inputs -->
               <input type="file" id="pictureCameraInput" accept="image/*" capture="environment" class="hidden-file-input">
-              <input type="file" id="pictureFileInput" accept="image/*" class="hidden-file-input">
+              <input type="file" id="pictureFileInput" accept="image/*" multiple class="hidden-file-input">
             </div>
 
             <!-- Photo Preview & Processing Status -->
@@ -596,9 +596,14 @@
                   <input type="text" id="pictureNotes" placeholder="e.g. Hardcover edition">
                 </div>
 
-                <button type="submit" class="btn btn-success btn-block" id="btnSavePictureBook" style="font-size: 1.05rem; padding: 0.85rem; margin-top: 1rem;">
-                  💾 Confirm & Save Book to Inventory
-                </button>
+                <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+                  <button type="submit" class="btn btn-success" id="btnSavePictureBook" style="flex: 1; font-size: 1.05rem; padding: 0.85rem;">
+                    💾 Save Book & Snap Next
+                  </button>
+                  <button type="button" class="btn btn-outline" id="btnPictureSnapNextDirect" style="font-size: 0.95rem; padding: 0.85rem 1rem;">
+                    📸 Snap Next
+                  </button>
+                </div>
               </form>
             </div>
           </div>

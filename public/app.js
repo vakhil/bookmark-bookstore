@@ -1895,6 +1895,14 @@ function initPictureAdd() {
     });
   }
 
+  const btnSnapNextDirect = document.getElementById('btnPictureSnapNextDirect');
+  if (btnSnapNextDirect && cameraInput) {
+    btnSnapNextDirect.addEventListener('click', (e) => {
+      e.preventDefault();
+      cameraInput.click();
+    });
+  }
+
   if (liveCameraBtn) {
     liveCameraBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2065,11 +2073,15 @@ function initPictureAdd() {
         const data = await res.json();
 
         if (data.success) {
-          alert(`🎉 Book Successfully Added!\n\nTitle: ${data.book.title}\nAuthor: ${data.book.author}\nLocation: ${data.book.location_english}`);
           form.reset();
           if (previewWrap) previewWrap.style.display = 'none';
           if (formWrap) formWrap.style.display = 'none';
           fetchStats();
+
+          const shouldSnapNext = confirm(`🎉 Book Successfully Added!\n\n"${data.book.title}"\nLocation: ${data.book.location_english}\n\n📸 Would you like to snap the next book now?`);
+          if (shouldSnapNext && cameraInput) {
+            cameraInput.click();
+          }
         } else {
           alert('Error adding book: ' + (data.error || 'Unknown error'));
         }
