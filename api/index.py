@@ -237,7 +237,26 @@ def _app_dispatch(environ, start_response):
     elif method == "POST":
         body = read_json_body(environ)
 
-        if path == "/api/books/add":
+        # Authentication: Login & Logout
+        if path == "/api/auth/login":
+            username = body.get("username", "")
+            password = body.get("password", "")
+            user = database.authenticate_user(username, password)
+            if user:
+                # Generate a session token
+                import hashlib
+                token = hashlib.sha256(f"{user['username']}_{user['role']}_secret_salt_2026".encode("utf-8")).hexdigest()
+                return json_response(start_response, {
+                    "success": True,
+                    "token": token,
+                    "user": user
+                })
+            return json_response(start_response, {"success": False, "error": "Invalid username or password. Default is admin / admin."}, 401)
+
+        elif path == "/api/auth/logout":
+            return json_response(start_response, {"success": True, "message": "Logged out successfully"})
+
+        elif path == "/api/books/add":
             title = body.get("title", "").strip()
             author = body.get("author", "").strip()
             genre = body.get("genre", "").strip()

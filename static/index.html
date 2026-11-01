@@ -51,6 +51,19 @@
           </a>
         </div>
       </div>
+
+      <!-- User Auth State Button (Login / User Badge & Logout) -->
+      <div id="authHeaderWrap" style="display: flex; align-items: center; gap: 0.4rem;">
+        <button id="btnHeaderLogin" class="btn btn-sm btn-primary" type="button" style="font-weight: 700; padding: 0.45rem 0.85rem; border-radius: 8px;">
+          <span>🔑</span> Login
+        </button>
+        <div id="authUserBadgeWrap" style="display: none; align-items: center; gap: 0.45rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.25rem 0.65rem;">
+          <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b;">👤 <span id="authUserName">Admin</span></span>
+          <button id="btnHeaderLogout" class="btn btn-sm btn-outline" type="button" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; color: #dc2626; border-color: #fca5a5;" title="Logout">
+            Logout
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1066,6 +1079,44 @@
     <div id="singleOcrRawTextWrap"><code id="singleOcrRawText"></code></div>
     <table id="tableSales"><tbody id="tbodySales"></tbody></table>
     <table id="tableAudit"><tbody id="tbodyAudit"></tbody></table>
+  </div>
+
+  <!-- User Login Modal -->
+  <div id="modalLogin" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 400px; padding: 1.5rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem; margin-bottom: 1rem;">
+        <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.45rem;">
+          <span>🔐</span> Staff Login
+        </h3>
+        <button class="btn-close" id="btnCloseModalLogin" type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #64748b;">✕</button>
+      </div>
+
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; font-size: 0.82rem; color: #166534;">
+        ℹ️ Initial Credentials:<br>
+        Username: <b>admin</b> &bull; Password: <b>admin</b>
+      </div>
+
+      <form id="formLogin" class="simple-form">
+        <div class="form-field" style="margin-bottom: 0.85rem;">
+          <label style="font-weight: 700; font-size: 0.88rem; color: #334155; display: block; margin-bottom: 0.35rem;">Username</label>
+          <input type="text" id="loginUsername" required placeholder="e.g. admin" autocomplete="username" style="width: 100%; padding: 0.65rem 0.85rem; font-size: 0.95rem; border: 1px solid #cbd5e1; border-radius: 8px;">
+        </div>
+
+        <div class="form-field" style="margin-bottom: 1.15rem;">
+          <label style="font-weight: 700; font-size: 0.88rem; color: #334155; display: block; margin-bottom: 0.35rem;">Password</label>
+          <input type="password" id="loginPassword" required placeholder="Enter password" autocomplete="current-password" style="width: 100%; padding: 0.65rem 0.85rem; font-size: 0.95rem; border: 1px solid #cbd5e1; border-radius: 8px;">
+        </div>
+
+        <div id="loginErrorAlert" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #dc2626; border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.84rem; margin-bottom: 0.85rem;"></div>
+
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary" id="btnCancelLogin" style="flex: 1; padding: 0.65rem;">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitLogin" style="flex: 1.5; padding: 0.65rem; font-weight: 700;">
+            Sign In
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="/app.js?v=4.5"></script>

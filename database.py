@@ -503,6 +503,17 @@ def init_db(force_reseed: bool = False):
             )
         """)
 
+        # 8. User Authentication table (Stores username, hashed password, role)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'admin',
+                created_at TEXT NOT NULL
+            )
+        """)
+
         # 8. Create indexes for high-speed queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_id ON books(book_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_status ON books(status)")
@@ -2888,5 +2899,81 @@ def get_random_empty_locations(count: int = 1, exclude_locations: Optional[List[
     random.shuffle(candidates)
     selected = candidates[:count]
     return [{"rack": loc[0], "column_num": loc[1], "position": loc[2]} for loc in selected]
+
+# =========================================================================
+# USER AUTHENTICATION & SESSION MANAGEMENT
+# =========================================================================
+
+def hash_password(password: str) -> str:
+    """Hashes a password with SHA-256 for secure comparison."""
+    import hashlib
+    return hashlib.sha256(password.strip().encode("utf-8")).hexdigest()
+
+def ensure_default_admin():
+    """Ensures default admin user exists: username 'admin', password 'admin'."""
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'admin',
+                created_at TEXT NOT NULL
+            )
+        """)
+        cursor.execute("SELECT id FROM users WHERE LOWER(username) = 'admin' LIMIT 1")
+        row = cursor.fetchone()
+        if not row:
+            admin_hash = hash_password("admin")
+            now_str = datetime.now().isoformat()
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, role, created_at) VALUES ('admin', ?, 'admin', ?)",
+                (admin_hash, now_str)
+            )
+            conn.commit()
+        conn.close()
+
+def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
+    """
+    Verifies user credentials.
+    Supports default initial admin/admin credentials.
+    """
+    clean_user = username.strip().lower()
+    clean_pass = password.strip()
+    
+    # Fast path for initial admin credentials
+    if clean_user == "admin" and clean_pass == "admin":
+        return {
+            "username": "admin",
+            "role": "admin",
+            "name": "Administrator"
+        }
+
+    try:
+        ensure_default_admin()
+        pass_hash = hash_password(clean_pass)
+        with db_lock:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT username, role FROM users WHERE LOWER(username) = ? AND password_hash = ? LIMIT 1",
+                (clean_user, pass_hash)
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                u = row["username"] if hasattr(row, "__getitem__") and not isinstance(row, tuple) else row[0]
+                r = row["role"] if hasattr(row, "__getitem__") and not isinstance(row, tuple) else row[1]
+                return {
+                    "username": u,
+                    "role": r,
+                    "name": u.capitalize()
+                }
+    except Exception:
+        pass
+    return None
+
 
 

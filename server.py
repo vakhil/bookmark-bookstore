@@ -251,6 +251,27 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
         path = parsed_url.path
         body = self._read_json_body()
 
+        # Authentication: Login & Logout
+        if path == "/api/auth/login":
+            username = body.get("username", "")
+            password = body.get("password", "")
+            user = database.authenticate_user(username, password)
+            if user:
+                import hashlib
+                token = hashlib.sha256(f"{user['username']}_{user['role']}_secret_salt_2026".encode("utf-8")).hexdigest()
+                self._send_json({
+                    "success": True,
+                    "token": token,
+                    "user": user
+                })
+                return
+            self._send_json({"success": False, "error": "Invalid username or password. Default is admin / admin."}, 401)
+            return
+
+        elif path == "/api/auth/logout":
+            self._send_json({"success": True, "message": "Logged out successfully"})
+            return
+
         # 1. Single Book Addition (Req 1.1)
         if path == "/api/books/add":
             title = body.get("title", "")

@@ -222,7 +222,7 @@ def generate_sales_csv(phone: Optional[str] = None) -> bytes:
     Optionally filters by buyer mobile phone number.
     """
     headers = [
-        "Order ID / Ref", "Book ID", "Title", "Author", "Buyer Name", "Buyer Phone",
+        "Transaction Ref", "Order ID", "Book ID", "Title", "Author", "Buyer Name", "Buyer Phone",
         "Selling Price", "Sale Timestamp", "Cashier / User", "Payment Notes", "Status"
     ]
     conn = database.get_db_connection()

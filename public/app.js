@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try { fn(); } catch (err) { console.error(`Initialization notice in ${fnName}:`, err); }
   };
 
+  safeInit('initAuth', initAuth);
   safeInit('initTabs', initTabs);
   safeInit('initExportDropdown', initExportDropdown);
   safeInit('initStats', initStats);
@@ -6575,3 +6576,147 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+/* =========================================================================
+   AUTHENTICATION CONTROLLER (Login, Logout, Session State)
+   ========================================================================= */
+
+let currentUser = null;
+
+function initAuth() {
+  const btnHeaderLogin = document.getElementById('btnHeaderLogin');
+  const btnHeaderLogout = document.getElementById('btnHeaderLogout');
+  const modalLogin = document.getElementById('modalLogin');
+  const btnCloseModal = document.getElementById('btnCloseModalLogin');
+  const btnCancelLogin = document.getElementById('btnCancelLogin');
+  const formLogin = document.getElementById('formLogin');
+  const loginError = document.getElementById('loginErrorAlert');
+  const usernameInp = document.getElementById('loginUsername');
+  const passwordInp = document.getElementById('loginPassword');
+
+  // Restore session from localStorage
+  try {
+    const savedUser = localStorage.getItem('bookmark_user');
+    if (savedUser) {
+      currentUser = JSON.parse(savedUser);
+      updateAuthUI();
+    }
+  } catch (e) {
+    currentUser = null;
+  }
+
+  function openLoginModal() {
+    if (modalLogin) {
+      modalLogin.style.display = 'flex';
+      if (loginError) loginError.style.display = 'none';
+      if (usernameInp) {
+        usernameInp.value = 'admin';
+        usernameInp.focus();
+      }
+      if (passwordInp) passwordInp.value = '';
+    }
+  }
+
+  function closeLoginModal() {
+    if (modalLogin) modalLogin.style.display = 'none';
+  }
+
+  if (btnHeaderLogin) {
+    btnHeaderLogin.addEventListener('click', (e) => {
+      e.preventDefault();
+      openLoginModal();
+    });
+  }
+
+  if (btnCloseModal) btnCloseModal.addEventListener('click', closeLoginModal);
+  if (btnCancelLogin) btnCancelLogin.addEventListener('click', closeLoginModal);
+
+  if (btnHeaderLogout) {
+    btnHeaderLogout.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (!confirm('Are you sure you want to log out?')) return;
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch (err) {}
+      currentUser = null;
+      localStorage.removeItem('bookmark_user');
+      localStorage.removeItem('bookmark_token');
+      updateAuthUI();
+      alert('You have been logged out.');
+    });
+  }
+
+  if (formLogin) {
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const u = usernameInp ? usernameInp.value.trim() : '';
+      const p = passwordInp ? passwordInp.value.trim() : '';
+      const submitBtn = document.getElementById('btnSubmitLogin');
+
+      if (!u || !p) {
+        if (loginError) {
+          loginError.textContent = 'Please enter both username and password.';
+          loginError.style.display = 'block';
+        }
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Verifying...';
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+
+        if (data.success && data.user) {
+          currentUser = data.user;
+          localStorage.setItem('bookmark_user', JSON.stringify(data.user));
+          if (data.token) localStorage.setItem('bookmark_token', data.token);
+          closeLoginModal();
+          updateAuthUI();
+          alert(`🎉 Welcome, ${currentUser.name || currentUser.username}!\nYou are logged in as ${currentUser.role}.`);
+        } else {
+          if (loginError) {
+            loginError.textContent = data.error || 'Invalid credentials. Default: admin / admin.';
+            loginError.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        if (loginError) {
+          loginError.textContent = 'Network error: ' + err.message;
+          loginError.style.display = 'block';
+        }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Sign In';
+        }
+      }
+    });
+  }
+}
+
+function updateAuthUI() {
+  const btnLogin = document.getElementById('btnHeaderLogin');
+  const badgeWrap = document.getElementById('authUserBadgeWrap');
+  const nameSpan = document.getElementById('authUserName');
+
+  if (currentUser) {
+    if (btnLogin) btnLogin.style.display = 'none';
+    if (badgeWrap) badgeWrap.style.display = 'flex';
+    if (nameSpan) nameSpan.textContent = currentUser.name || currentUser.username;
+  } else {
+    if (btnLogin) btnLogin.style.display = 'inline-flex';
+    if (badgeWrap) badgeWrap.style.display = 'none';
+  }
+}
+
+window.getCurrentUser = function() {
+  return currentUser;
+};
