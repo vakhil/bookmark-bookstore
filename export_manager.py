@@ -10,7 +10,7 @@ import zipfile
 import sqlite3
 import xml.sax.saxutils
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import database
 
 def _col_idx_to_letter(idx: int) -> str:
@@ -216,15 +216,47 @@ def generate_inventory_csv() -> bytes:
     # Encode with UTF-8-SIG (BOM) so Excel opens accented text and quotes cleanly
     return buf.getvalue().encode("utf-8-sig")
 
-def generate_sales_csv() -> bytes:
+def generate_sales_csv(phone: Optional[str] = None) -> bytes:
     """
     Generates a sales transactions CSV spreadsheet with UTF-8 BOM.
+    Optionally filters by buyer mobile phone number.
     """
     headers = [
-        "Transaction Ref", "Book ID", "Title", "Author",
-        "Selling Price", "Sale Timestamp", "Cashier / User", "Payment Notes"
+        "Order ID / Ref", "Book ID", "Title", "Author", "Buyer Name", "Buyer Phone",
+        "Selling Price", "Sale Timestamp", "Cashier / User", "Payment Notes", "Status"
     ]
-    rows = get_sales_records()
+    conn = database.get_db_connection()
+    cursor = conn.cursor()
+    if phone:
+        clean_phone = "".join(filter(str.isdigit, str(phone)))
+        cursor.execute("""
+            SELECT 
+                COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_ref,
+                st.book_id, st.title, st.author,
+                COALESCE(co.buyer_name, '') AS buyer_name,
+                COALESCE(co.buyer_phone, '') AS buyer_phone,
+                st.selling_price, st.sold_at, st.sold_by, st.notes,
+                COALESCE(st.status, 'COMPLETED') AS status
+            FROM sales_transactions st
+            LEFT JOIN customer_orders co ON COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) = co.order_id
+            WHERE co.buyer_phone LIKE ?
+            ORDER BY st.id DESC
+        """, (f"%{clean_phone}%",))
+    else:
+        cursor.execute("""
+            SELECT 
+                COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_ref,
+                st.book_id, st.title, st.author,
+                COALESCE(co.buyer_name, '') AS buyer_name,
+                COALESCE(co.buyer_phone, '') AS buyer_phone,
+                st.selling_price, st.sold_at, st.sold_by, st.notes,
+                COALESCE(st.status, 'COMPLETED') AS status
+            FROM sales_transactions st
+            LEFT JOIN customer_orders co ON COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) = co.order_id
+            ORDER BY st.id DESC
+        """)
+    rows = [list(r) for r in cursor.fetchall()]
+    conn.close()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -232,3 +264,57 @@ def generate_sales_csv() -> bytes:
     writer.writerows(rows)
 
     return buf.getvalue().encode("utf-8-sig")
+
+def generate_phone_statement_xlsx(phone: str) -> bytes:
+    """
+    Generates a dedicated customer purchase statement spreadsheet (.xlsx)
+    filtered for a specific mobile phone number.
+    """
+    clean_phone = "".join(filter(str.isdigit, str(phone)))
+    conn = database.get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_ref,
+            st.book_id, st.title, st.author,
+            COALESCE(co.buyer_name, '') AS buyer_name,
+            COALESCE(co.buyer_phone, '') AS buyer_phone,
+            st.selling_price, st.sold_at, st.sold_by, st.notes,
+            COALESCE(st.status, 'COMPLETED') AS status
+        FROM sales_transactions st
+        LEFT JOIN customer_orders co ON COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) = co.order_id
+        WHERE co.buyer_phone LIKE ?
+        ORDER BY st.id DESC
+    """, (f"%{clean_phone}%",))
+    rows = [list(r) for r in cursor.fetchall()]
+    conn.close()
+
+    headers = [
+        "Order ID / Ref", "Book ID", "Title", "Author", "Buyer Name", "Buyer Phone",
+        "Selling Price (INR)", "Sale Timestamp", "Cashier", "Payment Notes", "Status"
+    ]
+
+    total_spent = sum(float(r[6] or 0) for r in rows if r[10] != 'REVERTED')
+    buyer_name = rows[0][4] if rows and rows[0][4] else "Customer"
+
+    summary_headers = ["Customer Statement Metric", "Details"]
+    summary_rows = [
+        ["Customer Mobile Number", phone],
+        ["Customer Name", buyer_name],
+        ["Total Books Purchased", len(rows)],
+        ["Completed Transactions Total (INR)", f"₹{total_spent:.2f}"],
+        ["Statement Generated At", datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+    ]
+
+    sheets_data = {
+        "Purchased_Books": {
+            "headers": headers,
+            "rows": rows
+        },
+        "Customer_Summary": {
+            "headers": summary_headers,
+            "rows": summary_rows
+        }
+    }
+
+    return build_xlsx_workbook(sheets_data)

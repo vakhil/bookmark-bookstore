@@ -264,7 +264,10 @@
               All previous sales reports (single book or multi-book bulk orders). Revert any transaction to return books to their shelf locations or redo sales.
             </p>
           </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm btn-outline" id="btnTogglePhoneStatsModal" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; color: #0284c7; border-color: #bae6fd; background: #f0f9ff;">
+              <span>📱</span> Download by Mobile Number
+            </button>
             <button type="button" class="btn btn-sm btn-outline" id="btnRefreshTransactions" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
               <span>🔄</span> Refresh
             </button>
@@ -314,6 +317,50 @@
             <button class="btn btn-sm btn-outline tx-filter-btn active" data-filter="all">All</button>
             <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="completed">Completed</button>
             <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="reverted">Reverted</button>
+          </div>
+        </div>
+
+        <!-- Mobile Phone Statistics Download Panel -->
+        <div id="phoneStatsPanel" style="display: none; background: #ffffff; border: 2px solid #bae6fd; border-radius: 12px; padding: 1.15rem; margin-top: 1rem; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.08);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div>
+              <b style="font-size: 1rem; color: #0369a1; display: flex; align-items: center; gap: 0.4rem;">
+                <span>📱</span> Download Statistics by Mobile Number
+              </b>
+              <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: #64748b;">
+                Enter a customer's phone number to filter their purchases, download Excel / CSV statement, or send statistics directly to WhatsApp.
+              </p>
+            </div>
+            <button type="button" id="btnClosePhoneStatsPanel" style="background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; padding: 0.2rem;" title="Close">✕</button>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem;">
+            <input type="tel" id="statsMobileNumberInput" class="form-control" placeholder="Enter mobile number (e.g. 9440909197)..." style="flex: 1; min-width: 220px; font-size: 0.95rem; font-weight: 600; padding: 0.6rem 0.85rem; border: 1px solid #7dd3fc; border-radius: 8px;">
+            <button type="button" class="btn btn-primary" id="btnFilterByPhone" style="font-size: 0.88rem; padding: 0.6rem 1rem; font-weight: 700;">
+              🔍 Find History
+            </button>
+          </div>
+
+          <!-- Phone Stats Summary Box (Dynamic) -->
+          <div id="phoneStatsResultBox" style="display: none; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.85rem; margin-bottom: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+              <div>
+                <span id="phoneStatsBuyerName" style="font-weight: 800; color: #0369a1; font-size: 0.98rem;">Customer Name</span>
+                <span id="phoneStatsBadgeCount" style="background: #e0f2fe; color: #0284c7; font-size: 0.75rem; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 9999px; margin-left: 0.4rem;">0 Orders</span>
+                <div id="phoneStatsDetailText" style="font-size: 0.8rem; color: #475569; margin-top: 0.2rem;">Total Books: 0 &bull; Total Spent: ₹0.00</div>
+              </div>
+              <div style="display: flex; gap: 0.45rem; flex-wrap: wrap;">
+                <a id="btnDownloadPhoneXlsx" href="#" class="btn btn-sm btn-success" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; text-decoration: none;">
+                  <span>📥</span> Download Excel (.xlsx)
+                </a>
+                <a id="btnDownloadPhoneCsv" href="#" class="btn btn-sm btn-outline" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; text-decoration: none; background: #fff;">
+                  <span>📄</span> Download CSV
+                </a>
+                <a id="btnSharePhoneWhatsApp" href="#" target="_blank" class="btn btn-sm" style="background: #25d366; color: #fff; font-size: 0.82rem; padding: 0.45rem 0.75rem; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; text-decoration: none; border: none;">
+                  <span>💬</span> Share on WhatsApp
+                </a>
+              </div>
+            </div>
           </div>
         </div>
 

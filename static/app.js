@@ -6108,20 +6108,110 @@ function initTransactions() {
     });
   }
 
-  if (btnResetCustom) {
-    btnResetCustom.addEventListener('click', () => {
-      if (dateFromInp) dateFromInp.value = '';
-      if (dateToInp) dateToInp.value = '';
-      transactionsCustomStart = null;
-      transactionsCustomEnd = null;
-      transactionsTimeRange = 'all';
-      document.querySelectorAll('.tx-time-btn').forEach(b => {
-        b.classList.toggle('active', b.getAttribute('data-time-range') === 'all');
-      });
-      const customWrap = document.getElementById('txCustomDateWrap');
-      if (customWrap) customWrap.style.display = 'none';
-      updateTimeRangeSummaryLabel('all');
-      renderTransactionsList();
+  // Mobile Phone Statistics Download Panel Handlers
+  const btnTogglePhoneModal = document.getElementById('btnTogglePhoneStatsModal');
+  const btnClosePhonePanel = document.getElementById('btnClosePhoneStatsPanel');
+  const phoneStatsPanel = document.getElementById('phoneStatsPanel');
+  const phoneInput = document.getElementById('statsMobileNumberInput');
+  const btnFilterPhone = document.getElementById('btnFilterByPhone');
+
+  if (btnTogglePhoneModal && phoneStatsPanel) {
+    btnTogglePhoneModal.addEventListener('click', () => {
+      const isVisible = phoneStatsPanel.style.display === 'block';
+      phoneStatsPanel.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible && phoneInput) phoneInput.focus();
+    });
+  }
+
+  if (btnClosePhonePanel && phoneStatsPanel) {
+    btnClosePhonePanel.addEventListener('click', () => {
+      phoneStatsPanel.style.display = 'none';
+    });
+  }
+
+  function handlePhoneLookup() {
+    if (!phoneInput) return;
+    const phoneVal = phoneInput.value.trim();
+    if (!phoneVal) {
+      alert('Please enter a mobile number.');
+      return;
+    }
+
+    const cleanDigits = phoneVal.replace(/\D/g, '');
+    const searchInp = document.getElementById('transactionsSearchInput');
+    if (searchInp) {
+      searchInp.value = cleanDigits || phoneVal;
+    }
+
+    // Filter transactions in memory
+    const matchedOrders = transactionsCache.filter(t => {
+      const p = (t.buyer_phone || '').replace(/\D/g, '');
+      return p.includes(cleanDigits) || (t.buyer_phone || '').includes(phoneVal);
+    });
+
+    const resultBox = document.getElementById('phoneStatsResultBox');
+    const nameLabel = document.getElementById('phoneStatsBuyerName');
+    const badgeCount = document.getElementById('phoneStatsBadgeCount');
+    const detailText = document.getElementById('phoneStatsDetailText');
+    const btnXlsx = document.getElementById('btnDownloadPhoneXlsx');
+    const btnCsv = document.getElementById('btnDownloadPhoneCsv');
+    const btnWa = document.getElementById('btnSharePhoneWhatsApp');
+
+    if (resultBox) resultBox.style.display = 'block';
+
+    let totalBooks = 0;
+    let totalAmt = 0;
+    let buyerName = '';
+
+    matchedOrders.forEach(o => {
+      if (o.status !== 'REVERTED') {
+        totalAmt += parseFloat(o.total_amount || 0);
+        totalBooks += (o.books ? o.books.length : 1);
+        if (!buyerName && o.buyer_name) buyerName = o.buyer_name;
+      }
+    });
+
+    if (nameLabel) nameLabel.textContent = buyerName || `Customer (${phoneVal})`;
+    if (badgeCount) badgeCount.textContent = `${matchedOrders.length} Order${matchedOrders.length === 1 ? '' : 's'}`;
+    if (detailText) {
+      detailText.textContent = `Total Books Purchased: ${totalBooks} • Total Amount Spent: ₹${totalAmt.toFixed(2)}`;
+    }
+
+    // Direct download links
+    if (btnXlsx) {
+      btnXlsx.href = `/api/export/phone.xlsx?phone=${encodeURIComponent(cleanDigits || phoneVal)}`;
+    }
+    if (btnCsv) {
+      btnCsv.href = `/api/export/sales.csv?phone=${encodeURIComponent(cleanDigits || phoneVal)}`;
+    }
+
+    // Direct WhatsApp share
+    if (btnWa) {
+      const waText = encodeURIComponent(
+        `📚 *Bookmark Bookstore Customer Statement*\n` +
+        `👤 Customer: ${buyerName || 'Valued Customer'}\n` +
+        `📱 Mobile: ${phoneVal}\n` +
+        `📦 Total Orders: ${matchedOrders.length}\n` +
+        `📖 Books Purchased: ${totalBooks}\n` +
+        `💰 Total Spent: ₹${totalAmt.toFixed(2)}\n\n` +
+        `📥 Full Statement: https://book-store-advanced.vercel.app/api/export/phone.xlsx?phone=${cleanDigits || phoneVal}`
+      );
+      btnWa.href = `https://wa.me/91${cleanDigits}?text=${waText}`;
+    }
+
+    renderTransactionsList();
+  }
+
+  if (btnFilterPhone) {
+    btnFilterPhone.addEventListener('click', handlePhoneLookup);
+  }
+
+  if (phoneInput) {
+    phoneInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handlePhoneLookup();
+      }
     });
   }
 }

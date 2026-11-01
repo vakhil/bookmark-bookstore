@@ -209,14 +209,34 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             return
 
         elif path == "/api/export/sales.csv":
-            csv_bytes = export_manager.generate_sales_csv()
-            filename = f"Bookstore_Sales_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            query_params = parse_qs(parsed_url.query)
+            phone = query_params.get("phone", [None])[0]
+            csv_bytes = export_manager.generate_sales_csv(phone=phone)
+            suffix = f"_{phone}" if phone else ""
+            filename = f"Sales_Stats{suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(len(csv_bytes)))
             self.end_headers()
             self.wfile.write(csv_bytes)
+            return
+
+        elif path in ("/api/export/phone.xlsx", "/api/export/customer.xlsx"):
+            query_params = parse_qs(parsed_url.query)
+            phone = query_params.get("phone", [""])[0]
+            if not phone:
+                self._send_json({"error": "phone query param required"}, 400)
+                return
+            xlsx_bytes = export_manager.generate_phone_statement_xlsx(phone=phone)
+            clean_phone = "".join(filter(str.isdigit, str(phone)))
+            filename = f"Customer_Statement_{clean_phone}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(xlsx_bytes)))
+            self.end_headers()
+            self.wfile.write(xlsx_bytes)
             return
 
         # Serve static assets or index.html for single-page app
