@@ -2134,6 +2134,7 @@ def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict
                st.book_id, st.title, st.author, st.selling_price, st.sold_at, st.sold_by, st.notes,
                COALESCE(st.status, 'COMPLETED') AS status,
                b.status AS current_book_status, b.location_english, b.rack, b.column_num, b.position,
+               b.image_url, b.genre,
                co.buyer_name, co.buyer_phone, co.total_amount AS co_total_amount
         FROM sales_transactions st
         LEFT JOIN books b ON st.book_id = b.book_id
@@ -2187,6 +2188,8 @@ def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict
             "title": r["title"],
             "author": r["author"],
             "selling_price": price,
+            "image_url": r.get("image_url") or "",
+            "genre": r.get("genre") or "",
             "status": r["status"],
             "current_book_status": r["current_book_status"] or ("SOLD OUT" if r["status"] == "COMPLETED" else "Available"),
             "location_english": loc or "Location Unassigned"

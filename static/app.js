@@ -6034,6 +6034,9 @@ function initCart() {
 
 let transactionsCache = [];
 let transactionsActiveFilter = 'all';
+let transactionsTimeRange = 'all';
+let transactionsCustomStart = null;
+let transactionsCustomEnd = null;
 
 function initTransactions() {
   const btnRefresh = document.getElementById('btnRefreshTransactions');
@@ -6058,6 +6061,84 @@ function initTransactions() {
       renderTransactionsList();
     });
   });
+
+  // Time-Wise Preset Buttons
+  document.querySelectorAll('.tx-time-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const range = btn.getAttribute('data-time-range');
+      const customWrap = document.getElementById('txCustomDateWrap');
+      
+      document.querySelectorAll('.tx-time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      transactionsTimeRange = range;
+
+      if (range === 'custom') {
+        if (customWrap) customWrap.style.display = 'flex';
+      } else {
+        if (customWrap) customWrap.style.display = 'none';
+        transactionsCustomStart = null;
+        transactionsCustomEnd = null;
+        updateTimeRangeSummaryLabel(range);
+        renderTransactionsList();
+      }
+    });
+  });
+
+  // Custom Date Apply & Reset
+  const btnApplyCustom = document.getElementById('btnApplyCustomDate');
+  const btnResetCustom = document.getElementById('btnResetCustomDate');
+  const dateFromInp = document.getElementById('txDateFrom');
+  const dateToInp = document.getElementById('txDateTo');
+
+  if (btnApplyCustom) {
+    btnApplyCustom.addEventListener('click', () => {
+      const fromVal = dateFromInp ? dateFromInp.value : '';
+      const toVal = dateToInp ? dateToInp.value : '';
+      if (!fromVal && !toVal) {
+        alert('Please pick at least a "From" or "To" date.');
+        return;
+      }
+      transactionsCustomStart = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+      transactionsCustomEnd = toVal ? new Date(toVal + 'T23:59:59') : null;
+      
+      const summary = `Custom: ${fromVal || 'Any'} → ${toVal || 'Today'}`;
+      const lbl = document.getElementById('txPeriodSummaryLabel');
+      if (lbl) lbl.textContent = summary;
+      renderTransactionsList();
+    });
+  }
+
+  if (btnResetCustom) {
+    btnResetCustom.addEventListener('click', () => {
+      if (dateFromInp) dateFromInp.value = '';
+      if (dateToInp) dateToInp.value = '';
+      transactionsCustomStart = null;
+      transactionsCustomEnd = null;
+      transactionsTimeRange = 'all';
+      document.querySelectorAll('.tx-time-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-time-range') === 'all');
+      });
+      const customWrap = document.getElementById('txCustomDateWrap');
+      if (customWrap) customWrap.style.display = 'none';
+      updateTimeRangeSummaryLabel('all');
+      renderTransactionsList();
+    });
+  }
+}
+
+function updateTimeRangeSummaryLabel(range) {
+  const lbl = document.getElementById('txPeriodSummaryLabel');
+  if (!lbl) return;
+  const labels = {
+    'all': 'All Time',
+    'today': 'Today',
+    '5d': 'Last 5 Days',
+    '1w': 'Last 1 Week (7 Days)',
+    '10d': 'Last 10 Days',
+    '15d': 'Last 15 Days',
+    '1m': 'Last 1 Month (30 Days)'
+  };
+  lbl.textContent = labels[range] || range;
 }
 
 async function loadTransactionsTab(forceRefresh = false) {
@@ -6093,14 +6174,43 @@ function renderTransactionsList() {
 
   let list = transactionsCache;
 
-  // Filter by status
+  // 1. Filter by Time-Wise range
+  const now = new Date();
+  if (transactionsTimeRange === 'today') {
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    list = list.filter(t => new Date(t.sold_at).getTime() >= startOfToday);
+  } else if (transactionsTimeRange === '5d') {
+    const cutoff = now.getTime() - (5 * 24 * 60 * 60 * 1000);
+    list = list.filter(t => new Date(t.sold_at).getTime() >= cutoff);
+  } else if (transactionsTimeRange === '1w') {
+    const cutoff = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+    list = list.filter(t => new Date(t.sold_at).getTime() >= cutoff);
+  } else if (transactionsTimeRange === '10d') {
+    const cutoff = now.getTime() - (10 * 24 * 60 * 60 * 1000);
+    list = list.filter(t => new Date(t.sold_at).getTime() >= cutoff);
+  } else if (transactionsTimeRange === '15d') {
+    const cutoff = now.getTime() - (15 * 24 * 60 * 60 * 1000);
+    list = list.filter(t => new Date(t.sold_at).getTime() >= cutoff);
+  } else if (transactionsTimeRange === '1m') {
+    const cutoff = now.getTime() - (30 * 24 * 60 * 60 * 1000);
+    list = list.filter(t => new Date(t.sold_at).getTime() >= cutoff);
+  } else if (transactionsTimeRange === 'custom') {
+    if (transactionsCustomStart) {
+      list = list.filter(t => new Date(t.sold_at).getTime() >= transactionsCustomStart.getTime());
+    }
+    if (transactionsCustomEnd) {
+      list = list.filter(t => new Date(t.sold_at).getTime() <= transactionsCustomEnd.getTime());
+    }
+  }
+
+  // 2. Filter by status
   if (transactionsActiveFilter === 'completed') {
     list = list.filter(t => t.status !== 'REVERTED');
   } else if (transactionsActiveFilter === 'reverted') {
     list = list.filter(t => t.status === 'REVERTED');
   }
 
-  // Filter by search query
+  // 3. Filter by search query
   if (q) {
     list = list.filter(t => {
       const matchOid = (t.order_id || '').toLowerCase().includes(q);
@@ -6115,12 +6225,37 @@ function renderTransactionsList() {
     });
   }
 
+  // Calculate Business KPI Metrics for the filtered time period
+  let completedOrders = 0;
+  let totalPhysicalBooks = 0;
+  let totalGrossRevenue = 0;
+
+  list.forEach(ord => {
+    if (ord.status !== 'REVERTED') {
+      completedOrders++;
+      totalGrossRevenue += parseFloat(ord.total_amount || 0);
+      totalPhysicalBooks += (ord.books ? ord.books.length : 1);
+    }
+  });
+
+  const avgOrderVal = completedOrders > 0 ? (totalGrossRevenue / completedOrders) : 0;
+
+  const kpiOrders = document.getElementById('txKpiOrdersCount');
+  const kpiBooks = document.getElementById('txKpiBooksCount');
+  const kpiRev = document.getElementById('txKpiRevenue');
+  const kpiAvg = document.getElementById('txKpiAvgOrder');
+
+  if (kpiOrders) kpiOrders.textContent = completedOrders;
+  if (kpiBooks) kpiBooks.textContent = totalPhysicalBooks;
+  if (kpiRev) kpiRev.textContent = `₹${totalGrossRevenue.toFixed(2)}`;
+  if (kpiAvg) kpiAvg.textContent = `₹${avgOrderVal.toFixed(2)}`;
+
   if (list.length === 0) {
     container.innerHTML = `
       <div class="empty-prompt">
         <div class="prompt-icon">📊</div>
         <h3>No Reports Found</h3>
-        <p>No sales reports match your search or filter criteria.</p>
+        <p>No sales reports match your selected time range or search filter.</p>
       </div>
     `;
     return;
@@ -6143,48 +6278,50 @@ function renderTransactionsList() {
       const isBookSold = (b.current_book_status || '').toUpperCase() === 'SOLD OUT';
       const bookStatusPill = isBookSold
         ? '<span style="color:#dc2626; font-size:0.76rem; font-weight:700;">❌ Sold Out</span>'
-        : '<span style="color:#059669; font-size:0.76rem; font-weight:700;">✅ Ready on Shelf</span>';
+        : '<span style="color:#059669; font-size:0.76rem; font-weight:700;">✅ Available (Re-stocked)</span>';
+
+      const dpCoverHtml = getBookCoverHtml(b.title, b.author, b.genre || '', b.image_url || '');
 
       return `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:0.6rem 0.75rem; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; gap:0.5rem;">
-          <div style="flex:1; min-width:0;">
-            <div style="font-weight:700; font-size:0.92rem; color:#1e293b;">${escapeHtml(b.title)}</div>
-            <div style="font-size:0.78rem; color:#64748b; margin-bottom:0.25rem;">by <b>${escapeHtml(b.author || 'Author')}</b></div>
-            <div style="display:inline-flex; align-items:center; gap:0.3rem; font-size:0.78rem; font-weight:700; color:#0369a1; background:#f0f9ff; border:1px solid #bae6fd; padding:0.15rem 0.5rem; border-radius:6px;">
-              <span>📍</span> ${escapeHtml((b.location_english || 'Unassigned').replace(/->/g, '→'))}
-            </div>
+        <div style="display:flex; align-items:center; padding:0.65rem 0.85rem; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; gap:0.85rem;">
+          <!-- Book DP / Thumbnail -->
+          <div style="width:48px; height:68px; flex-shrink:0; overflow:hidden; border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,0.12); display:flex; align-items:center; justify-content:center; background:#f1f5f9;">
+            ${dpCoverHtml}
           </div>
-          <div style="text-align:right; flex-shrink:0;">
-            <div style="font-weight:800; font-size:0.95rem; color:#0f172a;">${b.selling_price !== null && b.selling_price !== undefined ? `₹${parseFloat(b.selling_price).toFixed(2)}` : '₹0.00'}</div>
-            <div style="margin-top:0.2rem;">${bookStatusPill}</div>
+
+          <!-- Book Title & Author Only (Rack & Column Details Removed as Requested) -->
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:0.95rem; color:#1e293b; line-height:1.25;">${escapeHtml(b.title)}</div>
+            <div style="font-size:0.8rem; color:#64748b; margin-top:0.2rem;">by <b>${escapeHtml(b.author || 'Author')}</b></div>
+            <div style="margin-top:0.3rem;">${bookStatusPill}</div>
           </div>
         </div>
       `;
     }).join('');
 
     return `
-      <div class="transaction-card" data-order-id="${escapeHtml(order.order_id)}">
-        <!-- Transaction Header -->
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.75rem;">
+      <div class="transaction-card" data-order-id="${escapeHtml(order.order_id)}" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:1.15rem; box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+        <!-- Transaction Header (Price is shown ONCE here for the entire transaction) -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.85rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.75rem;">
           <div>
             <div style="display:flex; align-items:center; gap:0.5rem;">
-              <h3 style="margin:0; font-size:1.05rem; font-weight:800; color:#0f172a;">${escapeHtml(order.order_id)}</h3>
+              <h3 style="margin:0; font-size:1.1rem; font-weight:800; color:#0f172a;">${escapeHtml(order.order_id)}</h3>
               ${statusBadge}
             </div>
             ${buyerBadge ? `<div>${buyerBadge}</div>` : ''}
-            <div style="font-size:0.78rem; color:#64748b; margin-top:0.25rem;">
+            <div style="font-size:0.8rem; color:#64748b; margin-top:0.3rem;">
               📅 ${new Date(order.sold_at).toLocaleString()} &bull; Sold by: <b>${escapeHtml(order.sold_by || 'Staff')}</b>
               ${order.notes ? ` &bull; <i>${escapeHtml(order.notes)}</i>` : ''}
             </div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:1.25rem; font-weight:800; color:#059669;">₹${parseFloat(order.total_amount).toFixed(2)}</div>
-            <div style="font-size:0.78rem; color:#64748b; font-weight:600;">${order.count} ${order.count === 1 ? 'book' : 'books'} in transaction</div>
+            <div style="font-size:1.45rem; font-weight:800; color:#059669; letter-spacing:-0.5px;">₹${parseFloat(order.total_amount).toFixed(2)}</div>
+            <div style="font-size:0.8rem; color:#64748b; font-weight:600;">${order.count} ${order.count === 1 ? 'book' : 'books'} in transaction</div>
           </div>
         </div>
 
-        <!-- Member Books List -->
-        <div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.85rem; background:#f8fafc; padding:0.65rem; border-radius:10px; border:1px solid #f1f5f9;">
+        <!-- Member Books List with DP Covers -->
+        <div style="display:flex; flex-direction:column; gap:0.55rem; margin-bottom:0.85rem; background:#f8fafc; padding:0.75rem; border-radius:10px; border:1px solid #f1f5f9;">
           ${booksHtml}
         </div>
 
@@ -6209,6 +6346,9 @@ function renderTransactionsList() {
       </div>
     `;
   }).join('');
+
+  // Resolve lazy-loaded book covers
+  resolveLazyCovers();
 
   // Wire action buttons
   container.querySelectorAll('.btn-revert-tx').forEach(btn => {
