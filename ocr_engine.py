@@ -671,78 +671,92 @@ def detect_multiple_books_in_image(
 
 def predict_genre_with_llm(title: str, author: str = "") -> str:
     """
-    Uses Google Gemini LLM to predict the most accurate canonical genre for a book title and author.
-    Falls back to existing catalog match or rule-based genre classifier.
+    Uses Google Gemini LLM / Internet lookup to classify a book into our standard set of canonical genres.
+    Falls back to Open Library/Google Books internet subjects and rule-based genre classifier.
     """
     clean_title = (title or "").strip()
+    clean_author = (author or "").strip()
     if not clean_title:
         return "General Non-Fiction"
 
-    # 1. Check existing catalog match first
+    import genre_classifier
+
+    # 1. First Priority: Call Google Gemini LLM with structured response
+    api_key = get_google_api_key()
+    if is_valid_google_key(api_key):
+        prompt = (
+            f"You are an expert bookstore librarian. Determine the canonical bookstore genre for the book:\n"
+            f"Title: \"{clean_title}\"\n"
+            f"Author: \"{clean_author}\"\n\n"
+            f"Choose EXACTLY ONE from this list of canonical genres:\n"
+            f"{json.dumps(genre_classifier.FIXED_COMMON_GENRES)}\n\n"
+            f"Output strictly valid JSON with key 'genre', for example: {{\"genre\": \"Philosophy\"}}"
+        )
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+        }
+
+        models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+                )
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    parsed = json.loads(text)
+                    g = parsed.get("genre", "").strip()
+                    if g in genre_classifier.FIXED_COMMON_GENRES:
+                        return g
+                    mapped = genre_classifier.classify_common_genre(g, clean_title)
+                    if mapped and mapped != "General Non-Fiction":
+                        return mapped
+            except Exception:
+                continue
+
+    # 2. Second Priority: Internet Lookup via Google Books API
+    try:
+        q_str = f"{clean_title} {clean_author}".strip()
+        gb_url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(q_str)}&maxResults=1"
+        gb_req = urllib.request.Request(gb_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(gb_req, timeout=3.5) as resp:
+            gb_data = json.loads(resp.read().decode("utf-8"))
+            items = gb_data.get("items", [])
+            if items:
+                vinfo = items[0].get("volumeInfo", {})
+                cats = vinfo.get("categories", [])
+                desc = vinfo.get("description", "")
+                cat_str = " / ".join(cats)
+                if cat_str:
+                    mapped = genre_classifier.classify_common_genre(cat_str, clean_title)
+                    if mapped and mapped != "General Non-Fiction":
+                        return mapped
+    except Exception:
+        pass
+
+    # 3. Third Priority: Check existing catalog match
     try:
         matches = search_engine.search_books(clean_title)
         if matches and matches.get("exact_matches"):
             top = matches["exact_matches"][0]
             if top.get("genre"):
-                return top["genre"]
+                mapped = genre_classifier.classify_common_genre(top["genre"], clean_title)
+                if mapped:
+                    return mapped
     except Exception:
         pass
 
-    # 2. Fast rule-based keyword check first (0ms latency)
+    # 4. Fourth Priority: Rule-based keyword matching
     try:
-        import genre_classifier
-        rule_genre = genre_classifier.classify_common_genre("", clean_title)
-        if rule_genre and rule_genre != "General Non-Fiction":
-            return rule_genre
-    except Exception:
-        pass
-
-    # 3. Call Google Gemini LLM
-    api_key = get_google_api_key()
-    if is_valid_google_key(api_key):
-        prompt = (
-            f"You are a bookstore librarian. Given the book title '{clean_title}' by '{author}', "
-            f"classify it into EXACTLY ONE of these canonical bookstore genres:\n"
-            f"[Fiction, Philosophy, Self-Help, History, Biography, Business & Economics, Politics, "
-            f"Law, Psychology, Science & Technology, Religion & Spirituality, Health & Wellness, "
-            f"Music, Art & Culture, Children & Young Adult, Travel & Adventure, Cookery & Food, "
-            f"Education & Reference, Humor & Lifestyle, General Non-Fiction].\n\n"
-            f"Reply with ONLY the exact chosen genre name from this list, nothing else."
-        )
-
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 30}
-        }
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-        try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
-            )
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                cleaned = re.sub(r'["\'.*]', '', text).strip()
-
-                import genre_classifier
-                for g in genre_classifier.FIXED_COMMON_GENRES:
-                    if g.lower() == cleaned.lower():
-                        return g
-                for g in genre_classifier.FIXED_COMMON_GENRES:
-                    if g.lower() in cleaned.lower():
-                        return g
-                if cleaned and len(cleaned) < 40:
-                    return cleaned
-        except Exception:
-            pass
-
-    # 4. Fallback
-    try:
-        import genre_classifier
         return genre_classifier.classify_common_genre("", clean_title)
+    except Exception:
+        return "General Non-Fiction"
     except Exception:
         return "General Non-Fiction"
 
