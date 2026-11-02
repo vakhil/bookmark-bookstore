@@ -6708,7 +6708,18 @@ function initAuth() {
       currentUser = null;
       localStorage.removeItem('bookmark_user');
       localStorage.removeItem('bookmark_token');
+
+      // Reset application state back to default tab (Search) and clear any sensitive search/cart view
+      try {
+        if (typeof switchMainTab === 'function') {
+          switchMainTab('tabSearch');
+        }
+        window.scrollTo(0, 0);
+      } catch (e) {}
+
       updateAuthUI();
+      // Reload page cleanly to guarantee clean state and immediate full-screen login lock
+      window.location.reload();
     });
   }
 
@@ -6786,7 +6797,7 @@ function updateAuthUI() {
     if (badgeWrap) badgeWrap.style.display = 'flex';
     if (nameSpan) nameSpan.textContent = currentUser.name || currentUser.username;
   } else {
-    // Unauthenticated State: Fully lock the app screen
+    // Unauthenticated State: Fully lock the app screen and focus username
     document.body.classList.add('is-locked');
     if (lockOverlay) lockOverlay.style.display = 'flex';
     if (appGuarded) appGuarded.style.display = 'none';
@@ -6794,12 +6805,11 @@ function updateAuthUI() {
     if (badgeWrap) badgeWrap.style.display = 'none';
     const lockPass = document.getElementById('lockPassword');
     if (lockPass) lockPass.value = '';
+    const lockUser = document.getElementById('lockUsername');
+    if (lockUser && !lockUser.value) lockUser.value = 'admin';
+    if (lockPass) setTimeout(() => lockPass.focus(), 50);
   }
 }
-
-window.getCurrentUser = function() {
-  return currentUser;
-};
 
 window.getCurrentUser = function() {
   return currentUser;
