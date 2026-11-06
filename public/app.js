@@ -1935,7 +1935,7 @@ function renderPictureQueue() {
           <div class="candidate-field-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
             <div style="flex: 1;">
               <label style="font-size: 0.82rem; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Rack (Opt)</label>
-              <input type="number" min="1" step="1" class="candidate-input" value="${escapeHtml(item.rack || '')}" oninput="window.updatePictureItem('${item.id}', 'rack', this.value)" placeholder="e.g. 3" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
+              <input type="number" step="1" class="candidate-input" value="${escapeHtml(item.rack || '')}" oninput="window.updatePictureItem('${item.id}', 'rack', this.value)" placeholder="e.g. 3 or -1" style="width: 100%; padding: 0.5rem; font-size: 0.95rem;">
             </div>
             <div style="flex: 1;">
               <label style="font-size: 0.82rem; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Column (Opt)</label>

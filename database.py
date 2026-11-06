@@ -294,7 +294,11 @@ def parse_rack_value(val: Any) -> Optional[int]:
     if m_top:
         return 5000 + int(m_top.group(1))
 
-    # 3. Pure integer or Rack <N>
+    # 3. Pure integer, negative rack (e.g. -1, -4, -11.0), or Rack <N>
+    m_neg = re.search(r"-\s*(\d+)", s_clean)
+    if m_neg:
+        return -int(m_neg.group(1))
+
     m_num = re.search(r"\d+", s_clean)
     if m_num:
         return int(m_num.group(0))
