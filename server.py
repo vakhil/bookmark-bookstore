@@ -402,11 +402,47 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json(res)
             return
 
-        # 6. Selling Workflow (Req 3.1 - 3.3, Multi-Book Sale)
-        elif path in ("/api/books/sell", "/api/books/sell-bulk"):
+        # 6. Selling Workflow (Req 3.1 - 3.3, Multi-Book Sale & Manual Direct Sale)
+        elif path in ("/api/books/sell", "/api/books/sell-bulk", "/api/sales/manual", "/api/books/sell-manual"):
             buyer_name = body.get("buyer_name", "")
             buyer_phone = body.get("buyer_phone") or body.get("phone") or body.get("mobile_number", "")
             total_amount = body.get("total_amount")
+
+            # Direct Manual Sale support (book without cart/inventory selection)
+            if path in ("/api/sales/manual", "/api/books/sell-manual") or (body.get("is_manual") and body.get("title")):
+                title = body.get("title", "")
+                selling_price = body.get("selling_price") if body.get("selling_price") is not None else body.get("price")
+                author = body.get("author", "Custom / Manual")
+                notes = body.get("notes", "")
+                user = body.get("user", "Staff")
+
+                if not title:
+                    self._send_json({"error": "Book title or name is required."}, 400)
+                    return
+                if selling_price is None or str(selling_price).strip() == "":
+                    self._send_json({"error": "Selling price is required."}, 400)
+                    return
+
+                try:
+                    price_val = float(selling_price)
+                except (ValueError, TypeError):
+                    self._send_json({"error": "Invalid selling price format."}, 400)
+                    return
+
+                res = database.record_manual_sale(
+                    title=title,
+                    selling_price=price_val,
+                    author=author,
+                    buyer_name=buyer_name,
+                    buyer_phone=buyer_phone,
+                    notes=notes,
+                    user=user
+                )
+                if "error" in res and not res.get("success"):
+                    self._send_json(res, 400)
+                else:
+                    self._send_json(res)
+                return
 
             # Multi-book bulk sale support
             if body.get("books") and isinstance(body.get("books"), list):

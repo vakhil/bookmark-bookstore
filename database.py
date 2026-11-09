@@ -1690,6 +1690,125 @@ def sell_books_bulk(
             "message": f"Successfully completed sale for {len(successful_sales)} books."
         }
 
+def record_manual_sale(
+    title: str,
+    selling_price: float,
+    author: str = "Custom / Manual",
+    buyer_name: str = "",
+    buyer_phone: str = "",
+    notes: str = "",
+    user: str = "Staff"
+) -> Dict[str, Any]:
+    """
+    Directly records a manual/custom sale without needing an existing book in the inventory cart.
+    Generates a unique order ID (ORD-...) and transaction ref (TX-...),
+    creates an ad-hoc sold record in sales_transactions and customer_orders,
+    and updates monthly/weekly/daily sales reporting and KPIs immediately.
+    """
+    clean_title = (title or "").strip()
+    if not clean_title:
+        return {"error": "Book title or description is required for manual sale."}
+
+    try:
+        price_val = float(selling_price)
+        if price_val < 0:
+            return {"error": "Selling price cannot be negative."}
+    except (ValueError, TypeError):
+        return {"error": "A valid numeric selling price is required."}
+
+    clean_author = (author or "").strip() or "Custom / Manual"
+    clean_buyer_name = (buyer_name or "").strip()
+    clean_buyer_phone = (buyer_phone or "").strip()
+    clean_notes = (notes or "").strip()
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+        today_code = datetime.now().strftime("%Y%m%d")
+
+        order_id = generate_unique_order_id(cursor, today_code)
+        tx_ref = generate_unique_transaction_ref(cursor, today_code)
+
+        # Unique book ID identifier for manual ad-hoc items
+        manual_book_id = f"MANUAL-{tx_ref.replace('TX-', '')}"
+
+        # 1. Insert into sales_transactions
+        cursor.execute("""
+            INSERT INTO sales_transactions (
+                transaction_ref, order_id, book_id, title, author,
+                selling_price, sold_at, sold_by, notes, status, synced_to_sheets
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
+        """, (
+            tx_ref, order_id, manual_book_id, clean_title, clean_author,
+            price_val, now_iso, user, clean_notes
+        ))
+
+        # 2. Insert into customer_orders
+        cursor.execute("""
+            INSERT OR REPLACE INTO customer_orders (
+                order_id, buyer_name, buyer_phone, total_amount, created_at, status, notes, sold_by
+            ) VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?)
+        """, (
+            order_id, clean_buyer_name, clean_buyer_phone, round(price_val, 2), now_iso, clean_notes, user
+        ))
+
+        # 3. Log to audit log
+        cursor.execute("""
+            INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+            VALUES (?, ?, NULL, ?, ?, ?, ?)
+        """, (
+            "MANUAL_SALE", manual_book_id,
+            json.dumps({
+                "book_id": manual_book_id,
+                "title": clean_title,
+                "author": clean_author,
+                "selling_price": price_val,
+                "order_id": order_id,
+                "transaction_ref": tx_ref,
+                "buyer_name": clean_buyer_name,
+                "buyer_phone": clean_buyer_phone
+            }),
+            now_iso, user, f"Direct manual sale (without cart): {clean_title} (₹{price_val:g})"
+        ))
+
+        # 4. Add to sync queue for sheets
+        cursor.execute("""
+            INSERT INTO sync_queue (operation, payload, created_at)
+            VALUES (?, ?, ?)
+        """, (
+            "APPEND_SALE",
+            json.dumps({
+                "transaction_ref": tx_ref,
+                "book_id": manual_book_id,
+                "title": clean_title,
+                "author": clean_author,
+                "selling_price": price_val,
+                "sold_at": now_iso,
+                "sold_by": user,
+                "notes": clean_notes
+            }),
+            now_iso
+        ))
+
+        conn.commit()
+        conn.close()
+        notify_inventory_changed()
+
+        return {
+            "success": True,
+            "order_id": order_id,
+            "transaction_ref": tx_ref,
+            "book_id": manual_book_id,
+            "title": clean_title,
+            "author": clean_author,
+            "selling_price": round(price_val, 2),
+            "buyer_name": clean_buyer_name,
+            "buyer_phone": clean_buyer_phone,
+            "sold_at": now_iso,
+            "message": f"Successfully recorded manual sale for '{clean_title}' (₹{price_val:g})."
+        }
+
 def revert_sale(
     book_id: str,
     user: str = "Staff",

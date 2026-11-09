@@ -320,10 +320,41 @@ def _app_dispatch(environ, start_response):
             res = database.delete_books_bulk(book_ids)
             return json_response(start_response, res)
 
-        elif path in ("/api/books/sell", "/api/books/sell-bulk"):
+        elif path in ("/api/books/sell", "/api/books/sell-bulk", "/api/sales/manual", "/api/books/sell-manual"):
             buyer_name = body.get("buyer_name", "")
             buyer_phone = body.get("buyer_phone") or body.get("phone") or body.get("mobile_number", "")
             total_amount = body.get("total_amount")
+
+            # Direct Manual Sale support (book without cart/inventory selection)
+            if path in ("/api/sales/manual", "/api/books/sell-manual") or (body.get("is_manual") and body.get("title")):
+                title = body.get("title", "")
+                selling_price = body.get("selling_price") if body.get("selling_price") is not None else body.get("price")
+                author = body.get("author", "Custom / Manual")
+                notes = body.get("notes", "")
+                user = body.get("user", "Staff")
+
+                if not title:
+                    return json_response(start_response, {"error": "Book title or name is required."}, 400)
+                if selling_price is None or str(selling_price).strip() == "":
+                    return json_response(start_response, {"error": "Selling price is required."}, 400)
+
+                try:
+                    price_val = float(selling_price)
+                except (ValueError, TypeError):
+                    return json_response(start_response, {"error": "Invalid selling price format."}, 400)
+
+                res = database.record_manual_sale(
+                    title=title,
+                    selling_price=price_val,
+                    author=author,
+                    buyer_name=buyer_name,
+                    buyer_phone=buyer_phone,
+                    notes=notes,
+                    user=user
+                )
+                if "error" in res and not res.get("success"):
+                    return json_response(start_response, res, 400)
+                return json_response(start_response, res)
 
             # Multi-book bulk sale support
             if body.get("books") and isinstance(body.get("books"), list):

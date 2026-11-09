@@ -240,10 +240,13 @@
               <span>🛒</span> Shopping Cart &amp; Order Checkout
             </h2>
             <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
-              Select books across <b>Search</b> or <b>Genre</b>, review shelf locations, specify the total transaction amount, and place your order.
+              Select books across <b>Search</b> or <b>Genre</b>, or enter manual sales directly without adding to a cart. All recorded transactions reflect in monthly reports.
             </p>
           </div>
-          <div style="display: flex; gap: 0.5rem;">
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm" id="btnToggleManualSaleCard" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; background: #f0fdf4; color: #166534; border: 1.5px solid #86efac;">
+              <span>⚡</span> Direct Manual Sale (No Cart)
+            </button>
             <button type="button" class="btn btn-sm btn-outline" id="btnCartAddMore" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
               <span>➕</span> Add More Books
             </button>
@@ -252,6 +255,88 @@
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- Quick / Direct Manual Sale Box (Enter books without adding to cart) -->
+      <div id="manualSaleCard" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #f8fafc 0%, #f0fdf4 100%); border: 1.5px solid #86efac; border-radius: 14px; padding: 1.25rem; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; border-bottom: 1px solid #dcfce7; padding-bottom: 0.65rem;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #14532d; display: flex; align-items: center; gap: 0.45rem;">
+              <span>⚡</span> Direct Manual Sale (Without Cart)
+            </h3>
+            <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: #166534;">
+              Record a book sale directly by <b>name and value/price</b> without selecting from inventory or adding to cart. Reflects instantly in monthly reports and ledger!
+            </p>
+          </div>
+          <span style="font-size: 0.74rem; font-weight: 800; background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 0.2rem 0.55rem; border-radius: 9999px;">
+            ⚡ Quick Checkout
+          </span>
+        </div>
+
+        <form id="formManualSale" onsubmit="return false;" style="display: flex; flex-direction: column; gap: 0.85rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+            <!-- Book Name / Title (Required) -->
+            <div>
+              <label for="manualSaleTitle" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
+                Book Name / Title <span style="color: #dc2626;">*</span>
+              </label>
+              <input type="text" id="manualSaleTitle" class="form-control" placeholder="e.g. Rare Vintage Novel or Special Edition" required style="width: 100%; font-size: 0.9rem; font-weight: 600; border-radius: 8px; border: 1.5px solid #cbd5e1; padding: 0.55rem 0.75rem;">
+            </div>
+
+            <!-- Price / Value (₹) (Required) -->
+            <div>
+              <label for="manualSalePrice" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
+                Value / Sale Price (₹) <span style="color: #dc2626;">*</span>
+              </label>
+              <div style="position: relative; display: flex; align-items: center;">
+                <span style="position: absolute; left: 0.65rem; font-weight: 800; color: #059669; font-size: 0.95rem;">₹</span>
+                <input type="number" step="any" min="0.01" id="manualSalePrice" class="form-control" placeholder="e.g. 250" required style="width: 100%; padding-left: 1.65rem; font-size: 0.92rem; font-weight: 700; color: #064e3b; border-radius: 8px; border: 1.5px solid #86efac; padding-top: 0.55rem; padding-bottom: 0.55rem;">
+              </div>
+            </div>
+
+            <!-- Author / Editor (Optional) -->
+            <div>
+              <label for="manualSaleAuthor" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
+                Author / Publisher (Optional)
+              </label>
+              <input type="text" id="manualSaleAuthor" class="form-control" placeholder="e.g. Leo Tolstoy (or leave blank)" style="width: 100%; font-size: 0.9rem; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0.55rem 0.75rem;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem;">
+            <!-- Buyer Name (Optional) -->
+            <div>
+              <label for="manualSaleBuyerName" style="display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
+                Buyer Name (Optional)
+              </label>
+              <input type="text" id="manualSaleBuyerName" class="form-control" placeholder="e.g. Ramesh Kumar" style="width: 100%; font-size: 0.88rem; border-radius: 6px; border: 1px solid #cbd5e1; padding: 0.45rem 0.65rem;">
+            </div>
+
+            <!-- Buyer Mobile Number (Optional) -->
+            <div>
+              <label for="manualSaleBuyerPhone" style="display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
+                Mobile Number / Phone (Optional)
+              </label>
+              <input type="tel" id="manualSaleBuyerPhone" class="form-control" placeholder="e.g. 9876543210" style="width: 100%; font-size: 0.88rem; border-radius: 6px; border: 1px solid #cbd5e1; padding: 0.45rem 0.65rem;">
+            </div>
+
+            <!-- Notes / Payment Method -->
+            <div>
+              <label for="manualSaleNotes" style="display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
+                Payment / Notes (Optional)
+              </label>
+              <input type="text" id="manualSaleNotes" class="form-control" placeholder="e.g. Cash, UPI, Direct Counter Sale" style="width: 100%; font-size: 0.88rem; border-radius: 6px; border: 1px solid #cbd5e1; padding: 0.45rem 0.65rem;">
+            </div>
+          </div>
+
+          <!-- Submit Button & Feedback -->
+          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin-top: 0.25rem;">
+            <span id="manualSaleStatusMsg" style="font-size: 0.85rem; font-weight: 700; display: none;"></span>
+            <button type="button" class="btn btn-primary" id="btnSubmitManualSale" style="padding: 0.7rem 1.5rem; font-size: 0.95rem; font-weight: 800; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; border-radius: 10px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer;">
+              <span>💰</span> Record Sale Directly
+            </button>
+          </div>
+        </form>
       </div>
 
       <!-- Empty Cart View -->

@@ -6027,6 +6027,137 @@ function initCart() {
       }
     });
   }
+
+  // Direct Manual Sale (Without Cart Selection) Handlers
+  const btnToggleManual = document.getElementById('btnToggleManualSaleCard');
+  const manualCard = document.getElementById('manualSaleCard');
+  if (btnToggleManual && manualCard) {
+    btnToggleManual.addEventListener('click', () => {
+      if (manualCard.style.display === 'none') {
+        manualCard.style.display = 'block';
+        manualCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const titleInp = document.getElementById('manualSaleTitle');
+        if (titleInp) titleInp.focus();
+      } else {
+        manualCard.style.display = 'none';
+      }
+    });
+  }
+
+  const btnSubmitManual = document.getElementById('btnSubmitManualSale');
+  if (btnSubmitManual) {
+    btnSubmitManual.addEventListener('click', async () => {
+      const titleInp = document.getElementById('manualSaleTitle');
+      const priceInp = document.getElementById('manualSalePrice');
+      const authorInp = document.getElementById('manualSaleAuthor');
+      const buyerNameInp = document.getElementById('manualSaleBuyerName');
+      const buyerPhoneInp = document.getElementById('manualSaleBuyerPhone');
+      const notesInp = document.getElementById('manualSaleNotes');
+      const statusMsg = document.getElementById('manualSaleStatusMsg');
+
+      const title = titleInp ? titleInp.value.trim() : '';
+      const priceVal = priceInp ? priceInp.value.trim() : '';
+      const author = authorInp ? authorInp.value.trim() : '';
+      const buyerName = buyerNameInp ? buyerNameInp.value.trim() : '';
+      const buyerPhone = buyerPhoneInp ? buyerPhoneInp.value.trim() : '';
+      const notes = notesInp ? notesInp.value.trim() : '';
+
+      if (!title) {
+        alert('Please enter the book name or title.');
+        if (titleInp) titleInp.focus();
+        return;
+      }
+
+      const numPrice = parseFloat(priceVal);
+      if (isNaN(numPrice) || numPrice <= 0) {
+        alert('Please enter a valid positive price / value for this book.');
+        if (priceInp) priceInp.focus();
+        return;
+      }
+
+      if (buyerPhone) {
+        const cleanedPhone = buyerPhone.replace(/[\s\-\(\)]/g, '');
+        const isIndianPhone = /^(\+91[0-9]{10}|91[6-9][0-9]{9}|0[6-9][0-9]{9}|[6-9][0-9]{9}|[0-9]{10})$/.test(cleanedPhone);
+        if (!isIndianPhone) {
+          alert('Please enter a valid Indian contact number or leave mobile blank.');
+          if (buyerPhoneInp) buyerPhoneInp.focus();
+          return;
+        }
+      }
+
+      btnSubmitManual.disabled = true;
+      btnSubmitManual.innerHTML = '<span>⏳</span> Recording Sale...';
+      if (statusMsg) {
+        statusMsg.style.display = 'inline-block';
+        statusMsg.style.color = '#0284c7';
+        statusMsg.textContent = 'Recording sale...';
+      }
+
+      try {
+        const res = await fetch('/api/sales/manual', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title,
+            selling_price: numPrice,
+            author: author || 'Custom / Manual',
+            buyer_name: buyerName,
+            buyer_phone: buyerPhone,
+            notes: notes,
+            user: 'Staff'
+          })
+        });
+
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const rawText = await res.text();
+          data = { success: false, error: rawText || `Server responded with status ${res.status}` };
+        }
+
+        if (res.ok && data.success) {
+          // Reset form fields
+          if (titleInp) titleInp.value = '';
+          if (priceInp) priceInp.value = '';
+          if (authorInp) authorInp.value = '';
+          if (buyerNameInp) buyerNameInp.value = '';
+          if (buyerPhoneInp) buyerPhoneInp.value = '';
+          if (notesInp) notesInp.value = '';
+
+          if (statusMsg) {
+            statusMsg.style.color = '#059669';
+            statusMsg.textContent = `✓ Recorded! Order ${data.order_id} (₹${numPrice.toFixed(2)})`;
+            setTimeout(() => {
+              statusMsg.style.display = 'none';
+            }, 5000);
+          }
+
+          // Refresh KPI statistics and transactions cache immediately
+          fetchStats();
+          loadTransactionsTab(true);
+
+          alert(`✅ Sale Recorded Successfully!\n\nBook: "${title}"\nPrice: ₹${numPrice.toFixed(2)}\nOrder ID: ${data.order_id}\n\nThis sale has been directly added to the Sales Ledger and reflects in the Reports tab.`);
+        } else {
+          alert('Could not record sale: ' + (data.error || 'Server error'));
+          if (statusMsg) {
+            statusMsg.style.color = '#dc2626';
+            statusMsg.textContent = 'Error recording sale';
+          }
+        }
+      } catch (err) {
+        alert('Sale recording error: ' + err.message);
+        if (statusMsg) {
+          statusMsg.style.color = '#dc2626';
+          statusMsg.textContent = 'Error: ' + err.message;
+        }
+      } finally {
+        btnSubmitManual.disabled = false;
+        btnSubmitManual.innerHTML = '<span>💰</span> Record Sale Directly';
+      }
+    });
+  }
 }
 
 /* =========================================================================
