@@ -84,6 +84,12 @@ def ensure_schema(conn):
                     conn.commit()
                 except Exception:
                     pass
+            if "genre" not in st_cols:
+                try:
+                    cursor.execute("ALTER TABLE sales_transactions ADD COLUMN genre TEXT DEFAULT ''")
+                    conn.commit()
+                except Exception:
+                    pass
 
         # Customer orders table for buyer information and transaction totals
         try:
@@ -455,6 +461,7 @@ def init_db(force_reseed: bool = False):
                 book_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 author TEXT NOT NULL,
+                genre TEXT DEFAULT '',
                 selling_price REAL DEFAULT NULL,
                 sold_at TEXT NOT NULL,
                 sold_by TEXT DEFAULT 'Staff',
@@ -553,6 +560,12 @@ def init_db(force_reseed: bool = False):
         if "status" not in st_cols:
             try:
                 cursor.execute("ALTER TABLE sales_transactions ADD COLUMN status TEXT DEFAULT 'COMPLETED'")
+                conn.commit()
+            except Exception:
+                pass
+        if "genre" not in st_cols:
+            try:
+                cursor.execute("ALTER TABLE sales_transactions ADD COLUMN genre TEXT DEFAULT ''")
                 conn.commit()
             except Exception:
                 pass
@@ -1411,13 +1424,14 @@ def sell_book(
         """, (selling_price, now_iso, book_id))
 
         # Step 4: Record sale transaction
+        book_genre = (book.get("genre") or book.get("simple_genre") or "").strip()
         cursor.execute("""
             INSERT INTO sales_transactions (
-                transaction_ref, order_id, book_id, title, author,
+                transaction_ref, order_id, book_id, title, author, genre,
                 selling_price, sold_at, sold_by, notes, status, synced_to_sheets
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
         """, (
-            tx_ref, tx_ref, book_id, book["title"], book["author"],
+            tx_ref, tx_ref, book_id, book["title"], book["author"], book_genre,
             selling_price, now_iso, user, notes
         ))
 
@@ -1584,13 +1598,16 @@ def sell_books_bulk(
                 WHERE book_id = ?
             """, (price_val, now_iso, bid))
 
+            # Use explicit item genre if passed from cart, or fall back to book database genre/simple_genre
+            book_genre = (item.get("genre") or book.get("genre") or book.get("simple_genre") or "").strip()
+
             cursor.execute("""
                 INSERT INTO sales_transactions (
-                    transaction_ref, order_id, book_id, title, author,
+                    transaction_ref, order_id, book_id, title, author, genre,
                     selling_price, sold_at, sold_by, notes, status, synced_to_sheets
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
             """, (
-                tx_ref, order_id, bid, book["title"], book["author"],
+                tx_ref, order_id, bid, book["title"], book["author"], book_genre,
                 price_val, now_iso, user, notes
             ))
 
@@ -1694,6 +1711,7 @@ def record_manual_sale(
     title: str,
     selling_price: float,
     author: str = "Custom / Manual",
+    genre: str = "",
     buyer_name: str = "",
     buyer_phone: str = "",
     notes: str = "",
@@ -1717,6 +1735,12 @@ def record_manual_sale(
         return {"error": "A valid numeric selling price is required."}
 
     clean_author = (author or "").strip() or "Custom / Manual"
+    clean_genre = (genre or "").strip()
+    if not clean_genre:
+        try:
+            clean_genre = genre_classifier.classify_common_genre("", clean_title)
+        except Exception:
+            clean_genre = "General Non-Fiction"
     clean_buyer_name = (buyer_name or "").strip()
     clean_buyer_phone = (buyer_phone or "").strip()
     clean_notes = (notes or "").strip()
@@ -1736,11 +1760,11 @@ def record_manual_sale(
         # 1. Insert into sales_transactions
         cursor.execute("""
             INSERT INTO sales_transactions (
-                transaction_ref, order_id, book_id, title, author,
+                transaction_ref, order_id, book_id, title, author, genre,
                 selling_price, sold_at, sold_by, notes, status, synced_to_sheets
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
         """, (
-            tx_ref, order_id, manual_book_id, clean_title, clean_author,
+            tx_ref, order_id, manual_book_id, clean_title, clean_author, clean_genre,
             price_val, now_iso, user, clean_notes
         ))
 
@@ -2266,9 +2290,10 @@ def get_transactions(limit: int = 100, force_refresh: bool = False) -> List[Dict
     cursor.execute("""
         SELECT st.id, st.transaction_ref, COALESCE(NULLIF(st.order_id, ''), st.transaction_ref) AS order_id,
                st.book_id, st.title, st.author, st.selling_price, st.sold_at, st.sold_by, st.notes,
+               COALESCE(NULLIF(st.genre, ''), b.genre, b.simple_genre, '') AS genre,
                COALESCE(st.status, 'COMPLETED') AS status,
                b.status AS current_book_status, b.location_english, b.rack, b.column_num, b.position,
-               b.image_url, b.genre,
+               b.image_url,
                co.buyer_name, co.buyer_phone, co.total_amount AS co_total_amount
         FROM sales_transactions st
         LEFT JOIN books b ON st.book_id = b.book_id

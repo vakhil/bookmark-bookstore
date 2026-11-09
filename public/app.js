@@ -5865,6 +5865,29 @@ function updateCartTotalsFromIndividualPrices() {
   }
 }
 
+const FIXED_STORE_GENRES = [
+  "Fiction",
+  "Philosophy",
+  "Self-Help",
+  "History",
+  "Biography",
+  "Business & Economics",
+  "Politics",
+  "Law",
+  "Psychology",
+  "Science & Technology",
+  "Religion & Spirituality",
+  "Health & Wellness",
+  "Music",
+  "Art & Culture",
+  "Children & Young Adult",
+  "Travel & Adventure",
+  "Cookery & Food",
+  "Education & Reference",
+  "Humor & Lifestyle",
+  "General Non-Fiction"
+];
+
 function renderCartTab() {
   const emptyView = document.getElementById('cartEmptyView');
   const contentView = document.getElementById('cartContentView');
@@ -5897,6 +5920,13 @@ function renderCartTab() {
     const locText = (item.location_english || 'Location Unassigned').replace(/->/g, '→');
     const currentPrice = (item.selling_price !== undefined && item.selling_price !== null && item.selling_price !== '') ? item.selling_price : '';
 
+    const currentGenre = item.genre || item.simple_genre || 'General Non-Fiction';
+
+    const genreOptionsHtml = FIXED_STORE_GENRES.map(g => {
+      const isSel = (g.toLowerCase() === currentGenre.toLowerCase()) ? 'selected' : '';
+      return `<option value="${escapeHtml(g)}" ${isSel}>${escapeHtml(g)}</option>`;
+    }).join('');
+
     return `
       <div class="cart-item-card" data-bid="${escapeHtml(item.book_id)}">
         <div class="cart-item-row-top" style="display: flex; gap: 0.85rem; align-items: flex-start;">
@@ -5920,12 +5950,22 @@ function renderCartTab() {
         </div>
 
         <div class="cart-item-row-bottom" style="display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid #f1f5f9; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 170px;">
+          <!-- Fee / Price Input -->
+          <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 150px;">
             <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin: 0; white-space: nowrap;">Fee / Price (₹):</label>
-            <div style="position: relative; flex: 1; max-width: 140px; display: flex; align-items: center;">
+            <div style="position: relative; flex: 1; max-width: 120px; display: flex; align-items: center;">
               <span style="position: absolute; left: 0.5rem; font-weight: 700; color: #059669; font-size: 0.88rem;">₹</span>
               <input type="number" step="any" min="0" class="cart-item-price-input form-control" data-bid="${escapeHtml(item.book_id)}" value="${currentPrice}" placeholder="e.g. 150" style="width: 100%; padding-left: 1.35rem; padding-right: 0.4rem; font-size: 0.92rem; font-weight: 700; color: #064e3b; height: 34px; border: 1.5px solid #cbd5e1; border-radius: 8px;">
             </div>
+          </div>
+
+          <!-- Common Genre Dropdown Selector (Required) -->
+          <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1.2; min-width: 190px;">
+            <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin: 0; white-space: nowrap;">Genre:</label>
+            <select class="cart-item-genre-select form-control" data-bid="${escapeHtml(item.book_id)}" style="flex: 1; height: 34px; font-size: 0.82rem; font-weight: 600; border: 1.5px solid #86efac; border-radius: 8px; background: #ffffff; padding: 0.2rem 0.5rem;">
+              <option value="">-- Choose Genre --</option>
+              ${genreOptionsHtml}
+            </select>
           </div>
 
           <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from cart" style="color: #ef4444; border-color: #fca5a5; padding: 0.35rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0; font-size: 0.78rem; font-weight: 600;">
@@ -5948,6 +5988,19 @@ function renderCartTab() {
         saveStoreCart();
       }
       updateCartTotalsFromIndividualPrices();
+    });
+  });
+
+  // Wire genre select listeners for each book
+  itemsContainer.querySelectorAll('.cart-item-genre-select').forEach(select => {
+    select.addEventListener('change', () => {
+      const bid = select.getAttribute('data-bid');
+      const val = select.value.trim();
+      const targetItem = storeCart.find(i => i.book_id === bid);
+      if (targetItem) {
+        targetItem.genre = val;
+        saveStoreCart();
+      }
     });
   });
 
@@ -6012,7 +6065,7 @@ function initCart() {
         return;
       }
 
-      // 2. Validate that each individual item in the cart has a positive price added
+      // 2. Validate that each individual item in the cart has a positive price and genre added
       for (let i = 0; i < storeCart.length; i++) {
         const item = storeCart[i];
         const itemTitle = cleanBookTitle(item.title || item.book_id || `Book #${i+1}`);
@@ -6027,6 +6080,17 @@ function initCart() {
           }
           return;
         }
+
+        const genreVal = (item.genre || item.simple_genre || '').trim();
+        if (!genreVal) {
+          alert(`A genre has to be selected for "${itemTitle}". A selling book should always have a genre.`);
+          const genreSel = document.querySelector(`.cart-item-genre-select[data-bid="${item.book_id}"]`);
+          if (genreSel) {
+            genreSel.focus();
+            genreSel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          return;
+        }
       }
 
       // Calculate total transaction amount directly from individual book fees
@@ -6037,6 +6101,7 @@ function initCart() {
         return {
           book_id: item.book_id,
           selling_price: p,
+          genre: (item.genre || item.simple_genre || 'General Non-Fiction').trim(),
           notes: orderNotes
         };
       });
@@ -6146,6 +6211,7 @@ function initCart() {
   if (btnSubmitManual) {
     btnSubmitManual.addEventListener('click', async () => {
       const titleInp = document.getElementById('manualSaleTitle');
+      const genreInp = document.getElementById('manualSaleGenre');
       const priceInp = document.getElementById('manualSalePrice');
       const authorInp = document.getElementById('manualSaleAuthor');
       const buyerNameInp = document.getElementById('manualSaleBuyerName');
@@ -6154,6 +6220,7 @@ function initCart() {
       const statusMsg = document.getElementById('manualSaleStatusMsg');
 
       const title = titleInp ? titleInp.value.trim() : '';
+      const genre = genreInp ? genreInp.value.trim() : '';
       const priceVal = priceInp ? priceInp.value.trim() : '';
       const author = authorInp ? authorInp.value.trim() : '';
       const buyerName = buyerNameInp ? buyerNameInp.value.trim() : '';
@@ -6163,6 +6230,12 @@ function initCart() {
       if (!title) {
         alert('Please enter the book name or title.');
         if (titleInp) titleInp.focus();
+        return;
+      }
+
+      if (!genre) {
+        alert('A selling book should always have a genre. Please choose a genre from the common genres list.');
+        if (genreInp) genreInp.focus();
         return;
       }
 
@@ -6197,6 +6270,7 @@ function initCart() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: title,
+            genre: genre,
             selling_price: numPrice,
             author: author || 'Custom / Manual',
             buyer_name: buyerName,
@@ -6218,6 +6292,7 @@ function initCart() {
         if (res.ok && data.success) {
           // Reset form fields
           if (titleInp) titleInp.value = '';
+          if (genreInp) genreInp.value = '';
           if (priceInp) priceInp.value = '';
           if (authorInp) authorInp.value = '';
           if (buyerNameInp) buyerNameInp.value = '';
@@ -6613,7 +6688,10 @@ function renderTransactionsList() {
           <div style="flex:1; min-width:0;">
             <div style="font-weight:700; font-size:0.95rem; color:#1e293b; line-height:1.25;">${escapeHtml(b.title)}</div>
             <div style="font-size:0.8rem; color:#64748b; margin-top:0.2rem;">by <b>${escapeHtml(b.author || 'Author')}</b></div>
-            <div style="margin-top:0.3rem;">${bookStatusPill}</div>
+            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-top:0.35rem;">
+              ${bookStatusPill}
+              ${b.genre ? `<span style="font-size:0.72rem; font-weight:700; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; border-radius:9999px; padding:0.1rem 0.5rem;">🏷️ ${escapeHtml(b.genre)}</span>` : ''}
+            </div>
           </div>
         </div>
       `;

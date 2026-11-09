@@ -274,13 +274,43 @@
         </div>
 
         <form id="formManualSale" onsubmit="return false;" style="display: flex; flex-direction: column; gap: 0.85rem;">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
             <!-- Book Name / Title (Required) -->
             <div>
               <label for="manualSaleTitle" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
                 Book Name / Title <span style="color: #dc2626;">*</span>
               </label>
               <input type="text" id="manualSaleTitle" class="form-control" placeholder="e.g. Rare Vintage Novel or Special Edition" required style="width: 100%; font-size: 0.9rem; font-weight: 600; border-radius: 8px; border: 1.5px solid #cbd5e1; padding: 0.55rem 0.75rem;">
+            </div>
+
+            <!-- Genre Selection (Common Genres Directory) (Required) -->
+            <div>
+              <label for="manualSaleGenre" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
+                Genre <span style="color: #dc2626;">*</span>
+              </label>
+              <select id="manualSaleGenre" class="form-control" required style="width: 100%; font-size: 0.9rem; font-weight: 600; border-radius: 8px; border: 1.5px solid #86efac; padding: 0.55rem 0.75rem; background: #ffffff;">
+                <option value="">-- Choose Genre --</option>
+                <option value="Fiction">Fiction</option>
+                <option value="Business & Economics">Business &amp; Economics</option>
+                <option value="History">History</option>
+                <option value="Biography">Biography</option>
+                <option value="Self-Help">Self-Help</option>
+                <option value="Philosophy">Philosophy</option>
+                <option value="Politics">Politics</option>
+                <option value="Humor & Lifestyle">Humor &amp; Lifestyle</option>
+                <option value="General Non-Fiction">General Non-Fiction</option>
+                <option value="Health & Wellness">Health &amp; Wellness</option>
+                <option value="Science & Technology">Science &amp; Technology</option>
+                <option value="Children & Young Adult">Children &amp; Young Adult</option>
+                <option value="Psychology">Psychology</option>
+                <option value="Religion & Spirituality">Religion &amp; Spirituality</option>
+                <option value="Travel & Adventure">Travel &amp; Adventure</option>
+                <option value="Law">Law</option>
+                <option value="Education & Reference">Education &amp; Reference</option>
+                <option value="Art & Culture">Art &amp; Culture</option>
+                <option value="Music">Music</option>
+                <option value="Cookery & Food">Cookery &amp; Food</option>
+              </select>
             </div>
 
             <!-- Price / Value (₹) (Required) -->

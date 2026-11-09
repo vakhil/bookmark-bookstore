@@ -330,6 +330,7 @@ def _app_dispatch(environ, start_response):
                 title = body.get("title", "")
                 selling_price = body.get("selling_price") if body.get("selling_price") is not None else body.get("price")
                 author = body.get("author", "Custom / Manual")
+                genre = body.get("genre", "")
                 notes = body.get("notes", "")
                 user = body.get("user", "Staff")
 
@@ -347,6 +348,7 @@ def _app_dispatch(environ, start_response):
                     title=title,
                     selling_price=price_val,
                     author=author,
+                    genre=genre,
                     buyer_name=buyer_name,
                     buyer_phone=buyer_phone,
                     notes=notes,
