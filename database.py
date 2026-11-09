@@ -2643,11 +2643,11 @@ def get_inventory_stats() -> Dict[str, Any]:
     cursor.execute("SELECT COUNT(DISTINCT rack) FROM books WHERE rack IS NOT NULL AND rack != '' AND lower(rack) != 'unassigned'")
     rack_count = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM sales_transactions")
+    cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE (status IS NULL OR status != 'REVERTED')")
     total_sales_count = cursor.fetchone()[0]
 
     try:
-        cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions")
+        cursor.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(order_id, ''), transaction_ref)) FROM sales_transactions WHERE (status IS NULL OR status != 'REVERTED')")
         total_transactions_count = cursor.fetchone()[0]
     except Exception:
         total_transactions_count = total_sales_count

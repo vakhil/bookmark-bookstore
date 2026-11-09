@@ -475,6 +475,9 @@
             </p>
           </div>
           <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm btn-outline" id="btnToggleGenreSpendingModal" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; color: #4338ca; border-color: #c7d2fe; background: #eef2ff;">
+              <span>🏷️</span> Spent by Genre
+            </button>
             <button type="button" class="btn btn-sm btn-outline" id="btnTogglePhoneStatsModal" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; color: #0284c7; border-color: #bae6fd; background: #f0f9ff;">
               <span>📱</span> Download by Mobile Number
             </button>
@@ -523,10 +526,30 @@
         <!-- Filter bar -->
         <div style="display: flex; gap: 0.6rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
           <input type="text" id="transactionsSearchInput" class="form-control" placeholder="Search by Order ID, Buyer Name, Phone, Title, Author..." style="flex: 1; min-width: 240px; font-size: 0.88rem; padding: 0.55rem 0.85rem;">
-          <div style="display: flex; gap: 0.35rem;">
-            <button class="btn btn-sm btn-outline tx-filter-btn active" data-filter="all">All</button>
-            <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="completed">Completed</button>
-            <button class="btn btn-sm btn-outline tx-filter-btn" data-filter="reverted">Reverted</button>
+          <div style="display: flex; gap: 0.35rem; align-items: center;">
+            <span style="font-size: 0.78rem; font-weight: 700; color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 0.35rem 0.65rem; border-radius: 6px;">
+              ✓ Active / Non-Reverted Sales Only
+            </span>
+          </div>
+        </div>
+
+        <!-- Books & Spent by Genre Breakdown Panel (Collapsible) -->
+        <div id="genreSpendingPanel" style="display: none; background: #ffffff; border: 2px solid #c7d2fe; border-radius: 12px; padding: 1.15rem; margin-top: 1rem; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.85rem; border-bottom: 1px solid #e0e7ff; padding-bottom: 0.65rem;">
+            <div>
+              <b style="font-size: 1.05rem; color: #3730a3; display: flex; align-items: center; gap: 0.4rem;">
+                <span>🏷️</span> Books Sold &amp; Amount Spent by Genre
+              </b>
+              <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: #64748b;">
+                Real-time breakdown of books purchased and total revenue generated per genre for the selected time period (<span id="genreSpendingPeriodText" style="font-weight: 700; color: #3730a3;">All Time</span>).
+              </p>
+            </div>
+            <button type="button" id="btnCloseGenreSpendingPanel" style="background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; padding: 0.2rem;" title="Close">✕</button>
+          </div>
+
+          <!-- Genre breakdown grid -->
+          <div id="genreSpendingGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.65rem;">
+            <!-- Dynamically populated genre statistics cards -->
           </div>
         </div>
 

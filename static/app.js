@@ -6413,6 +6413,27 @@ function initTransactions() {
     });
   }
 
+  // Genre Spending Breakdown Panel Handlers
+  const btnToggleGenreSpending = document.getElementById('btnToggleGenreSpendingModal');
+  const btnCloseGenreSpending = document.getElementById('btnCloseGenreSpendingPanel');
+  const genreSpendingPanel = document.getElementById('genreSpendingPanel');
+
+  if (btnToggleGenreSpending && genreSpendingPanel) {
+    btnToggleGenreSpending.addEventListener('click', () => {
+      const isVisible = genreSpendingPanel.style.display === 'block';
+      genreSpendingPanel.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible) {
+        genreSpendingPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  if (btnCloseGenreSpending && genreSpendingPanel) {
+    btnCloseGenreSpending.addEventListener('click', () => {
+      genreSpendingPanel.style.display = 'none';
+    });
+  }
+
   // Mobile Phone Statistics Download Panel Handlers
   const btnTogglePhoneModal = document.getElementById('btnTogglePhoneStatsModal');
   const btnClosePhonePanel = document.getElementById('btnClosePhoneStatsPanel');
@@ -6598,12 +6619,8 @@ function renderTransactionsList() {
     }
   }
 
-  // 2. Filter by status
-  if (transactionsActiveFilter === 'completed') {
-    list = list.filter(t => t.status !== 'REVERTED');
-  } else if (transactionsActiveFilter === 'reverted') {
-    list = list.filter(t => t.status === 'REVERTED');
-  }
+  // Always exclude reverted transactions from sales reports as requested
+  list = list.filter(t => t.status !== 'REVERTED');
 
   // 3. Filter by search query
   if (q) {
@@ -6614,6 +6631,7 @@ function renderTransactionsList() {
       const matchBooks = (t.books || []).some(b => 
         (b.title || '').toLowerCase().includes(q) ||
         (b.author || '').toLowerCase().includes(q) ||
+        (b.genre || '').toLowerCase().includes(q) ||
         (b.location_english || '').toLowerCase().includes(q)
       );
       return matchOid || matchBuyer || matchNotes || matchBooks;
@@ -6621,17 +6639,76 @@ function renderTransactionsList() {
   }
 
   // Calculate Business KPI Metrics for the filtered time period
-  let completedOrders = 0;
+  let completedOrders = list.length;
   let totalPhysicalBooks = 0;
   let totalGrossRevenue = 0;
 
+  // Track books sold and amount spent per genre
+  const genreSpendingMap = {};
+
   list.forEach(ord => {
-    if (ord.status !== 'REVERTED') {
-      completedOrders++;
-      totalGrossRevenue += parseFloat(ord.total_amount || 0);
-      totalPhysicalBooks += (ord.books ? ord.books.length : 1);
-    }
+    totalGrossRevenue += parseFloat(ord.total_amount || 0);
+    const books = ord.books || [];
+    totalPhysicalBooks += books.length || 1;
+
+    books.forEach(b => {
+      const g = (b.genre || 'General Non-Fiction').trim();
+      if (!genreSpendingMap[g]) {
+        genreSpendingMap[g] = { count: 0, revenue: 0.0 };
+      }
+      genreSpendingMap[g].count += 1;
+      const price = parseFloat(b.selling_price || 0);
+      if (!isNaN(price) && price > 0) {
+        genreSpendingMap[g].revenue += price;
+      }
+    });
   });
+
+  // Render Genre Spending Breakdown Grid
+  const genreGrid = document.getElementById('genreSpendingGrid');
+  const genrePeriodText = document.getElementById('genreSpendingPeriodText');
+  if (genrePeriodText) {
+    const periodLbl = document.getElementById('txPeriodSummaryLabel');
+    genrePeriodText.textContent = periodLbl ? periodLbl.textContent : 'Selected Period';
+  }
+
+  if (genreGrid) {
+    const sortedGenres = Object.keys(genreSpendingMap).sort((a, b) => {
+      return genreSpendingMap[b].revenue - genreSpendingMap[a].revenue;
+    });
+
+    if (sortedGenres.length === 0) {
+      genreGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 1.5rem; text-align: center; color: #64748b; font-size: 0.88rem;">
+          No sales recorded in this time period yet.
+        </div>
+      `;
+    } else {
+      genreGrid.innerHTML = sortedGenres.map(g => {
+        const data = genreSpendingMap[g];
+        const pctOfRevenue = totalGrossRevenue > 0 ? ((data.revenue / totalGrossRevenue) * 100).toFixed(1) : 0;
+        return `
+          <div style="background: #f8fafc; border: 1.5px solid #e0e7ff; border-radius: 10px; padding: 0.85rem; display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.15s ease;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.4rem; margin-bottom: 0.45rem;">
+              <span style="font-weight: 800; font-size: 0.92rem; color: #1e1b4b; line-height: 1.25;">${escapeHtml(g)}</span>
+              <span style="font-size: 0.72rem; font-weight: 800; background: #e0e7ff; color: #4338ca; border-radius: 9999px; padding: 0.12rem 0.5rem; white-space: nowrap;">
+                ${data.count} ${data.count === 1 ? 'book' : 'books'}
+              </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 0.35rem; border-top: 1px dashed #cbd5e1; padding-top: 0.45rem;">
+              <div>
+                <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Total Spent:</span>
+                <div style="font-size: 1.15rem; font-weight: 800; color: #059669;">₹${data.revenue.toFixed(2)}</div>
+              </div>
+              <span style="font-size: 0.74rem; font-weight: 700; color: #6366f1;">
+                ${pctOfRevenue}% share
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
 
   const avgOrderVal = completedOrders > 0 ? (totalGrossRevenue / completedOrders) : 0;
 
