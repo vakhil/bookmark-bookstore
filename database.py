@@ -2675,12 +2675,34 @@ def get_genre_distribution(force_refresh: bool = False) -> List[Dict[str, Any]]:
     _GENRE_CACHE_TIME = now
     return rows
 
-def get_books_by_genre(genre: str, available_only: bool = False, limit: int = 500) -> List[Dict[str, Any]]:
-    """Returns books classified under a given canonical simple genre."""
+def get_books_by_genre(genre: Any, available_only: bool = False, limit: int = 500) -> List[Dict[str, Any]]:
+    """
+    Returns books classified under given canonical simple genre(s).
+    Supports single genre string or multiple genres (comma-separated or list).
+    """
+    genres_list = []
+    if isinstance(genre, list):
+        genres_list = [str(g).strip() for g in genre if str(g).strip()]
+    elif isinstance(genre, str):
+        if "," in genre:
+            genres_list = [g.strip() for g in genre.split(",") if g.strip()]
+        elif genre.strip():
+            genres_list = [genre.strip()]
+
+    if not genres_list:
+        return []
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    sql = "SELECT * FROM books WHERE lower(simple_genre) = lower(?)"
-    params = [genre.strip()]
+
+    if len(genres_list) == 1:
+        sql = "SELECT * FROM books WHERE lower(simple_genre) = lower(?)"
+        params = [genres_list[0]]
+    else:
+        placeholders = ",".join("?" for _ in genres_list)
+        sql = f"SELECT * FROM books WHERE lower(simple_genre) IN ({placeholders})"
+        params = [g.lower() for g in genres_list]
+
     if available_only:
         sql += " AND status = 'Available'"
     sql += " ORDER BY title ASC, id ASC LIMIT ?"

@@ -580,37 +580,56 @@
       <div class="clean-card">
         <div class="card-title-row">
           <div>
-            <h2>Browse Books by Genre</h2>
+            <h2>Browse &amp; Collect Books by Genre</h2>
             <p class="subtitle" style="margin: 0.2rem 0 0; font-size: 0.85rem; color: #64748b;">
-              Explore the bookstore's inventory organized into standard canonical genres.
+              Explore the bookstore's inventory organized into standard canonical genres. Click any genre or select multiple genres to collect books across categories!
             </p>
           </div>
           <span class="id-tag" id="genreBooksCountBadge">0 Books</span>
         </div>
 
-        <div class="genre-filter-row" style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; margin: 1rem 0;">
-          <div style="flex: 1.2; min-width: 220px;">
-            <label style="display:block; font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:0.25rem;">SELECT SIMPLE GENRE</label>
-            <select id="genreSelect" class="form-control" style="font-size:0.95rem; font-weight:600; padding:0.6rem 0.8rem; width:100%; border:1px solid #cbd5e1; border-radius:8px; background:#fff;">
-              <option value="">-- Choose a Genre --</option>
-            </select>
+        <!-- Multi-Genre Collection Control Bar -->
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin: 1rem 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+            <div style="font-size:0.86rem; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:0.4rem;">
+              <span>🏷️</span> Common Genres Directory
+              <span id="genreSelectedCountLabel" style="font-size:0.75rem; font-weight:700; background:#e0e7ff; color:#4338ca; border-radius:9999px; padding:0.15rem 0.55rem; margin-left:0.35rem; display:none;">0 selected</span>
+            </div>
+            <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm btn-outline" id="btnSelectAllGenres" style="font-size:0.76rem; font-weight:700; padding:0.3rem 0.65rem; border-radius:6px;">
+                ✓ Select All
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="btnClearGenreSelection" style="font-size:0.76rem; font-weight:700; padding:0.3rem 0.65rem; border-radius:6px; color:#ef4444; border-color:#fca5a5;">
+                ✕ Clear
+              </button>
+            </div>
           </div>
 
-          <div style="flex: 1; min-width: 200px;">
-            <label style="display:block; font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:0.25rem;">FILTER TITLES OR AUTHORS</label>
-            <input type="text" id="genreFilterInput" placeholder="Type to filter..." style="font-size:0.9rem; padding:0.6rem 0.8rem; width:100%; border:1px solid #cbd5e1; border-radius:8px;">
+          <!-- Quick Genre Pills & Collector Chips -->
+          <div id="quickGenrePills" class="quick-pills-bar" style="display:flex; flex-wrap:wrap; gap:0.45rem; margin-bottom:0.85rem;"></div>
+
+          <!-- Secondary Filters Row (Single select fallback + Text filter) -->
+          <div class="genre-filter-row" style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; border-top:1px solid #e2e8f0; padding-top:0.75rem;">
+            <div style="flex: 1.2; min-width: 220px;">
+              <label for="genreSelect" style="display:block; font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:0.25rem;">OR CHOOSE SINGLE GENRE</label>
+              <select id="genreSelect" class="form-control" style="font-size:0.9rem; font-weight:600; padding:0.55rem 0.75rem; width:100%; border:1px solid #cbd5e1; border-radius:8px; background:#fff;">
+                <option value="">-- Choose a Single Genre --</option>
+              </select>
+            </div>
+
+            <div style="flex: 1; min-width: 200px;">
+              <label for="genreFilterInput" style="display:block; font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:0.25rem;">FILTER WITHIN COLLECTED BOOKS</label>
+              <input type="text" id="genreFilterInput" placeholder="Filter title or author..." style="font-size:0.9rem; padding:0.55rem 0.75rem; width:100%; border:1px solid #cbd5e1; border-radius:8px;">
+            </div>
           </div>
         </div>
-
-        <!-- Quick Genre Pills Bar -->
-        <div id="quickGenrePills" class="quick-pills-bar" style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:1rem;"></div>
 
         <!-- Genre Books Results Container -->
         <div id="genreBooksContainer">
           <div class="empty-prompt">
             <div class="prompt-icon">🏷️</div>
-            <h3>Select a Genre Above</h3>
-            <p>Choose any canonical simple genre from the dropdown or click a quick category pill to display all matching books.</p>
+            <h3>Select or Collect Genres Above</h3>
+            <p>Click any common genre pill above (e.g. <b>Fiction</b>, <b>Philosophy</b>, <b>History</b>, <b>Self-Help</b>) to collect and browse all matching books.</p>
           </div>
         </div>
       </div>

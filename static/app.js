@@ -1457,9 +1457,11 @@ function createBookCard(bookGroup, matchType) {
 
 let allLoadedGenreBooks = [];
 let genreDataLoaded = false;
+let availableGenresList = [];
+let selectedGenresSet = new Set();
 
 async function loadGenreTab() {
-  if (genreDataLoaded) return;
+  if (genreDataLoaded && availableGenresList.length > 0) return;
   try {
     const res = await fetch('/api/genres');
     const data = await res.json();
@@ -1467,63 +1469,136 @@ async function loadGenreTab() {
     const pillsWrap = document.getElementById('quickGenrePills');
     if (!select || !data.genres) return;
 
-    select.innerHTML = '<option value="">-- Choose a Genre --</option>';
+    availableGenresList = data.genres || [];
+    select.innerHTML = '<option value="">-- Choose a Single Genre --</option>';
     if (pillsWrap) pillsWrap.innerHTML = '';
 
-    data.genres.forEach(g => {
+    availableGenresList.forEach(g => {
       const opt = document.createElement('option');
       opt.value = g.simple_genre;
       opt.textContent = `${g.simple_genre} (${g.total_copies.toLocaleString()} copies)`;
       select.appendChild(opt);
 
-      // Add quick pill
+      // Add interactive collector pill
       if (pillsWrap) {
         const pill = document.createElement('button');
         pill.type = 'button';
         pill.className = 'quick-genre-pill';
-        pill.textContent = `${g.simple_genre}`;
         pill.setAttribute('data-genre', g.simple_genre);
+        pill.innerHTML = `<span>${escapeHtml(g.simple_genre)}</span> <small style="opacity:0.75; font-size:0.72rem; margin-left:3px;">(${g.total_copies})</small>`;
+        
         pill.addEventListener('click', () => {
-          document.querySelectorAll('.quick-genre-pill').forEach(p => p.classList.remove('active'));
-          pill.classList.add('active');
-          select.value = g.simple_genre;
-          fetchBooksForGenre(g.simple_genre);
+          toggleGenreSelection(g.simple_genre);
         });
         pillsWrap.appendChild(pill);
       }
     });
 
     genreDataLoaded = true;
+    updateGenrePillsUI();
   } catch (err) {
     console.error('Failed to load genres list:', err);
   }
 }
 
-async function fetchBooksForGenre(genreName) {
-  if (!genreName) {
-    document.getElementById('genreBooksContainer').innerHTML = `
+function updateGenrePillsUI() {
+  const pillsWrap = document.getElementById('quickGenrePills');
+  const countLabel = document.getElementById('genreSelectedCountLabel');
+  const select = document.getElementById('genreSelect');
+
+  if (pillsWrap) {
+    pillsWrap.querySelectorAll('.quick-genre-pill').forEach(pill => {
+      const g = pill.getAttribute('data-genre');
+      if (selectedGenresSet.has(g)) {
+        pill.classList.add('active');
+        pill.style.background = '#4f46e5';
+        pill.style.color = '#ffffff';
+        pill.style.borderColor = '#4338ca';
+      } else {
+        pill.classList.remove('active');
+        pill.style.background = '#f1f5f9';
+        pill.style.color = '#334155';
+        pill.style.borderColor = '#cbd5e1';
+      }
+    });
+  }
+
+  if (countLabel) {
+    if (selectedGenresSet.size > 0) {
+      countLabel.style.display = 'inline-block';
+      countLabel.textContent = `${selectedGenresSet.size} genre${selectedGenresSet.size === 1 ? '' : 's'} collected`;
+    } else {
+      countLabel.style.display = 'none';
+    }
+  }
+
+  if (select) {
+    if (selectedGenresSet.size === 1) {
+      select.value = Array.from(selectedGenresSet)[0];
+    } else {
+      select.value = '';
+    }
+  }
+}
+
+function toggleGenreSelection(genreName) {
+  if (!genreName) return;
+  if (selectedGenresSet.has(genreName)) {
+    selectedGenresSet.delete(genreName);
+  } else {
+    selectedGenresSet.add(genreName);
+  }
+  updateGenrePillsUI();
+  fetchBooksForCollectedGenres();
+}
+
+async function fetchBooksForCollectedGenres() {
+  const container = document.getElementById('genreBooksContainer');
+  if (!container) return;
+
+  if (selectedGenresSet.size === 0) {
+    allLoadedGenreBooks = [];
+    container.innerHTML = `
       <div class="empty-prompt">
         <div class="prompt-icon">🏷️</div>
-        <h3>Select a Genre Above</h3>
-        <p>Pick any canonical category from the dropdown to see all matching books and their shelf locations.</p>
+        <h3>Select or Collect Genres Above</h3>
+        <p>Click any common genre pill above (e.g. <b>Fiction</b>, <b>Philosophy</b>, <b>History</b>, <b>Self-Help</b>) to collect and browse all matching books.</p>
       </div>
     `;
     safeSet('genreBooksCountBadge', '0 Books');
     return;
   }
 
-  const container = document.getElementById('genreBooksContainer');
-  container.innerHTML = '<div class="empty-prompt"><p>Loading books in ' + escapeHtml(genreName) + '...</p></div>';
+  const genresArr = Array.from(selectedGenresSet);
+  const displayNames = genresArr.length <= 3 
+    ? genresArr.join(', ')
+    : `${genresArr.slice(0, 2).join(', ')} and ${genresArr.length - 2} more`;
+
+  container.innerHTML = `<div class="empty-prompt"><p>Loading books in ${escapeHtml(displayNames)}...</p></div>`;
 
   try {
-    const res = await fetch(`/api/books/by-genre?genre=${encodeURIComponent(genreName)}&available_only=true`);
+    const genreParam = genresArr.join(',');
+    const res = await fetch(`/api/books/by-genre?genre=${encodeURIComponent(genreParam)}&available_only=true&limit=1000`);
     const data = await res.json();
     allLoadedGenreBooks = data.books || [];
     renderFilteredGenreBooks();
   } catch (err) {
     console.error('Failed to load books by genre:', err);
-    container.innerHTML = '<div class="empty-prompt"><p style="color:var(--danger)">Failed to load books for this genre.</p></div>';
+    container.innerHTML = '<div class="empty-prompt"><p style="color:var(--danger)">Failed to load books for selected genres.</p></div>';
   }
+}
+
+async function fetchBooksForGenre(genreName) {
+  if (!genreName) {
+    selectedGenresSet.clear();
+    updateGenrePillsUI();
+    fetchBooksForCollectedGenres();
+    return;
+  }
+  selectedGenresSet.clear();
+  selectedGenresSet.add(genreName);
+  updateGenrePillsUI();
+  fetchBooksForCollectedGenres();
 }
 
 function renderFilteredGenreBooks() {
@@ -1535,7 +1610,8 @@ function renderFilteredGenreBooks() {
     filtered = allLoadedGenreBooks.filter(b => 
       (b.title && b.title.toLowerCase().includes(filterVal)) || 
       (b.author && b.author.toLowerCase().includes(filterVal)) ||
-      (b.genre && b.genre.toLowerCase().includes(filterVal))
+      (b.genre && b.genre.toLowerCase().includes(filterVal)) ||
+      (b.simple_genre && b.simple_genre.toLowerCase().includes(filterVal))
     );
   }
 
@@ -1550,7 +1626,7 @@ function renderFilteredGenreBooks() {
       <div class="empty-prompt">
         <div class="prompt-icon">📖</div>
         <h3>No Matching Books Found</h3>
-        <p>No books in this genre match your filter.</p>
+        <p>No books in the collected genres match your search filter.</p>
       </div>
     `;
     return;
@@ -1568,11 +1644,14 @@ function initGenreTab() {
   if (select) {
     select.addEventListener('change', (e) => {
       const g = e.target.value;
-      document.querySelectorAll('.quick-genre-pill').forEach(p => {
-        if (p.getAttribute('data-genre') === g) p.classList.add('active');
-        else p.classList.remove('active');
-      });
-      fetchBooksForGenre(g);
+      if (g) {
+        selectedGenresSet.clear();
+        selectedGenresSet.add(g);
+      } else {
+        selectedGenresSet.clear();
+      }
+      updateGenrePillsUI();
+      fetchBooksForCollectedGenres();
     });
   }
 
@@ -1580,6 +1659,25 @@ function initGenreTab() {
   if (filterInp) {
     filterInp.addEventListener('input', () => {
       renderFilteredGenreBooks();
+    });
+  }
+
+  const btnSelectAll = document.getElementById('btnSelectAllGenres');
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener('click', () => {
+      if (availableGenresList.length === 0) return;
+      selectedGenresSet = new Set(availableGenresList.map(g => g.simple_genre));
+      updateGenrePillsUI();
+      fetchBooksForCollectedGenres();
+    });
+  }
+
+  const btnClearAll = document.getElementById('btnClearGenreSelection');
+  if (btnClearAll) {
+    btnClearAll.addEventListener('click', () => {
+      selectedGenresSet.clear();
+      updateGenrePillsUI();
+      fetchBooksForCollectedGenres();
     });
   }
 }
