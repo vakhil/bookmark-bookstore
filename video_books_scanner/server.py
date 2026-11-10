@@ -119,11 +119,11 @@ def classify_book_genre(title: str, author: str = "") -> str:
         return "Science & Technology"
     return "General Non-Fiction"
 
-def process_video_stream(video_path: str, rack_name: str = "Rack 1", fps_sample: float = 1.0, columns_count: int = 1):
+def process_video_stream(video_path: str, rack_name: str = "Rack 92", fps_sample: float = 1.5, columns_count: int = 1):
     """
     Reads a video file using OpenCV, samples frames at `fps_sample`,
-    runs Indra OCR to detect book titles and spines across frames,
-    and constructs ordered book entries per column and position.
+    runs Indra OCR to detect ONLY books visible in the video,
+    orders them strictly top-to-bottom within each column, and assigns Pos 1, 2, 3...
     """
     conv = get_converter()
     if not conv:
@@ -134,7 +134,6 @@ def process_video_stream(video_path: str, rack_name: str = "Rack 1", fps_sample:
         return {"error": f"Could not open video file: {video_path}"}
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_interval = max(1, int(fps / fps_sample))
 
     collected_lines = []
@@ -155,7 +154,7 @@ def process_video_stream(video_path: str, rack_name: str = "Rack 1", fps_sample:
 
     cap.release()
 
-    # Deduplicate and group detected lines into distinct books
+    # Deduplicate and keep ONLY text detected in the video frames
     seen_titles = set()
     raw_books = []
 
@@ -168,26 +167,30 @@ def process_video_stream(video_path: str, rack_name: str = "Rack 1", fps_sample:
         if len(norm_key) < 3 or norm_key in seen_titles:
             continue
 
-        # Catalog lookup if bookstore database engine is available
-        matched_title = txt
-        matched_author = ""
-        matched_genre = ""
-        matched_notes = ""
+        # Keep strictly what is seen in the video; do not inject outside phantom books
+        detected_title = txt
+        detected_author = ""
+        detected_genre = ""
+        detected_notes = ""
 
+        # Only check existing catalog to refine author/genre for the EXACT detected book title
         if HAS_SEARCH:
             try:
                 res = search_engine.search_books(txt)
                 if res.get("exact_matches"):
                     top = res["exact_matches"][0]
-                    matched_title = top["title"]
-                    matched_author = top.get("author", "")
-                    matched_genre = top.get("genre", "")
-                    matched_notes = f"Catalog match ({top.get('book_id', '')})"
+                    # Verify string similarity to ensure it's the exact same title
+                    sim = search_engine.string_similarity(txt, top["title"])
+                    if sim >= 0.85:
+                        detected_title = top["title"]
+                        detected_author = top.get("author", "")
+                        detected_genre = top.get("genre", "")
+                        detected_notes = f"Catalog match ({top.get('book_id', '')})"
             except Exception:
                 pass
 
-        if not matched_genre:
-            matched_genre = classify_book_genre(matched_title, matched_author)
+        if not detected_genre:
+            detected_genre = classify_book_genre(detected_title, detected_author)
 
         box = l.get("box", [])
         y_val = (box[1] + box[3]) / 2.0 if len(box) >= 4 else float(l.get("frame", 0))
@@ -195,33 +198,40 @@ def process_video_stream(video_path: str, rack_name: str = "Rack 1", fps_sample:
 
         seen_titles.add(norm_key)
         raw_books.append({
-            "title": matched_title,
-            "author": matched_author or "Unknown Author",
-            "genre": matched_genre,
+            "title": detected_title,
+            "author": detected_author,
+            "genre": detected_genre,
             "x": x_val,
             "y": y_val,
             "frame": l.get("frame", 0),
-            "notes": matched_notes or f"Detected at frame {l.get('frame', 0)}"
+            "notes": detected_notes or f"Spine in video frame {l.get('frame', 0)}"
         })
 
-    # Sort books chronologically / spatially
+    # Sort strictly by temporal and spatial order (top to bottom as scanned)
     raw_books.sort(key=lambda b: (b["frame"], b["y"]))
 
-    # Divide books across specified number of columns or auto-detect
+    # Normalize rack name formatting (e.g. ensure 'Rack 92')
+    clean_rack = rack_name.strip()
+    if clean_rack and not clean_rack.lower().startswith("rack"):
+        clean_rack = f"Rack {clean_rack}"
+
+    # Partition detected books across the rack's columns
     num_cols = max(1, columns_count)
     books_per_col = max(1, (len(raw_books) + num_cols - 1) // num_cols)
 
     final_entries = []
-    base_id = 12000
+    base_id = 12400
 
     for idx, b in enumerate(raw_books):
+        # A single vertical sequence from top to bottom is called a Column
         col_idx = (idx // books_per_col) + 1
+        # The number within that column is the position (Pos), 1 at the top, increasing downwards
         pos_in_col = (idx % books_per_col) + 1
         book_id = f"BK-{base_id + idx + 1}"
 
         final_entries.append({
             "Book_ID": book_id,
-            "Rack": rack_name,
+            "Rack": clean_rack,
             "Column": f"Column {col_idx}",
             "Pos": pos_in_col,
             "Title": b["title"],

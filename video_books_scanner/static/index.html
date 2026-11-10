@@ -22,14 +22,17 @@
     <main class="main-content">
       <!-- Control Panel -->
       <section class="card config-card">
-        <h2>1. Supply Bookshelf Video & Shelf Parameters</h2>
+        <h2>1. Specify Shelf Rack & Supply Bookshelf Video</h2>
+        <p style="margin: -0.5rem 0 1.25rem 0; color: #64748b; font-size: 0.9rem;">
+          Each vertical section from top to bottom is treated as a <b>Column</b>. Books are ordered top-to-bottom as <b>Pos 1, 2, 3...</b>. ONLY books seen in the video are recorded.
+        </p>
         <div class="form-grid">
           <div class="form-group">
-            <label for="rackInput">Rack Name / Number</label>
-            <input type="text" id="rackInput" value="Rack 92" placeholder="e.g. Rack 92">
+            <label for="rackInput">Rack Name / Number *</label>
+            <input type="text" id="rackInput" value="Rack 92" placeholder="e.g. Rack 92 or 92">
           </div>
           <div class="form-group">
-            <label for="columnsInput">Number of Columns in Rack</label>
+            <label for="columnsInput">Number of Columns in This Rack</label>
             <input type="number" id="columnsInput" min="1" max="12" value="4">
           </div>
           <div class="form-group">
