@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indra OCR Video Shelf Scanner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-wrap">
+        <span class="logo-icon">📹📚</span>
+        <div>
+          <h1>Indra OCR Video Shelf Scanner</h1>
+          <p class="subtitle">Extract ordered books, racks, columns, and positions from bookshelf video walkthroughs</p>
+        </div>
+      </div>
+      <div class="badge-tag">⚡ Powered by Indra Neural OCR</div>
+    </header>
+
+    <main class="main-content">
+      <!-- Control Panel -->
+      <section class="card config-card">
+        <h2>1. Supply Bookshelf Video & Shelf Parameters</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="rackInput">Rack Name / Number</label>
+            <input type="text" id="rackInput" value="Rack 92" placeholder="e.g. Rack 92">
+          </div>
+          <div class="form-group">
+            <label for="columnsInput">Number of Columns in Rack</label>
+            <input type="number" id="columnsInput" min="1" max="12" value="4">
+          </div>
+          <div class="form-group">
+            <label for="fpsInput">OCR Sampling Rate (FPS)</label>
+            <select id="fpsInput">
+              <option value="1.0">1 frame per second (Fast)</option>
+              <option value="1.5" selected>1.5 frames per second (Balanced)</option>
+              <option value="2.0">2 frames per second (Thorough)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="upload-dropzone" id="dropZone">
+          <input type="file" id="videoFileInput" accept="video/mp4,video/webm,video/quicktime,video/*">
+          <div class="drop-icon">🎬</div>
+          <p class="drop-title">Select or drag & drop shelf video file (.mp4, .mov, .webm)</p>
+          <p class="drop-desc">Walk your camera steadily along the bookshelf columns from top to bottom.</p>
+          <div id="selectedFileInfo" class="selected-file-info" style="display: none;"></div>
+        </div>
+
+        <div class="actions-row">
+          <button id="btnProcessVideo" class="btn btn-primary" disabled>
+            ⚡ Process Video with Indra OCR
+          </button>
+          <button id="btnLoadSampleData" class="btn btn-secondary">
+            📋 Load Verified Sample (Rack 92-95)
+          </button>
+          <button id="btnClearAll" class="btn btn-outline">
+            Clear
+          </button>
+        </div>
+
+        <!-- Video Player Preview -->
+        <div id="videoPreviewWrap" class="video-preview-wrap" style="display: none;">
+          <video id="videoPreview" controls playsinline></video>
+        </div>
+
+        <!-- Progress Tracker -->
+        <div id="progressWrap" class="progress-wrap" style="display: none;">
+          <div class="progress-bar">
+            <div id="progressBarFill" class="progress-fill"></div>
+          </div>
+          <p id="progressText" class="progress-text">Processing frames with Indra OCR...</p>
+        </div>
+      </section>
+
+      <!-- Output Section -->
+      <section class="card results-card">
+        <div class="results-header">
+          <div>
+            <h2>2. Extracted Books Table</h2>
+            <p class="results-meta">
+              Total Books Detected: <b id="bookCount">0</b>
+            </p>
+          </div>
+          <div class="export-actions">
+            <button id="btnCopyTSV" class="btn btn-sm btn-outline">📋 Copy TSV (Excel/DB)</button>
+            <button id="btnDownloadCSV" class="btn btn-sm btn-outline">📥 Download CSV</button>
+            <button id="btnDownloadJSON" class="btn btn-sm btn-outline">{ } Export JSON</button>
+          </div>
+        </div>
+
+        <!-- Live Table View -->
+        <div class="table-responsive">
+          <table id="booksTable" class="books-table">
+            <thead>
+              <tr>
+                <th>Book_ID</th>
+                <th>Rack</th>
+                <th>Column</th>
+                <th>Pos</th>
+                <th>Title</th>
+                <th>Author_or_Editor</th>
+                <th>Genre</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="booksTableBody">
+              <tr>
+                <td colspan="8" class="empty-cell">
+                  No books scanned yet. Supply a bookshelf video above or click "Load Verified Sample".
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Raw TSV/Database Preview -->
+        <div class="raw-preview-section">
+          <h3>Raw Output (First Line Header, Followed by Entries)</h3>
+          <textarea id="rawTsvOutput" readonly placeholder="Book_ID&#9;Rack&#9;Column&#9;Pos&#9;Title&#9;Author_or_Editor&#9;Genre&#9;Notes&#10;..."></textarea>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
