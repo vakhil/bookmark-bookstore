@@ -427,16 +427,95 @@ Return only the JSON array with no extra text or markdown formatting."""
 def extract_candidates_from_text(
     raw_text: str,
     image_data: Optional[str] = None,
-    google_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None,
+    engine: str = "indra"
 ) -> Dict[str, Any]:
     """
-    Analyzes extracted text or image using Google Vision / Gemini Multimodal,
+    Analyzes extracted text or image using Indra OCR (preferred) or Google Gemini Multimodal Vision,
     with catalog-guided matching against store titles.
     """
     api_key = google_api_key if is_valid_google_key(google_api_key) else get_google_api_key()
+    chosen_engine = (engine or "indra").lower().strip()
 
-    # 1. Try Google Gemini Multimodal Vision if image is provided and key is present
-    if image_data and api_key:
+    # 1. OPTION INDRA (Preferred default for images): Run Indra Neural OCR directly on image
+    if chosen_engine == "indra" and image_data:
+        indra_ocr_data = run_indra_ocr_on_image(image_data)
+        if indra_ocr_data and indra_ocr_data.get("lines"):
+            raw_lines = [l["text"].strip() for l in indra_ocr_data["lines"] if l.get("text", "").strip()]
+            cleaned_lines = []
+            for l in raw_lines:
+                c = clean_ocr_line(l)
+                if len(c) >= 2 and c.lower() not in COVER_NOISE_WORDS and not is_garbage_line(c):
+                    cleaned_lines.append(c)
+
+            # Check for exact catalog match from Indra lines
+            best_match = None
+            best_score = 0.0
+
+            full_text = " ".join(cleaned_lines)
+            if full_text:
+                full_search = search_engine.search_books(full_text, include_fuzzy=False)
+                if full_search.get("exact_matches"):
+                    top = full_search["exact_matches"][0]
+                    sim = max(
+                        search_engine.string_similarity(full_text, top["title"]),
+                        search_engine.token_similarity(full_text, top["title"])
+                    )
+                    if sim >= 0.70:
+                        best_match = top
+                        best_score = sim
+
+            if not best_match:
+                for line in cleaned_lines:
+                    if len(line) < 4 or line.lower() in COVER_NOISE_WORDS:
+                        continue
+                    line_search = search_engine.search_books(line, include_fuzzy=False)
+                    if line_search.get("exact_matches"):
+                        m = line_search["exact_matches"][0]
+                        sim = max(
+                            search_engine.string_similarity(line, m["title"]),
+                            search_engine.token_similarity(line, m["title"])
+                        )
+                        if sim > best_score and sim >= 0.70:
+                            best_match = m
+                            best_score = sim
+
+            if best_match and best_score >= 0.70:
+                return {
+                    "title": best_match["title"],
+                    "author": best_match["author"],
+                    "genre": best_match.get("genre", ""),
+                    "language": best_match.get("language", "English"),
+                    "confidence": "high",
+                    "flag_uncertain": False,
+                    "matched_existing": True,
+                    "match_score": round(best_score, 2),
+                    "engine": "Indra OCR + Catalog Matcher",
+                    "warning": None
+                }
+
+            # Visual cover info extraction from Indra lines
+            detected_title, detected_author = extract_visual_cover_info(cleaned_lines)
+            if not detected_title and cleaned_lines:
+                detected_title = cleaned_lines[0]
+                detected_author = cleaned_lines[1] if len(cleaned_lines) > 1 else ""
+
+            if detected_title and len(detected_title) >= 3:
+                detected_genre = predict_genre_with_llm(detected_title, detected_author)
+                return {
+                    "title": detected_title,
+                    "author": detected_author,
+                    "genre": detected_genre,
+                    "language": "English",
+                    "confidence": "high" if detected_author else "medium",
+                    "flag_uncertain": False,
+                    "matched_existing": False,
+                    "engine": "Indra OCR",
+                    "warning": None
+                }
+
+    # 2. OPTION GEMINI (or fallback if Indra produced no text): Try Google Gemini Multimodal Vision
+    if image_data and api_key and (chosen_engine == "gemini" or chosen_engine == "indra"):
         gemini_result = call_google_gemini_multimodal(image_data, api_key)
         if gemini_result and gemini_result.get("title"):
             g_title = gemini_result.get("title", "").strip()
@@ -687,12 +766,12 @@ def detect_multiple_books_in_image(
     current_image_hash: Optional[str] = None,
     image_data: Optional[str] = None,
     google_api_key: Optional[str] = None,
-    engine: str = "gemini"
+    engine: str = "indra"
 ) -> List[Dict[str, Any]]:
     """
     Workflow B: Processes multiple books captured in one image (books stacked one on top of each other,
     or shelf row). Segments spines into individual candidate book records ordered from top to bottom.
-    Supports both Google Gemini Multimodal Vision AI and Indra OCR neural pipeline.
+    Supports both Indra OCR neural pipeline (preferred) and Google Gemini Multimodal Vision AI.
     Flags duplicates and uncertain items.
     """
     api_key = google_api_key if is_valid_google_key(google_api_key) else get_google_api_key()
@@ -701,7 +780,7 @@ def detect_multiple_books_in_image(
     if current_image_hash and batch_image_hashes and current_image_hash in batch_image_hashes:
         is_dup_image = True
 
-    chosen_engine = (engine or "gemini").lower().strip()
+    chosen_engine = (engine or "indra").lower().strip()
 
     # 1. OPTION INDRA: If user selected Indra OCR, run Indra OCR neural pipeline
     if chosen_engine == "indra" and image_data:

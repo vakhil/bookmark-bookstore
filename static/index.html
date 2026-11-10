@@ -212,6 +212,15 @@
           📁 Upload Image
           <input type="file" id="cameraSearchFileInput" accept="image/*" class="native-file-overlay">
         </label>
+        <span style="font-size: 0.8rem; color: #64748b; margin-left: 0.25rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+          OCR: 
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.2rem; font-weight: 600; color: #1e293b;">
+            <input type="radio" name="searchOcrEngine" value="indra" checked style="accent-color: var(--primary);"> ⚡ Indra (Preferred)
+          </label>
+          <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.2rem; color: #64748b;">
+            <input type="radio" name="searchOcrEngine" value="gemini" style="accent-color: var(--primary);"> ✨ Gemini
+          </label>
+        </span>
       </div>
       <div id="voiceSearchStatusNotice" style="display:none; margin: 0.25rem 0 0.85rem 0; padding: 0.5rem 0.75rem; background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; font-size: 0.88rem; color: #92400e; font-weight: 500; align-items: center; gap: 0.5rem;">
         <span class="pulse-mic">🔴</span>
@@ -879,6 +888,19 @@
               <!-- Dedicated File & Camera Inputs -->
               <input type="file" id="pictureCameraInput" accept="image/*" capture="environment" class="hidden-file-input">
               <input type="file" id="pictureFileInput" accept="image/*" multiple class="hidden-file-input">
+
+              <!-- Engine Selector for Picture Add -->
+              <div style="margin-top: 1rem; padding: 0.65rem 0.9rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; display: inline-flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; justify-content: center;">
+                <span style="font-size: 0.85rem; font-weight: 700; color: #475569;">🔬 Recognition Engine:</span>
+                <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.86rem; font-weight: 600; color: #1e293b; cursor: pointer;">
+                  <input type="radio" name="pictureOcrEngine" value="indra" checked style="accent-color: var(--primary); cursor: pointer;">
+                  <span>⚡ Indra OCR (Preferred)</span>
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.86rem; font-weight: 600; color: #1e293b; cursor: pointer;">
+                  <input type="radio" name="pictureOcrEngine" value="gemini" style="accent-color: var(--primary); cursor: pointer;">
+                  <span>✨ Google Gemini Vision</span>
+                </label>
+              </div>
             </div>
 
             <!-- Photo Preview & Processing Status -->
@@ -1025,16 +1047,16 @@
               <input type="file" id="multiBookCameraInput" accept="image/*" capture="environment" class="hidden-file-input">
               <input type="file" id="multiBookFileInput" accept="image/*" multiple class="hidden-file-input">
 
-              <!-- Engine Selector: Gemini Vision AI vs Indra OCR -->
+              <!-- Engine Selector: Indra OCR (Preferred default) vs Gemini Vision AI -->
               <div style="margin-top: 1.1rem; padding: 0.75rem 1rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; display: inline-flex; align-items: center; gap: 1rem; flex-wrap: wrap; justify-content: center;">
                 <span style="font-size: 0.85rem; font-weight: 700; color: #475569;">🔬 Recognition Engine:</span>
                 <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; font-weight: 600; color: #1e293b; cursor: pointer;">
-                  <input type="radio" name="stackOcrEngine" value="gemini" checked style="accent-color: var(--primary); cursor: pointer;">
-                  <span>✨ Google Gemini Vision AI</span>
+                  <input type="radio" name="stackOcrEngine" value="indra" checked style="accent-color: var(--primary); cursor: pointer;">
+                  <span>⚡ Indra OCR (Fast CPU Neural - Preferred)</span>
                 </label>
                 <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; font-weight: 600; color: #1e293b; cursor: pointer;">
-                  <input type="radio" name="stackOcrEngine" value="indra" style="accent-color: var(--primary); cursor: pointer;">
-                  <span>⚡ Indra OCR (Fast CPU Neural)</span>
+                  <input type="radio" name="stackOcrEngine" value="gemini" style="accent-color: var(--primary); cursor: pointer;">
+                  <span>✨ Google Gemini Vision AI</span>
                 </label>
               </div>
             </div>

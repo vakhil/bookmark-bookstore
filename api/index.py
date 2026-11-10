@@ -502,7 +502,7 @@ def _app_dispatch(environ, start_response):
             is_spine_mode = body.get("spine_mode", False) or body.get("multiple", False)
             batch_hashes = body.get("batch_hashes", [])
             google_key = body.get("google_api_key", None)
-            engine = body.get("engine", "gemini")
+            engine = body.get("engine", "indra")
             img_hash = ocr_engine.compute_image_hash(image_data) if image_data else ""
 
             if is_spine_mode:
@@ -530,7 +530,7 @@ def _app_dispatch(environ, start_response):
                 return json_response(start_response, {"candidates": candidates, "image_hash": img_hash})
             else:
                 cand = ocr_engine.extract_candidates_from_text(
-                    raw_text, image_data=image_data, google_api_key=google_key
+                    raw_text, image_data=image_data, google_api_key=google_key, engine=engine
                 )
                 cand["image_hash"] = img_hash
                 return json_response(start_response, cand)
