@@ -502,6 +502,7 @@ def _app_dispatch(environ, start_response):
             is_spine_mode = body.get("spine_mode", False) or body.get("multiple", False)
             batch_hashes = body.get("batch_hashes", [])
             google_key = body.get("google_api_key", None)
+            engine = body.get("engine", "gemini")
             img_hash = ocr_engine.compute_image_hash(image_data) if image_data else ""
 
             if is_spine_mode:
@@ -524,7 +525,7 @@ def _app_dispatch(environ, start_response):
 
                 candidates = ocr_engine.detect_multiple_books_in_image(
                     clusters, batch_image_hashes=batch_hashes, current_image_hash=img_hash,
-                    image_data=image_data, google_api_key=google_key
+                    image_data=image_data, google_api_key=google_key, engine=engine
                 )
                 return json_response(start_response, {"candidates": candidates, "image_hash": img_hash})
             else:

@@ -1424,7 +1424,7 @@ def sell_book(
         """, (selling_price, now_iso, book_id))
 
         # Step 4: Record sale transaction
-        book_genre = (book.get("genre") or book.get("simple_genre") or "").strip()
+        book_genre = (dict(book).get("genre") or dict(book).get("simple_genre") or "").strip()
         cursor.execute("""
             INSERT INTO sales_transactions (
                 transaction_ref, order_id, book_id, title, author, genre,
@@ -1599,7 +1599,8 @@ def sell_books_bulk(
             """, (price_val, now_iso, bid))
 
             # Use explicit item genre if passed from cart, or fall back to book database genre/simple_genre
-            book_genre = (item.get("genre") or book.get("genre") or book.get("simple_genre") or "").strip()
+            book_dict = dict(book)
+            book_genre = (item.get("genre") or book_dict.get("genre") or book_dict.get("simple_genre") or "").strip()
 
             cursor.execute("""
                 INSERT INTO sales_transactions (

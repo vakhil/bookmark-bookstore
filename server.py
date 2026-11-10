@@ -313,6 +313,7 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             multiple = body.get("multiple", False) or body.get("spine_mode", False)
             image_data = body.get("image_data", "")
             batch_hashes = body.get("batch_hashes", [])
+            engine = body.get("engine", "gemini")
 
             google_key = body.get("google_api_key", "")
             img_hash = ocr_engine.compute_image_hash(image_data) if image_data else ""
@@ -338,7 +339,7 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
 
                 candidates = ocr_engine.detect_multiple_books_in_image(
                     clusters, batch_image_hashes=batch_hashes, current_image_hash=img_hash,
-                    image_data=image_data, google_api_key=google_key
+                    image_data=image_data, google_api_key=google_key, engine=engine
                 )
                 self._send_json({"candidates": candidates, "image_hash": img_hash})
             else:

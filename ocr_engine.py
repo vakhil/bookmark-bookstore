@@ -208,6 +208,158 @@ Return strictly valid JSON with these keys, and no extra markdown or explanation
 
     return None
 
+# Global cache for Indra OCR model instance to avoid reloading weights repeatedly
+_INDRA_CONVERTER = None
+_INDRA_TRIED_LOAD = False
+
+def get_indra_converter():
+    """Lazily loads and returns the Indra OCR converter instance if available."""
+    global _INDRA_CONVERTER, _INDRA_TRIED_LOAD
+    if _INDRA_CONVERTER is not None:
+        return _INDRA_CONVERTER
+    if _INDRA_TRIED_LOAD:
+        return None
+    _INDRA_TRIED_LOAD = True
+    try:
+        import indra_ocr
+        _INDRA_CONVERTER = indra_ocr.load(threads=2)
+        return _INDRA_CONVERTER
+    except Exception as e:
+        print(f"Indra OCR initialization notice (using fallback or Gemini): {e}")
+        return None
+
+def is_indra_available() -> bool:
+    """Checks whether the Indra OCR engine is installed and loaded."""
+    conv = get_indra_converter()
+    return conv is not None
+
+def run_indra_ocr_on_image(image_b64: str) -> Optional[Dict[str, Any]]:
+    """
+    Decodes a base64 image and runs Indra OCR, extracting lines with bounding boxes and confidence.
+    Returns dictionary with raw lines, full text, and detected blocks.
+    """
+    conv = get_indra_converter()
+    if not conv:
+        return None
+
+    if "," in image_b64:
+        image_b64 = image_b64.split(",", 1)[1]
+
+    try:
+        import cv2
+        import numpy as np
+
+        img_bytes = base64.b64decode(image_b64)
+        buf = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        page = conv.ocr(gray)
+
+        lines_data = []
+        if hasattr(page, "lines"):
+            for l in page.lines:
+                lines_data.append({
+                    "text": l.text.strip(),
+                    "box": list(l.box) if hasattr(l, "box") else [],
+                    "confidence": getattr(l, "confidence", 1.0)
+                })
+
+        blocks_data = []
+        if hasattr(page, "blocks"):
+            for b in page.blocks:
+                if isinstance(b, dict):
+                    blocks_data.append(b)
+                elif hasattr(b, "text"):
+                    blocks_data.append({"text": b.text, "bbox": getattr(b, "bbox", [])})
+
+        return {
+            "text": getattr(page, "text", ""),
+            "lines": lines_data,
+            "blocks": blocks_data
+        }
+    except Exception as e:
+        print(f"Error running Indra OCR on image: {e}")
+        return None
+
+def segment_books_from_indra_ocr(ocr_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Intelligently groups text lines and spatial layout blocks from Indra OCR into individual book spines.
+    Orders books top-to-bottom or along reading flow.
+    """
+    lines = ocr_result.get("lines", [])
+    if not lines:
+        raw_text = ocr_result.get("text", "")
+        lines = [{"text": l.strip(), "box": [], "confidence": 0.8} for l in raw_text.splitlines() if l.strip()]
+
+    # Filter out UI chrome and noise lines
+    filtered_lines = []
+    for l in lines:
+        txt = l.get("text", "").strip()
+        if not txt or len(txt) <= 2:
+            continue
+        if is_garbage_line(txt):
+            continue
+        filtered_lines.append(l)
+
+    if not filtered_lines:
+        return []
+
+    # Sort lines vertically by Y0 coordinate (top to bottom)
+    def get_y(line_item):
+        box = line_item.get("box", [])
+        if len(box) >= 4:
+            return (box[1] + box[3]) / 2.0  # (y0 + y1)/2
+        return 0.0
+
+    has_boxes = any(len(l.get("box", [])) >= 4 for l in filtered_lines)
+    if has_boxes:
+        filtered_lines.sort(key=get_y)
+
+    # Group adjacent lines into book spine clusters
+    clusters = []
+    current_cluster = []
+    last_y = None
+
+    for item in filtered_lines:
+        txt = item["text"]
+        y_val = get_y(item)
+
+        # If vertical gap between lines is significant or cluster already has 3 lines, start new book
+        if current_cluster and has_boxes and last_y is not None:
+            vertical_gap = abs(y_val - last_y)
+            if vertical_gap > 120 or len(current_cluster) >= 3:
+                clusters.append("\n".join(current_cluster))
+                current_cluster = []
+
+        current_cluster.append(txt)
+        last_y = y_val
+
+    if current_cluster:
+        clusters.append("\n".join(current_cluster))
+
+    # Parse each cluster into title/author candidate
+    results = []
+    for idx, c_text in enumerate(clusters):
+        t_cand, a_cand = extract_visual_cover_info([l.strip() for l in c_text.splitlines() if l.strip()])
+        if not t_cand:
+            # Fallback to first line
+            c_lines = [l.strip() for l in c_text.splitlines() if l.strip()]
+            t_cand = c_lines[0] if c_lines else ""
+            a_cand = c_lines[1] if len(c_lines) > 1 else ""
+
+        if t_cand and len(t_cand) >= 3:
+            results.append({
+                "title": t_cand,
+                "author": a_cand,
+                "genre": "",
+                "language": "English",
+                "confidence": "high" if len(t_cand) > 5 else "medium"
+            })
+
+    return results
+
 def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict[str, Any]]]:
     """
     Calls Google Gemini Multimodal Vision API to identify multiple books stacked on top of each other
@@ -534,11 +686,13 @@ def detect_multiple_books_in_image(
     batch_image_hashes: Optional[List[str]] = None,
     current_image_hash: Optional[str] = None,
     image_data: Optional[str] = None,
-    google_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None,
+    engine: str = "gemini"
 ) -> List[Dict[str, Any]]:
     """
     Workflow B: Processes multiple books captured in one image (books stacked one on top of each other,
     or shelf row). Segments spines into individual candidate book records ordered from top to bottom.
+    Supports both Google Gemini Multimodal Vision AI and Indra OCR neural pipeline.
     Flags duplicates and uncertain items.
     """
     api_key = google_api_key if is_valid_google_key(google_api_key) else get_google_api_key()
@@ -547,8 +701,80 @@ def detect_multiple_books_in_image(
     if current_image_hash and batch_image_hashes and current_image_hash in batch_image_hashes:
         is_dup_image = True
 
-    # 1. Try Google Gemini Vision to detect all spines in the stack directly from image
-    if image_data and api_key:
+    chosen_engine = (engine or "gemini").lower().strip()
+
+    # 1. OPTION INDRA: If user selected Indra OCR, run Indra OCR neural pipeline
+    if chosen_engine == "indra" and image_data:
+        indra_ocr_data = run_indra_ocr_on_image(image_data)
+        if indra_ocr_data:
+            detected_items = segment_books_from_indra_ocr(indra_ocr_data)
+            if detected_items:
+                conn = database.get_db_connection()
+                cursor = conn.cursor()
+                for idx, item_cand in enumerate(detected_items):
+                    i_title = (item_cand.get("title") or "").strip()
+                    i_author = (item_cand.get("author") or "").strip()
+                    if not i_title:
+                        continue
+
+                    # Cross-reference with store catalog for fuzzy/exact match
+                    cat_search = search_engine.search_books(i_title)
+                    matched_existing = False
+                    if cat_search.get("exact_matches"):
+                        top = cat_search["exact_matches"][0]
+                        i_title = top["title"]
+                        i_author = top["author"]
+                        i_genre = top.get("genre", "")
+                        matched_existing = True
+                    elif cat_search.get("possible_matches") and len(cat_search["possible_matches"]) > 0:
+                        top = cat_search["possible_matches"][0]
+                        if top.get("score", 0) >= 0.75:
+                            i_title = top["title"]
+                            i_author = top["author"]
+                            i_genre = top.get("genre", "")
+                            matched_existing = True
+                        else:
+                            i_genre = item_cand.get("genre", "")
+                    else:
+                        i_genre = item_cand.get("genre", "")
+
+                    if not i_genre:
+                        i_genre = predict_genre_with_llm(i_title, i_author)
+
+                    cursor.execute(
+                        "SELECT book_id, rack, column_num, position, location_english FROM books WHERE lower(title) = ? AND status = 'Available'",
+                        (i_title.lower(),)
+                    )
+                    existing_copies = cursor.fetchall()
+                    existing_count = len(existing_copies)
+                    best_copy = existing_copies[0] if existing_copies else None
+
+                    item = {
+                        "candidate_index": idx + 1,
+                        "position": idx + 1,
+                        "title": i_title,
+                        "author": i_author,
+                        "genre": i_genre,
+                        "language": item_cand.get("language", "English"),
+                        "confidence": item_cand.get("confidence", "high"),
+                        "flag_uncertain": item_cand.get("confidence") == "low",
+                        "matched_existing": matched_existing or existing_count > 0,
+                        "existing_in_inventory": existing_count > 0,
+                        "existing_copies_count": existing_count,
+                        "available_book_id": best_copy["book_id"] if best_copy else None,
+                        "location_english": best_copy["location_english"] if best_copy else "",
+                        "info_message": f"Title exists in store ({existing_count} copies)" if existing_count > 0 else "New title",
+                        "engine": "Indra OCR (Neural ONNX)",
+                        "warning": "Same image photographed twice" if is_dup_image else None,
+                        "is_duplicate_image": is_dup_image
+                    }
+                    candidates.append(item)
+                conn.close()
+                if candidates:
+                    return candidates
+
+    # 2. OPTION GEMINI (or fallback): Try Google Gemini Vision
+    if image_data and api_key and (chosen_engine == "gemini" or not candidates):
         gemini_stack = call_google_gemini_stack(image_data, api_key)
         if gemini_stack and len(gemini_stack) > 0:
             conn = database.get_db_connection()

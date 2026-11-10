@@ -3575,6 +3575,11 @@ async function processAllStackPhotos() {
   let accumulatedFromShots = [];
   const seenTitlesInBatch = new Set();
 
+  // Selected engine: gemini vs indra
+  const selectedEngineRadio = document.querySelector('input[name="stackOcrEngine"]:checked');
+  const chosenEngine = selectedEngineRadio ? selectedEngineRadio.value : 'gemini';
+  const engineLabel = chosenEngine === 'indra' ? 'Indra OCR' : 'Gemini AI Vision';
+
   // Helper to deduplicate books found in overlapping close-up photos of the same stack
   function deduplicateCandidate(cand) {
     const key = (cand.title || '').trim().toLowerCase().replace(/[^\w]/g, '');
@@ -3587,7 +3592,7 @@ async function processAllStackPhotos() {
   try {
     for (let i = 0; i < totalShots; i++) {
       const shot = stackPhotosQueue[i];
-      if (statusLbl) statusLbl.textContent = `🔍 Reading Shot #${i + 1} of ${totalShots} with AI Vision...`;
+      if (statusLbl) statusLbl.textContent = `🔍 Reading Shot #${i + 1} of ${totalShots} with ${engineLabel}...`;
       stackCountB++;
 
       let shotCandidates = [];
@@ -3598,6 +3603,7 @@ async function processAllStackPhotos() {
           body: JSON.stringify({
             multiple: true,
             spine_mode: true,
+            engine: chosenEngine,
             image_data: shot.dataUrl
           })
         });

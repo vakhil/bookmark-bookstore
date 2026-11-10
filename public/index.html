@@ -1024,6 +1024,19 @@
               <!-- Dedicated File & Camera Inputs for Stacks (with multiple support) -->
               <input type="file" id="multiBookCameraInput" accept="image/*" capture="environment" class="hidden-file-input">
               <input type="file" id="multiBookFileInput" accept="image/*" multiple class="hidden-file-input">
+
+              <!-- Engine Selector: Gemini Vision AI vs Indra OCR -->
+              <div style="margin-top: 1.1rem; padding: 0.75rem 1rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; display: inline-flex; align-items: center; gap: 1rem; flex-wrap: wrap; justify-content: center;">
+                <span style="font-size: 0.85rem; font-weight: 700; color: #475569;">🔬 Recognition Engine:</span>
+                <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; font-weight: 600; color: #1e293b; cursor: pointer;">
+                  <input type="radio" name="stackOcrEngine" value="gemini" checked style="accent-color: var(--primary); cursor: pointer;">
+                  <span>✨ Google Gemini Vision AI</span>
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; font-weight: 600; color: #1e293b; cursor: pointer;">
+                  <input type="radio" name="stackOcrEngine" value="indra" style="accent-color: var(--primary); cursor: pointer;">
+                  <span>⚡ Indra OCR (Fast CPU Neural)</span>
+                </label>
+              </div>
             </div>
 
             <!-- Stack Close-up Photos Queue & Gallery Wrap -->

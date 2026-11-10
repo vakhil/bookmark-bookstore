@@ -9,3 +9,4 @@ test_bookstore.db
 *.sqbpro
 *.pem
 .env*
+.venv/
