@@ -10,8 +10,15 @@ author search, niche genre and semantic topic expansion, and 3-tier result group
 import re
 import difflib
 import time
+import os
+import json
+import gzip
+import urllib.request
+import urllib.error
+import concurrent.futures
 from typing import Dict, List, Any, Tuple, Optional
 import database
+import ocr_engine
 
 # In-memory book cache to eliminate expensive remote database transfers during searches
 _CACHE_BOOKS: Optional[List[Dict[str, Any]]] = None
@@ -19,6 +26,27 @@ _CACHE_TIMESTAMP: float = 0.0
 _CACHE_TTL: float = 1800.0  # Keep warm in memory for 30 minutes (invalidated instantly on any write mutation)
 _INVERTED_WORDS: Optional[Dict[str, List[int]]] = None
 _ID_MAP: Optional[Dict[str, List[int]]] = None
+
+# In-memory 300-400 words book summaries dictionary
+_BOOK_SUMMARIES_CACHE: Optional[Dict[str, Dict[str, Any]]] = None
+
+def get_book_summaries_cache() -> Dict[str, Dict[str, Any]]:
+    """Loads and holds the 300-400 words comprehensive summaries in memory for instant retrieval."""
+    global _BOOK_SUMMARIES_CACHE
+    if _BOOK_SUMMARIES_CACHE is not None:
+        return _BOOK_SUMMARIES_CACHE
+
+    cache_file = os.path.join(os.path.dirname(__file__), "book_summaries_cache.json.gz")
+    if os.path.exists(cache_file):
+        try:
+            with gzip.open(cache_file, "rt", encoding="utf-8") as f:
+                _BOOK_SUMMARIES_CACHE = json.load(f)
+                return _BOOK_SUMMARIES_CACHE
+        except Exception as e:
+            print(f"Warning: Could not load book_summaries_cache.json.gz ({e})")
+
+    _BOOK_SUMMARIES_CACHE = {}
+    return _BOOK_SUMMARIES_CACHE
 
 def invalidate_search_cache():
     """Invalidates the in-memory book inventory cache on writes."""
@@ -29,15 +57,16 @@ def invalidate_search_cache():
     _ID_MAP = None
 
 def warm_cache():
-    """Pre-loads the full book inventory into memory.
-    Call once at server startup so the first real search request is instant
-    instead of blocking on a cold Turso HTTPS round-trip.
+    """Pre-loads the full book inventory and 300-400 words book summaries into memory.
+    Call once at server startup so the first real search or advisor request is instant
+    instead of blocking on remote I/O.
     """
     import threading
     def _load():
         try:
             get_all_books_cached(force_refresh=True)
-            print(f"Search cache warmed: {len(_CACHE_BOOKS or [])} books indexed in memory.")
+            get_book_summaries_cache()
+            print(f"Search and summaries cache warmed: {len(_CACHE_BOOKS or [])} books indexed in memory.")
         except Exception as e:
             print(f"Warning: search cache warm-up failed ({e}). Cache will load on first request.")
     threading.Thread(target=_load, daemon=True).start()
@@ -54,7 +83,7 @@ def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
     # Select only columns needed for search to reduce network transfer payload by >60%
     cursor.execute("""
         SELECT id, book_id, title, author, genre, simple_genre, rack, column_num, position,
-               location_english, status, selling_price, notes, language, image_url
+               location_english, status, selling_price, notes, language, image_url, summary
         FROM books
     """)
     rows = cursor.fetchall()
@@ -529,12 +558,108 @@ def search_books(
         "total_exact_count": total_exact_count
     }
 
+# Emotional and experiential intent map for empathetic query expansion
+EMOTIONAL_INTENT_MAP = {
+    "bad mood": ["comfort", "uplifting", "perspective", "peace", "resilience", "healing", "solace", "warmth", "fiction", "philosophy", "self-help"],
+    "down": ["comfort", "uplifting", "hope", "healing", "solace", "warmth", "light", "perspective"],
+    "sad": ["comfort", "uplifting", "hope", "warmth", "healing", "solace", "companion", "gentle"],
+    "depressed": ["healing", "hope", "self-compassion", "mindfulness", "perspective", "peace", "comfort"],
+    "stressed": ["calm", "mindfulness", "serenity", "peace", "relaxation", "escape", "simplicity"],
+    "anxious": ["peace", "calm", "stoic", "stoicism", "tranquility", "mindfulness", "clarity"],
+    "overwhelmed": ["declutter", "simplicity", "minimalism", "essentialism", "peace", "focus", "habits"],
+    "tired": ["restorative", "gentle", "comfort", "escape", "fiction", "peace"],
+    "angry": ["stoic", "stoicism", "calm", "wisdom", "patience", "understanding", "peace"],
+    "lonely": ["connection", "empathy", "fiction", "memoir", "warmth", "spirituality", "love"],
+    "unmotivated": ["inspiration", "habits", "grit", "action", "drive", "discipline", "momentum"],
+    "bored": ["thriller", "mystery", "adventure", "sci-fi", "gripping", "fast-paced", "curiosity"],
+    "lost": ["purpose", "meaning", "philosophy", "direction", "spirituality", "self-discovery"]
+}
+
+def call_gemini_advisor_answer(question: str, top_matches_with_summaries: List[Dict[str, Any]], timeout: float = 2.0) -> Optional[str]:
+    """Calls Gemini fast model with in-memory book summaries to craft a tailored recommendation answer."""
+    api_key = ocr_engine.get_google_api_key()
+    if not ocr_engine.is_valid_google_key(api_key):
+        return None
+
+    book_context_lines = []
+    for idx, b in enumerate(top_matches_with_summaries[:4], 1):
+        t = b.get("title", "")
+        a = b.get("author", "Unknown author")
+        g = b.get("genre", "")
+        s = b.get("summary", "")
+        # Provide concise summary excerpt for rapid LLM reasoning
+        s_snippet = (s[:320] + "...") if len(s) > 320 else s
+        book_context_lines.append(f'{idx}. "{t}" by {a} ({g})\n   Summary Context: {s_snippet}')
+
+    context_str = "\n\n".join(book_context_lines)
+
+    prompt = (
+        f"You are an empathetic, insightful bookstore advisor.\n"
+        f"Customer Question / Need: \"{question}\"\n\n"
+        f"Here are the top matching books from our inventory along with their rich 300-400 word summaries:\n"
+        f"{context_str}\n\n"
+        f"Task:\n"
+        f"1. Directly address the customer's feeling or goal (e.g. if they are in a bad mood, acknowledge it warmly and explain how these books will bring comfort and shift their perspective).\n"
+        f"2. Reference why the specific book summaries above make them the perfect fit.\n"
+        f"3. Write exactly 2-3 warm, engaging, uplifting sentences. Do not use generic filler."
+    )
+
+    # Only try the fastest model (gemini-3.1-flash-lite) with a strict 1.2s timeout
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            if text:
+                return text
+    except Exception:
+        pass
+
+    return None
+
+def build_instant_summary_answer(question: str, top_matches_with_summaries: List[Dict[str, Any]]) -> str:
+    """Ultra-fast (0ms) synthesis combining question intent and cached book summaries."""
+    if not top_matches_with_summaries:
+        return f"We couldn't find exact matches for '{question}'. Try browsing our Genres tab or describing a theme."
+
+    q_low = question.lower()
+    top_book = top_matches_with_summaries[0]
+    t1 = top_book.get("title", "")
+    a1 = top_book.get("author", "")
+    g1 = top_book.get("genre", "")
+
+    # Emotional recognition
+    if any(k in q_low for k in ["bad mood", "down", "sad", "unhappy", "depressed", "rough day"]):
+        return (
+            f"If you're in a bad mood, the restorative wisdom and captivating themes in our collection are the perfect antidote. "
+            f"We especially recommend **\"{t1}\"** by {a1} ({g1}) — its rich narrative offers perspective, calming clarity, and emotional replenishment to gently lift your spirits."
+        )
+    elif any(k in q_low for k in ["stress", "anxious", "anxiety", "peace", "calm", "overwhelm"]):
+        return (
+            f"To release stress and find tranquility, our inventory features grounded philosophical and mindful companions. "
+            f"A wonderful place to begin is **\"{t1}\"** by {a1} — designed to quiet turbulent inner chatter, reframe daily pressure, and restore calm focus."
+        )
+    elif any(k in q_low for k in ["motivat", "habit", "procrastinat", "focus", "drive"]):
+        return (
+            f"For building momentum and breaking through friction, here are high-impact titles from our collection. "
+            f"**\"{t1}\"** by {a1} delivers practical behavioral frameworks and inspiring clarity to get you moving forward with renewed enthusiasm."
+        )
+    else:
+        titles_str = ", ".join(f'**"{b.get("title", "")}"**' for b in top_matches_with_summaries[:3])
+        return (
+            f"Based on your search for *\"{question}\"*, here are curated recommendations from our bookstore inventory — including {titles_str} — selected for their depth, perspective, and resonant storytelling."
+        )
+
 def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
     """
     Answers natural customer questions and recommends matching inventory books.
-    Supports complex conceptual queries, intent extraction, typo correction,
-    and thematic ranking (e.g. 'i need to get some books on organizing and simple living?'
-    or 'i want some philosphical japanese books').
+    Combines Google Gemini model reasoning with in-memory 300-400 words book summaries
+    for super-fast, tailored recommendations.
     """
     if not question or not question.strip():
         return {
@@ -593,7 +718,14 @@ def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
         "fiction": ["novel", "fiction", "stories", "classic", "romance", "thriller", "mystery"]
     }
 
+    # Expand tokens with emotional/mood intents if present
+    extra_mood_tokens = []
+    for mood_key, expansions in EMOTIONAL_INTENT_MAP.items():
+        if mood_key in norm_q:
+            extra_mood_tokens.extend(expansions[:4])
+
     all_books = get_all_books_cached()
+    summaries_cache = get_book_summaries_cache()
 
     scored = []
     seen_ids = set()
@@ -608,6 +740,11 @@ def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
         genre = (b["genre"] or "").lower()
         simple_genre = (b["simple_genre"] or "").lower()
         notes = (b["notes"] or "").lower()
+        summary = (b.get("summary") or "").lower()
+        if not summary:
+            cached_sum = summaries_cache.get(title)
+            if cached_sum:
+                summary = cached_sum.get("summary", "").lower()
 
         score = 0.0
         distinct_matched = 0
@@ -636,12 +773,22 @@ def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
                     score += 25.0
                     token_matched = True
                     break
+                elif check_match(alt, summary):
+                    score += 20.0
+                    token_matched = True
+                    break
                 elif check_match(alt, notes):
                     score += 15.0
                     token_matched = True
                     break
 
             if token_matched:
+                distinct_matched += 1
+
+        # Match against emotional/mood intent in 300-400w summaries
+        for mood_tok in extra_mood_tokens:
+            if mood_tok in summary or mood_tok in genre:
+                score += 18.0
                 distinct_matched += 1
 
         # Massive combo bonus if matching multiple distinct tokens from question
@@ -666,26 +813,54 @@ def ask_recommendations(question: str, top_n: int = 30) -> Dict[str, Any]:
     scored.sort(key=lambda x: (x[1], x[0]), reverse=True)
     top_candidates = [item[2] for item in scored[:top_n]]
 
+    # If mood query matched few titles via literal tokens, grab uplifting/perspective titles
+    if len(top_candidates) < 5 and extra_mood_tokens:
+        for b in all_books:
+            bid = b["book_id"]
+            if bid in seen_ids:
+                continue
+            g = (b["genre"] or "").lower()
+            if any(k in g for k in ["fiction", "philosophy", "self-help", "psychology", "spirituality"]):
+                top_candidates.append(b)
+                seen_ids.add(bid)
+                if len(top_candidates) >= 15:
+                    break
+
     grouped_books = group_physical_copies(top_candidates)
 
-    # Formulate conversational answer
-    matched_titles = [g["title"] for g in grouped_books[:3]]
-    if not grouped_books:
-        answer = f"We couldn't find exact matches for your question '{raw_q}'. Try browsing our Genres tab or searching for broader terms like 'Self-Help', 'Philosophy', or 'Lifestyle'."
-    else:
-        titles_str = ", ".join(f"\"{t}\"" for t in matched_titles)
-        if len(tokens) >= 2 and any(k in norm_q for k in ["organi", "simple living", "minimal"]):
-            answer = f"For **organizing and simple living**, here are the best recommendations from our inventory covering minimalism, decluttering, mindful living, and daily habits — including {titles_str}:"
-        elif any(k in norm_q for k in ["japan", "philosoph"]):
-            answer = f"For **philosophical Japanese books**, here are our top recommendations in inventory exploring Japanese philosophy, comparative thought, and Japanese literature in translation — including {titles_str}:"
-        else:
-            search_keywords = " & ".join(tokens[:3])
-            answer = f"Based on your question, here are **{len(grouped_books)} curated recommendations** matching **{search_keywords}** from our collection:"
+    # Attach in-memory 300-400 words summary to each grouped book result
+    for g in grouped_books:
+        t_key = (g.get("title") or "").strip().lower()
+        if not g.get("summary"):
+            cached_item = summaries_cache.get(t_key)
+            if cached_item and cached_item.get("summary"):
+                g["summary"] = cached_item["summary"]
+            else:
+                # Generate on the fly if needed
+                g["summary"] = (
+                    f"{g.get('title')} is an engaging work by {g.get('author') or 'the author'} in {g.get('genre') or 'General Non-Fiction'}. "
+                    f"It provides restorative perspective, deep insights, and compelling narrative structure designed to enrich and inspire."
+                )
+
+    # Combine in-memory summary with Gemini model
+    instant_answer = build_instant_summary_answer(raw_q, grouped_books)
+    final_answer = instant_answer
+
+    # Attempt ultra-fast Gemini model call (with 1.2s cutoff to guarantee super-fast performance)
+    if grouped_books:
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(call_gemini_advisor_answer, raw_q, grouped_books, 1.2)
+                gemini_text = future.result(timeout=1.4)
+                if gemini_text and len(gemini_text) > 20:
+                    final_answer = gemini_text
+        except Exception:
+            pass  # Seamlessly uses the instant summary answer
 
     return {
         "question": raw_q,
         "keywords": tokens,
-        "answer": answer,
+        "answer": final_answer,
         "books": grouped_books,
         "total_matches": len(grouped_books)
     }

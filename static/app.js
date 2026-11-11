@@ -37,10 +37,19 @@ document.addEventListener('DOMContentLoaded', () => {
   safeInit('initEditSalePaymentModal', initEditSalePaymentModal);
   safeInit('initLiveCamera', initLiveCamera);
 
-  // Initial load
+  // Initial load - fetch core stats first, defer secondary heavy tables until idle
   fetchStats();
-  fetchUnassigned();
-  fetchSalesAndAudit();
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => {
+      fetchUnassigned();
+      fetchSalesAndAudit();
+    }, { timeout: 2000 });
+  } else {
+    setTimeout(() => {
+      fetchUnassigned();
+      fetchSalesAndAudit();
+    }, 500);
+  }
 });
 
 /* =========================================================================
@@ -101,7 +110,6 @@ function safeSet(id, val) {
 }
 
 async function fetchStats() {
-  clearSearchCache();
   try {
     const res = await fetch('/api/stats');
     const data = await res.json();
