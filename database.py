@@ -272,13 +272,51 @@ def get_db_connection() -> Any:
         pass
     return conn
 
+# ==============================================================================
+# CANONICAL RACK CONVENTIONS & NAMED MAPPINGS
+# ==============================================================================
+# In Turso (and SQLite), the `rack` column is stored as an INTEGER.
+# Named or non-numeric racks are mapped deterministically as follows:
+#
+#   1. Standard Floor Racks (Positive Integers):
+#      - "Rack 1" .. "Rack 157"           -> 1 .. 157
+#
+#   2. Special / Negative Racks:
+#      - "Rack Manga" / "Manga Rack"      -> -31 (424 books, Sheet Rows 8528–8951)
+#      - Stacks / Overflow Bins           -> -1 .. -30
+#
+#   3. Top Racks (5000 Series):
+#      - "Top Rack <N>"                   -> 5000 + N (e.g. "Top Rack 1" -> 5001, "Top Rack 2" -> 5002)
+#
+#   4. Top Rack Part N (10000 Series):
+#      - "Top Rack Part 2"                -> 10000 (legacy anchor)
+#      - "Top Rack Part <N>"              -> 10000 + N (e.g. Part 3 -> 10003)
+# ==============================================================================
+
+RACK_NAMED_MAPPINGS: Dict[str, int] = {
+    "rack manga": -31,
+    "manga rack": -31,
+    "top rack part 2": 10000,
+    "top rack 1": 5001,
+    "top rack 2": 5002,
+}
+
+REVERSE_RACK_NAMES: Dict[int, str] = {
+    -31: "Rack Manga",
+    10000: "Top Rack Part 2",
+    5001: "Top Rack 1",
+    5002: "Top Rack 2",
+}
+
 def parse_rack_value(val: Any) -> Optional[int]:
     """
     Normalizes rack input to integer:
       - 'Rack 1' -> 1, 'Rack 36' -> 36
+      - 'Rack Manga' / 'Manga Rack' -> -31
       - 'Top Rack 1' -> 5001, 'Top Rack 2' -> 5002, 'Top Rack 400' -> 5400 ('Top Rack <N>' -> 5000 + N)
       - 'Top Rack Part 2' -> 10000
       - 'Top Rack Part <N>' -> 10000 + N (e.g. 'Top Rack Part 5' -> 10005)
+      - Negative Stacks: '-1' .. '-30' -> -1 .. -30
       - Unassigned / empty / None -> None
     """
     if val is None:
@@ -287,6 +325,12 @@ def parse_rack_value(val: Any) -> Optional[int]:
     if not s or s.lower() in ("none", "null", "unassigned", ""):
         return None
     s_clean = " ".join(s.split())
+    s_lower = s_clean.lower()
+
+    # Direct dictionary lookup for explicit named racks
+    if s_lower in RACK_NAMED_MAPPINGS:
+        return RACK_NAMED_MAPPINGS[s_lower]
+
     # 1. Top Rack Part <N>
     m_part = re.search(r"top\s*rack\s*part\s*(\d+)", s_clean, re.IGNORECASE)
     if m_part:
@@ -304,7 +348,7 @@ def parse_rack_value(val: Any) -> Optional[int]:
     if m_top:
         return 5000 + int(m_top.group(1))
 
-    # 3. Pure integer, negative rack (e.g. -1, -4, -11.0), or Rack <N>
+    # 3. Pure integer, negative rack (e.g. -1, -4, -11.0, -31), or Rack <N>
     m_neg = re.search(r"-\s*(\d+)", s_clean)
     if m_neg:
         return -int(m_neg.group(1))

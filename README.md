@@ -121,3 +121,19 @@ book-store-advanced/
 │   └── test_system.py     # Functional test suite
 └── backups/               # Recoverable snapshot backups directory
 ```
+
+## Canonical Rack Numbering & Special Mappings
+
+Because the database stores `rack` as an `INTEGER`, all named, alphanumeric, or special shelf/stack locations are mapped as follows:
+
+| Physical / Sheet Name | Database Rack (`INTEGER`) | Notes / Scope |
+| :--- | :--- | :--- |
+| **Standard Floor Racks** | `1` .. `157` | Main aisles and shelf units |
+| **Rack Manga / Manga Rack** | **`-31`** | Rows 8528–8951 in Google Sheet (424 books, `BK-17652` to `BK-18075`) |
+| **Special Stacks / Overflow** | `-1` .. `-30` | Dedicated floor stacks & overflow piles |
+| **Top Rack 1** | `5001` | Top shelf row 1 (`5000 + N`) |
+| **Top Rack 2** | `5002` | Top shelf row 2 (`5000 + N`) |
+| **Top Rack <N>** | `5000 + N` | e.g. `Top Rack 400` -> `5400` |
+| **Top Rack Part 2** | `10000` | Legacy anchor |
+| **Top Rack Part <N>** | `10000 + N` | e.g. `Top Rack Part 3` -> `10003` |
+
