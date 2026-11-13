@@ -7,6 +7,7 @@ from typing import List
 
 FIXED_COMMON_GENRES: List[str] = [
     "Fiction",
+    "Manga",
     "Philosophy",
     "Self-Help",
     "History",
@@ -33,17 +34,31 @@ def classify_common_genre(raw_genre: str, title: str = "") -> str:
     Classifies a raw subgenre or title into one of the fixed canonical common genres.
     
     Examples:
+      - 'Manga / Shonen Adventure' -> 'Manga'
       - 'Indian Philosophy / Non-Western Philosophy' -> 'Philosophy'
       - 'Music History / Business' -> 'Music'
       - 'Tax Law / Real Estate Law' -> 'Law'
       - 'self-help' -> 'Self-Help'
     """
-    if not raw_genre:
+    if not raw_genre and not title:
         return "General Non-Fiction"
 
-    g = raw_genre.lower().strip()
+    g = (raw_genre or "").lower().strip()
     primary = g.split("/")[0].strip()
-    t = title.lower().strip()
+    t = (title or "").lower().strip()
+
+    # 0. Manga / Japanese Comics (Prioritize format so Manga isn't lost in Fiction / YA)
+    manga_series = [
+        "naruto", "one piece", "dragon ball", "bleach", "jujutsu kaisen",
+        "demon slayer", "chainsaw man", "attack on titan", "death note",
+        "berserk", "my hero academia", "tokyo ghoul", "haikyu", "vinland saga",
+        "spy x family", "fullmetal alchemist", "hunter x hunter", "slam dunk",
+        "pokemon adventures", "vagabond", "bakuman", "boruto", "doraemon",
+        "fairy tail", "black clover", "blue lock", "makoto shinkai",
+        "uzumaki", "junji ito", "one-punch man", "one punch man", "tokyo revengers"
+    ]
+    if "manga" in g or any(kw in t for kw in manga_series) or any(kw in g for kw in manga_series):
+        return "Manga"
 
     # 1. Law (Check early so compound legal subgenres like 'Tax Law / Real Estate Law' map to Law)
     if any(k in g for k in [
