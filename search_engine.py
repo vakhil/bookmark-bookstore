@@ -158,10 +158,33 @@ SEMANTIC_TOPIC_MAP = {
     "philosophy": ["philosophy", "ethics", "metaphysics", "epistemology", "continental philosophy", "logic"]
 }
 
-def normalize_text(text: str) -> str:
-    """Removes punctuation, extra spaces, and lowercases text."""
+import unicodedata
+
+def clean_diacritics(text: str) -> str:
+    """Replaces accented/diacritic characters with plain ASCII equivalents (e.g. Pokémon -> Pokemon, Renée -> Renee)."""
     if not text:
         return ""
+    replacements = {
+        'ı': 'i', 'İ': 'I',
+        'ç': 'c', 'Ç': 'C',
+        'ø': 'o', 'Ø': 'O',
+        'æ': 'ae', 'Æ': 'AE',
+        'œ': 'oe', 'Œ': 'OE',
+        'ß': 'ss',
+        'ł': 'l', 'Ł': 'L',
+        'đ': 'd', 'Đ': 'D'
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    nfd = unicodedata.normalize('NFD', text)
+    stripped = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
+    return unicodedata.normalize('NFC', stripped)
+
+def normalize_text(text: str) -> str:
+    """Removes accents, punctuation, extra spaces, and lowercases text."""
+    if not text:
+        return ""
+    text = clean_diacritics(text)
     text = re.sub(r"[^\w\s]", " ", text.lower())
     return " ".join(text.split())
 
