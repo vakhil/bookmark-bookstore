@@ -295,6 +295,10 @@ def parse_rack_value(val: Any) -> Optional[int]:
             return 10000
         return 10000 + part_num
 
+    # 1b. Rack Manga -> 9000
+    if re.search(r"rack\s*manga|manga\s*rack", s_clean, re.IGNORECASE):
+        return 9000
+
     # 2. Top Rack <N> (e.g. Top Rack 1 -> 5001, Top Rack 2 -> 5002, Top Rack 400 -> 5400)
     m_top = re.search(r"top\s*rack\s*(\d+)", s_clean, re.IGNORECASE)
     if m_top:
