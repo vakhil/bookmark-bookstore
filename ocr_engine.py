@@ -166,7 +166,7 @@ def call_google_gemini_multimodal(image_b64: str, api_key: str) -> Optional[Dict
     else:
         mime_type = "image/jpeg"
 
-    models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+    models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
     prompt = """You are an automated bookstore scanner. Look at this book cover or spine photograph.
 Identify the exact:
 1. "title": The main book title.
@@ -372,21 +372,21 @@ def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict
     else:
         mime_type = "image/jpeg"
 
-    models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+    models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
     prompt = """You are an automated bookstore inventory scanner.
-Look at this photograph of books stacked one on top of each other (or a row of books on a shelf).
-Examine each individual book spine or cover from the TOP of the stack to the BOTTOM.
-For EVERY distinct book visible, extract:
-- "title": Clean, full book title as written on the spine.
-- "author": Author or editor name if visible or known.
-- "genre": Likely category (e.g. Fiction, Self-Help, Business, Science, Philosophy, History).
+Look very closely at this photograph of books stacked one on top of each other (or a row of books on a shelf).
+Count and extract EVERY physical book layer in the stack from TOP to BOTTOM, including multiple copies of the same book!
+For EVERY distinct physical book layer visible, extract:
+- "title": Clean, full book title as written on the spine or cover.
+- "author": Author or editor name(s) if visible or known.
+- "genre": Likely category (e.g. Textbook, Psychology, Self-Help, Fiction, Business, Science, Philosophy, History).
 - "language": Language (default "English").
 - "confidence": "high", "medium", or "low".
 
 Return strictly a valid JSON array of objects:
 [
-  {"title": "Title 1", "author": "Author 1", "genre": "Fiction", "language": "English", "confidence": "high"},
-  {"title": "Title 2", "author": "Author 2", "genre": "Business", "language": "English", "confidence": "high"}
+  {"title": "Title 1", "author": "Author 1", "genre": "Textbook", "language": "English", "confidence": "high"},
+  {"title": "Title 2", "author": "Author 2", "genre": "Psychology", "language": "English", "confidence": "high"}
 ]
 Return only the JSON array with no extra text or markdown formatting."""
 
@@ -865,15 +865,21 @@ def detect_multiple_books_in_image(
                 if not g_title:
                     continue
 
-                # Cross-reference with store catalog
+                # Cross-reference with store catalog only if title matches closely
                 cat_search = search_engine.search_books(g_title)
                 matched_existing = False
-                if cat_search["exact_matches"]:
+                if cat_search.get("exact_matches"):
                     top = cat_search["exact_matches"][0]
-                    g_title = top["title"]
-                    g_author = top["author"]
-                    g_genre = top.get("genre", g_genre)
-                    matched_existing = True
+                    # Only override title if it's virtually an exact match, but never replace a clean short title with a completely different subtitle
+                    top_title = top.get("title", "")
+                    if top_title.lower() == g_title.lower():
+                        g_title = top_title
+                        if not g_author and top.get("author"):
+                            g_author = top["author"]
+                        g_genre = top.get("genre", g_genre)
+                        matched_existing = True
+                    elif g_title.lower() in top_title.lower() and not g_author and top.get("author"):
+                        g_author = top["author"]
 
                 if not g_genre:
                     g_genre = predict_genre_with_llm(g_title, g_author)
@@ -1003,7 +1009,7 @@ def predict_genre_with_llm(title: str, author: str = "") -> str:
             "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
         }
 
-        models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+        models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
         for model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:

@@ -3664,15 +3664,13 @@ async function processAllStackPhotos() {
         }
       }
 
-      // Filter duplicates and tag items
-      const uniqueFromShot = shotCandidates.filter(deduplicateCandidate);
-
-      const tagged = uniqueFromShot.map((cand, idx) => {
+      // Tag items from shot preserving all detected copies in the stack
+      const tagged = shotCandidates.map((cand, idx) => {
         return {
           ...cand,
           stack_num: stackCountB,
           stack_index: idx,
-          stack_total: uniqueFromShot.length,
+          stack_total: shotCandidates.length,
           rack: '',
           column_num: '',
           position: '',
