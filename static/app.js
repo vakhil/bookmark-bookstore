@@ -2487,7 +2487,10 @@ function initAddModeSwitcher() {
 
       btn.classList.add('active');
       const mode = btn.getAttribute('data-add-mode');
-      if (mode === 'manualAdd' || mode === 'singleAdd') {
+      if (mode === 'stackAdd' || mode === 'bulkAdd') {
+        const el = document.getElementById('sectionStackAdd') || document.getElementById('sectionBulkB');
+        if (el) el.style.display = 'block';
+      } else if (mode === 'manualAdd' || mode === 'singleAdd') {
         const el = document.getElementById('sectionManualAdd') || document.getElementById('sectionSingleAdd');
         if (el) el.style.display = 'block';
         const tInp = document.getElementById('manualTitle');
@@ -2495,13 +2498,6 @@ function initAddModeSwitcher() {
       } else if (mode === 'pictureAdd' || mode === 'fewBooksAdd') {
         const el = document.getElementById('sectionPictureAdd') || document.getElementById('sectionBulkA');
         if (el) el.style.display = 'block';
-        const cam = document.getElementById('pictureCameraInput');
-        if (cam) cam.click();
-      } else if (mode === 'stackAdd') {
-        const el = document.getElementById('sectionStackAdd') || document.getElementById('sectionBulkB');
-        if (el) el.style.display = 'block';
-        const cam = document.getElementById('multiBookCameraInput');
-        if (cam) cam.click();
       }
     });
   });
@@ -2510,7 +2506,9 @@ function initAddModeSwitcher() {
 function initSingleAdd() {
   initAddModeSwitcher();
   initManualAdd();
-  initPictureAdd();
+  if (typeof initPictureAdd === 'function') {
+    try { initPictureAdd(); } catch(e) { console.warn('initPictureAdd notice:', e); }
+  }
 }
 
 window.switchToAddWithTitle = function(title) {
@@ -3716,6 +3714,8 @@ function initBatchB() {
   const btnAddAnother = document.getElementById('btnAddAnotherStackPhoto');
   const btnClearQueue = document.getElementById('btnClearStackQueue');
   const btnProcessStack = document.getElementById('btnProcessAllStackPhotos');
+  const btnApplyStackLoc = document.getElementById('btnApplyStackLocation');
+  const btnAddManualRow = document.getElementById('btnAddManualRowToStack');
 
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
@@ -3724,6 +3724,47 @@ function initBatchB() {
         stackCountB = 0;
         renderBatchTableB();
       }
+    });
+  }
+
+  if (btnAddManualRow) {
+    btnAddManualRow.addEventListener('click', () => {
+      batchCandidatesB.push({
+        title: '',
+        author: '',
+        genre: '',
+        rack: (document.getElementById('stackCommonRack')?.value || '').trim(),
+        column_num: (document.getElementById('stackCommonColumn')?.value || '').trim(),
+        position: '',
+        skipped: false
+      });
+      renderBatchTableB();
+      const lastInput = document.querySelector(`#batchCardB_${batchCandidatesB.length - 1} .cand-title-input`);
+      if (lastInput) lastInput.focus();
+    });
+  }
+
+  if (btnApplyStackLoc) {
+    btnApplyStackLoc.addEventListener('click', () => {
+      const rackVal = (document.getElementById('stackCommonRack')?.value || '').trim();
+      const colVal = (document.getElementById('stackCommonColumn')?.value || '').trim();
+      const startPosVal = parseInt(document.getElementById('stackCommonStartPos')?.value || '1', 10);
+      const startPos = isNaN(startPosVal) || startPosVal < 1 ? 1 : startPosVal;
+
+      if (!rackVal && !colVal) {
+        alert('Please enter at least a Rack or Column number to apply.');
+        return;
+      }
+
+      let currentPos = startPos;
+      batchCandidatesB.forEach(b => {
+        if (!b.skipped) {
+          if (rackVal) b.rack = rackVal;
+          if (colVal) b.column_num = colVal;
+          b.position = String(currentPos++);
+        }
+      });
+      renderBatchTableB();
     });
   }
 
@@ -3870,6 +3911,8 @@ function renderBatchTableB() {
   const saveBtn = document.getElementById('btnSaveBatchB');
   const labelSnap = document.getElementById('labelSnapStackB');
   const clearBtn = document.getElementById('btnClearBatchB');
+  const locBar = document.getElementById('stackLocationAssignBar');
+  const addRowBtn = document.getElementById('btnAddManualRowToStack');
 
   const validCount = batchCandidatesB.filter(b => !b.skipped).length;
   if (countSpan) countSpan.textContent = validCount;
@@ -3883,6 +3926,12 @@ function renderBatchTableB() {
   if (clearBtn) {
     clearBtn.style.display = batchCandidatesB.length > 0 ? 'inline-block' : 'none';
   }
+  if (locBar) {
+    locBar.style.display = batchCandidatesB.length > 0 ? 'block' : 'none';
+  }
+  if (addRowBtn) {
+    addRowBtn.style.display = batchCandidatesB.length > 0 ? 'inline-block' : 'none';
+  }
 
   if (!container) return;
 
@@ -3892,6 +3941,9 @@ function renderBatchTableB() {
         <div class="empty-icon">📖</div>
         <b>Stack photography mode</b>
         <p>Take a photo of a stack of books (stacked one on top of each other) to automatically detect all spines. You can photograph multiple stacks one after another to combine them!</p>
+        <button type="button" class="btn btn-outline btn-sm" onclick="batchCandidatesB.push({title:'',author:'',genre:'',rack:'',column_num:'',position:'',skipped:false}); renderBatchTableB();" style="margin-top:0.75rem; color:#2563eb; border-color:#93c5fd;">
+          ➕ Or Add Row Manually
+        </button>
       </div>
     `;
     return;
