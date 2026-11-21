@@ -166,7 +166,7 @@ def _app_dispatch(environ, start_response):
             author = query_params.get("author", [""])[0]
             book_id = query_params.get("book_id", [""])[0]
             summary = database.get_or_fetch_book_summary(title, author, book_id)
-            return json_response(start_response, {"title": title, "book_id": book_id, "summary": summary}, cache_control="public, max-age=3600, s-maxage=86400")
+            return json_response(start_response, {"title": title, "book_id": book_id, "summary": summary}, cache_control="no-cache, no-store, must-revalidate")
 
         elif path == "/api/books/suggest-genre":
             title = query_params.get("title", [""])[0]
