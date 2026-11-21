@@ -20,6 +20,7 @@ import database
 import search_engine
 import export_manager
 import ocr_engine
+import advisor_engine
 from datetime import datetime
 
 # Prime and verify database on serverless cold-boot
@@ -165,7 +166,7 @@ def _app_dispatch(environ, start_response):
             title = query_params.get("title", [""])[0]
             author = query_params.get("author", [""])[0]
             book_id = query_params.get("book_id", [""])[0]
-            summary = database.get_or_fetch_book_summary(title, author, book_id)
+            summary = advisor_engine.get_book_summary(title=title, author=author, book_id=book_id)
             return json_response(start_response, {"title": title, "book_id": book_id, "summary": summary}, cache_control="no-cache, no-store, must-revalidate")
 
         elif path == "/api/books/suggest-genre":
