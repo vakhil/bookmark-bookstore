@@ -244,7 +244,7 @@ function initSearch() {
     clearBtn.style.display = input.value ? 'inline-block' : 'none';
     searchDebounceTimer = setTimeout(() => {
       performSearch(input.value);
-    }, 100);
+    }, 40);
   });
 
   clearBtn.addEventListener('click', () => {
