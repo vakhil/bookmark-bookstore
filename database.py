@@ -2970,6 +2970,24 @@ def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -
     if not clean_title and not clean_bid:
         return ""
 
+    def _is_invalid_summary(txt: str) -> bool:
+        if not txt or len(txt.strip().split()) < 140:
+            return True
+        low = txt.lower().strip()
+        first_35 = " ".join(low.split()[:35])
+        bio_indicators = [
+            "is an author", "is a canadian", "is an american", "is an english", "is a british",
+            "is an indian", "is a japanese", "is a writer", "is a physician", "is a nephrologist",
+            "is a psychologist", "is a journalist", "is a professor", "is an entrepreneur",
+            "was an american", "was a canadian", "was an english", "was a british", "was an indian",
+            "was an author", "was a writer", "born in", "born on", "graduated from"
+        ]
+        if any(b in first_35 for b in bio_indicators) and not any(k in first_35 for k in ["book", "novel", "published", "work", "memoir", "treatise"]):
+            return True
+        if low.startswith("an alchemist is") or "may refer to:" in low:
+            return True
+        return False
+
     # Step 1: Check database cache first
     try:
         conn = get_db_connection()
@@ -2977,7 +2995,7 @@ def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -
         if clean_bid:
             cursor.execute("SELECT summary, title, author FROM books WHERE book_id = ? LIMIT 1", (clean_bid,))
             row = cursor.fetchone()
-            if row and row["summary"]:
+            if row and row["summary"] and not _is_invalid_summary(row["summary"]):
                 cached = row["summary"].strip()
                 conn.close()
                 return cached
@@ -2992,7 +3010,7 @@ def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -
                 (clean_title.lower(),)
             )
             row = cursor.fetchone()
-            if row and row["summary"]:
+            if row and row["summary"] and not _is_invalid_summary(row["summary"]):
                 cached = row["summary"].strip()
                 conn.close()
                 return cached
