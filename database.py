@@ -3091,28 +3091,49 @@ def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -
         except Exception:
             pass
 
-    # Step 5: Try Wikipedia Search to find exact article title
+    # Step 5: Try Wikipedia Search with '(book)' / '(novel)' qualifier
     if not summary_text and clean_title:
-        try:
-            q = urllib.parse.quote(f"{clean_title} {clean_author}".strip())
-            search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={q}&format=json&utf8="
-            req = urllib.request.Request(search_url, headers=req_headers)
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
-                data = json.loads(resp.read().decode("utf-8", errors="replace"))
-                results = data.get("query", {}).get("search", [])
-                if results:
-                    found_page = results[0].get("title", "")
-                    if found_page:
-                        fslug = urllib.parse.quote(found_page.replace(" ", "_"))
-                        furl = f"https://en.wikipedia.org/api/rest_v1/page/summary/{fslug}"
-                        freq = urllib.request.Request(furl, headers=req_headers)
-                        with urllib.request.urlopen(freq, timeout=3.0) as fresp:
-                            fdata = json.loads(fresp.read().decode("utf-8", errors="replace"))
-                            fext = fdata.get("extract", "")
-                            if fext and not _is_invalid_summary(fext):
-                                summary_text = fext.strip()
-        except Exception:
-            pass
+        search_queries = [
+            f'"{clean_title}" {clean_author} book'.strip(),
+            f'"{clean_title}" (book)',
+            f'"{clean_title}" (novel)'
+        ]
+        non_book_indicators = [
+            "(game)", "(video game)", "(film)", "(soundtrack)", "(album)", "(song)",
+            "(tv series)", "(season", "(episode", "bandai namco", "nintendo", "playstation", "xbox"
+        ]
+        clean_words = set(w for w in clean_title.lower().split() if len(w) > 3)
+
+        for sq in search_queries:
+            try:
+                q = urllib.parse.quote(sq)
+                search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={q}&format=json&utf8="
+                req = urllib.request.Request(search_url, headers=req_headers)
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                    results = data.get("query", {}).get("search", [])
+                    if results:
+                        for item in results[:3]:
+                            found_page = item.get("title", "")
+                            fp_low = found_page.lower()
+                            if any(nb in fp_low for nb in non_book_indicators):
+                                continue
+                            if clean_words and not any(w in fp_low for w in clean_words):
+                                continue
+
+                            fslug = urllib.parse.quote(found_page.replace(" ", "_"))
+                            furl = f"https://en.wikipedia.org/api/rest_v1/page/summary/{fslug}"
+                            freq = urllib.request.Request(furl, headers=req_headers)
+                            with urllib.request.urlopen(freq, timeout=3.0) as fresp:
+                                fdata = json.loads(fresp.read().decode("utf-8", errors="replace"))
+                                fext = fdata.get("extract", "")
+                                if fext and not _is_invalid_summary(fext):
+                                    summary_text = fext.strip()
+                                    break
+                        if summary_text:
+                            break
+            except Exception:
+                pass
             gb_q = urllib.parse.quote(f'intitle:"{clean_title}"')
             gb_url = f"https://www.googleapis.com/books/v1/volumes?q={gb_q}&maxResults=1"
             req = urllib.request.Request(gb_url, headers=req_headers)
