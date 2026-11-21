@@ -94,7 +94,7 @@ def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
                 "requests": [
                     {
                         "type": "execute",
-                        "stmt": {"sql": "SELECT id, book_id, title, author, genre, simple_genre, rack, column_num, position, location_english, status, selling_price, notes FROM books"}
+                        "stmt": {"sql": "SELECT id, book_id, title, author, genre, simple_genre, rack, column_num, position, location_english, status, selling_price, notes FROM books WHERE (is_external IS NULL OR is_external = 0)"}
                     },
                     {"type": "close"}
                 ]
@@ -176,6 +176,7 @@ def get_all_books_cached(force_refresh: bool = False) -> List[Dict[str, Any]]:
         SELECT id, book_id, title, author, genre, simple_genre, rack, column_num, position,
                location_english, status, selling_price, notes
         FROM books
+        WHERE (is_external IS NULL OR is_external = 0)
     """)
     rows = cursor.fetchall()
     conn.close()

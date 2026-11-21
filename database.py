@@ -742,6 +742,9 @@ def migrate_database_schema(conn: sqlite3.Connection):
 
 _DB_IS_VERIFIED = False
 
+def is_turso_enabled():
+    return bool(os.environ.get("TURSO_DATABASE_URL", "").strip() and os.environ.get("TURSO_AUTH_TOKEN", "").strip())
+
 def ensure_database_ready():
     """Verifies books exist; if empty or missing, initializes and seeds from CSV or Google Sheet."""
     global _DB_IS_VERIFIED
@@ -750,7 +753,7 @@ def ensure_database_ready():
     try:
         # If Turso Cloud is in use, the cloud database is already verified, migrated, and maintained.
         # Skip heavy local SQLite migration & batch sanitization queries on serverless cold starts.
-        if _USE_TURSO:
+        if is_turso_enabled():
             _DB_IS_VERIFIED = True
             return
 
@@ -2277,6 +2280,7 @@ def get_unassigned_books(query: str = "", limit: int = 200, offset: int = 0) -> 
         SELECT * FROM books 
         WHERE (rack IS NULL OR column_num IS NULL OR position IS NULL 
                OR rack = '' OR column_num = '' OR position = '' OR lower(rack) = 'unassigned')
+          AND (is_external IS NULL OR is_external = 0)
     """
     params = []
 
@@ -2676,26 +2680,27 @@ def get_inventory_stats() -> Dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM books")
+    cursor.execute("SELECT COUNT(*) FROM books WHERE (is_external IS NULL OR is_external = 0)")
     total_copies = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(DISTINCT lower(title)) FROM books")
+    cursor.execute("SELECT COUNT(DISTINCT lower(title)) FROM books WHERE (is_external IS NULL OR is_external = 0)")
     unique_titles = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM books WHERE status = 'Available'")
+    cursor.execute("SELECT COUNT(*) FROM books WHERE status = 'Available' AND (is_external IS NULL OR is_external = 0)")
     available_copies = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM books WHERE status = 'SOLD OUT'")
+    cursor.execute("SELECT COUNT(*) FROM books WHERE status = 'SOLD OUT' AND (is_external IS NULL OR is_external = 0)")
     sold_copies = cursor.fetchone()[0]
 
     cursor.execute("""
         SELECT COUNT(*) FROM books 
         WHERE (rack IS NULL OR column_num IS NULL OR position IS NULL 
                OR rack = '' OR column_num = '' OR position = '' OR lower(rack) = 'unassigned')
+          AND (is_external IS NULL OR is_external = 0)
     """)
     unassigned_count = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(DISTINCT rack) FROM books WHERE rack IS NOT NULL AND rack != '' AND lower(rack) != 'unassigned'")
+    cursor.execute("SELECT COUNT(DISTINCT rack) FROM books WHERE rack IS NOT NULL AND rack != '' AND lower(rack) != 'unassigned' AND (is_external IS NULL OR is_external = 0)")
     rack_count = cursor.fetchone()[0]
 
     cursor.execute("SELECT COUNT(*) FROM sales_transactions WHERE (status IS NULL OR status != 'REVERTED')")
@@ -2746,6 +2751,7 @@ def get_genre_distribution(force_refresh: bool = False) -> List[Dict[str, Any]]:
             SUM(CASE WHEN status = 'SOLD OUT' THEN 1 ELSE 0 END) as sold_copies
         FROM books
         WHERE simple_genre != '' AND simple_genre IS NOT NULL
+          AND (is_external IS NULL OR is_external = 0)
         GROUP BY simple_genre
         ORDER BY CASE WHEN lower(simple_genre) = 'manga' THEN 0 ELSE 1 END, total_copies DESC
     """)
@@ -2776,11 +2782,11 @@ def get_books_by_genre(genre: Any, available_only: bool = False, limit: int = 50
     cursor = conn.cursor()
 
     if len(genres_list) == 1:
-        sql = "SELECT * FROM books WHERE lower(simple_genre) = lower(?)"
+        sql = "SELECT * FROM books WHERE lower(simple_genre) = lower(?) AND (is_external IS NULL OR is_external = 0)"
         params = [genres_list[0]]
     else:
         placeholders = ",".join("?" for _ in genres_list)
-        sql = f"SELECT * FROM books WHERE lower(simple_genre) IN ({placeholders})"
+        sql = f"SELECT * FROM books WHERE lower(simple_genre) IN ({placeholders}) AND (is_external IS NULL OR is_external = 0)"
         params = [g.lower() for g in genres_list]
 
     if available_only:
