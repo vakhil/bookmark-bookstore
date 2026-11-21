@@ -3134,20 +3134,6 @@ def get_or_fetch_book_summary(title: str, author: str = "", book_id: str = "") -
                             break
             except Exception:
                 pass
-            gb_q = urllib.parse.quote(f'intitle:"{clean_title}"')
-            gb_url = f"https://www.googleapis.com/books/v1/volumes?q={gb_q}&maxResults=1"
-            req = urllib.request.Request(gb_url, headers=req_headers)
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
-                data = json.loads(resp.read().decode("utf-8", errors="replace"))
-                items = data.get("items", [])
-                if items:
-                    desc = items[0].get("volumeInfo", {}).get("description", "")
-                    if desc:
-                        clean_desc = re.sub(r'<[^>]+>', '', desc).strip()
-                        if len(clean_desc) > 30:
-                            summary_text = clean_desc
-        except Exception:
-            pass
 
     # Step 5: High-quality contextual fallback synopsis
     if not summary_text:
