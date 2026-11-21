@@ -9,3 +9,5 @@ test_bookstore.db
 *.pem
 .env*
 .venv/
+
+google_config.json
