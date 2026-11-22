@@ -68,6 +68,16 @@ def ensure_schema(conn):
         return
     try:
         cursor = conn.cursor()
+        # Ensure is_external column exists on books
+        try:
+            cursor.execute("PRAGMA table_info(books)")
+            b_cols = [c["name"] if hasattr(c, "__getitem__") and not isinstance(c, tuple) else c[1] for c in cursor.fetchall()]
+            if b_cols and "is_external" not in b_cols:
+                cursor.execute("ALTER TABLE books ADD COLUMN is_external INTEGER DEFAULT 0")
+                conn.commit()
+        except Exception:
+            pass
+
         cursor.execute("PRAGMA table_info(sales_transactions)")
         st_cols = [c["name"] for c in cursor.fetchall()]
         if st_cols:
