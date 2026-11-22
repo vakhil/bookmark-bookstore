@@ -149,7 +149,7 @@
     </div>
   </header>
 
-  <!-- Navigation Tabs (Search, Cart, Add, Genre, Advisor, Transactions) -->
+  <!-- Navigation Tabs (Search, Cart, Add, Genre, Advisor, Reports) -->
   <nav class="main-tabs simple-nav">
     <button class="tab-btn active" data-tab="tabSearch">
       <span class="tab-icon">🔍</span>
@@ -173,7 +173,7 @@
     </button>
     <button class="tab-btn" data-tab="tabTransactions" id="tabBtnTransactions">
       <span class="tab-icon">📊</span>
-      <span class="tab-label">Reports (<span id="tabTransactionsBadge">0</span>)</span>
+      <span class="tab-label">List of Orders / Reports (<span id="tabTransactionsBadge">0</span>)</span>
     </button>
   </nav>
 
@@ -372,22 +372,29 @@
                 <b id="summaryTotalBooks" style="color: var(--text-main); font-size: 1.05rem;">0 books</b>
               </div>
 
-              <!-- Buyer Details (Name & Mobile Number) -->
+              <!-- Buyer Details (Name & Mobile Number - Both Optional) -->
               <div class="form-field" style="margin-bottom: 1.15rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.95rem;">
-                <div style="font-size: 0.88rem; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.65rem; display: flex; align-items: center; gap: 0.4rem;">
-                  <span>👤</span> Buyer Details
+                <div style="font-size: 0.88rem; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.65rem; display: flex; align-items: center; justify-content: space-between;">
+                  <span style="display: flex; align-items: center; gap: 0.4rem;">
+                    <span>👤</span> Customer Details
+                  </span>
+                  <span style="font-size: 0.72rem; font-weight: 600; color: #64748b; background: #e2e8f0; padding: 0.1rem 0.45rem; border-radius: 4px; text-transform: none;">
+                    Optional
+                  </span>
                 </div>
                 <div style="margin-bottom: 0.65rem;">
-                  <label for="cartBuyerName" style="display: block; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.25rem;">
-                    Buyer Name
+                  <label for="cartBuyerName" style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.25rem;">
+                    <span>Buyer Name</span>
+                    <span style="font-weight: 500; font-size: 0.72rem; color: #94a3b8;">(Optional)</span>
                   </label>
-                  <input type="text" id="cartBuyerName" class="form-control" placeholder="e.g. Rahul Sharma" style="font-size: 0.9rem; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem;">
+                  <input type="text" id="cartBuyerName" class="form-control" placeholder="e.g. Rahul Sharma (optional)" style="font-size: 0.9rem; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem;">
                 </div>
                 <div>
-                  <label for="cartBuyerPhone" style="display: block; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.25rem;">
-                    Mobile Number / Phone No.
+                  <label for="cartBuyerPhone" style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.25rem;">
+                    <span>Mobile Number / Phone No.</span>
+                    <span style="font-weight: 500; font-size: 0.72rem; color: #94a3b8;">(Optional)</span>
                   </label>
-                  <input type="tel" id="cartBuyerPhone" class="form-control" placeholder="e.g. +91 98765 43210" style="font-size: 0.9rem; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem;">
+                  <input type="tel" id="cartBuyerPhone" class="form-control" placeholder="e.g. +91 98765 43210 (optional)" style="font-size: 0.9rem; width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem;">
                 </div>
               </div>
 
@@ -423,16 +430,16 @@
       </div>
     </section>
 
-    <!-- ==================== TAB: REPORTS (PURCHASE HISTORY, TRANSACTIONS & REVERT/REDO) ==================== -->
+    <!-- ==================== TAB: LIST OF ORDERS & REPORTS (PURCHASE HISTORY, TRANSACTIONS & REVERT/REDO) ==================== -->
     <section id="tabTransactions" class="tab-pane">
       <div class="clean-card" style="margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
           <div>
             <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
-              <span>📊</span> Sales Reports &amp; Order Transactions
+              <span>📜</span> List of Orders &amp; Sales Reports
             </h2>
             <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
-              All previous sales reports (single book or multi-book bulk orders). Revert any transaction to return books to their shelf locations or redo sales.
+              Comprehensive history of all completed book orders, sales transactions, receipts, and revenue reports. Revert any transaction to return books to their shelf locations or redo sales.
             </p>
           </div>
           <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">

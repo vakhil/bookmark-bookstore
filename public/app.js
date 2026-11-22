@@ -6149,16 +6149,19 @@ function initCart() {
       const notesInput = document.getElementById('cartOrderNotes');
       const orderNotes = notesInput ? notesInput.value.trim() : '';
 
-      // 1. Indian Contact Phone Number Validation (+91... or 10-digit number like 944090...)
-      const cleanedPhone = buyerPhone.replace(/[\s\-\(\)]/g, '');
-      const isIndianPhone = /^(\+91[0-9]{10}|91[6-9][0-9]{9}|0[6-9][0-9]{9}|[6-9][0-9]{9}|[0-9]{10})$/.test(cleanedPhone);
-      if (!cleanedPhone || !isIndianPhone) {
-        alert('Please enter a valid Indian contact number (e.g. starting with +91 or a 10-digit number like 9440901234).');
-        if (buyerPhoneInput) {
-          buyerPhoneInput.focus();
-          buyerPhoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // 1. Phone number and Name are both OPTIONAL.
+      // If a phone number is provided, validate that it is a valid format (e.g., 10 digits or with +91)
+      if (buyerPhone) {
+        const cleanedPhone = buyerPhone.replace(/[\s\-\(\)]/g, '');
+        const isIndianPhone = /^(\+91[0-9]{10}|91[6-9][0-9]{9}|0[6-9][0-9]{9}|[6-9][0-9]{9}|[0-9]{10})$/.test(cleanedPhone);
+        if (!isIndianPhone) {
+          alert('Please enter a valid phone number (e.g. 10 digits like 9440901234 or with +91), or leave it blank.');
+          if (buyerPhoneInput) {
+            buyerPhoneInput.focus();
+            buyerPhoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          return;
         }
-        return;
       }
 
       // 2. Validate that each individual item in the cart has a positive price and genre added
@@ -6287,7 +6290,10 @@ function initCart() {
           const freedMsg = data.cleared_locations && data.cleared_locations.length > 0
             ? `\n\n🏬 Freed shelf locations:\n` + data.cleared_locations.map(l => `• ${l.title} (${l.cleared_location})`).join('\n')
             : '';
-          alert(`✅ Order Completed!\n\nAll ${data.count} books are now sold and recorded.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}${buyerMsg}${freedMsg}`);
+          alert(`✅ Order Completed!\n\nAll ${data.count} books are now sold and recorded.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}${buyerMsg}${freedMsg}\n\nNavigating to List of Orders / Reports...`);
+
+          // Seamlessly navigate to List of Orders / Reports tab to view the recorded transaction
+          switchMainTab('tabTransactions');
         } else {
           alert('Could not complete order: ' + (data.error || 'Server error'));
         }
