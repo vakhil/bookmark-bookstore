@@ -351,6 +351,44 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
                 self._send_json(cand)
             return
 
+        # 3b. Photo Scanning for Cart / Selling (Upload a photo of books being sold)
+        elif path == "/api/cart/scan-photo":
+            image_data = body.get("image_data", "")
+            if not image_data:
+                self._send_json({"error": "Image data is required."}, 400)
+                return
+            google_key = body.get("google_api_key", "")
+            books = ocr_engine.scan_books_from_photo(image_data=image_data, google_api_key=google_key)
+            self._send_json({"success": True, "books": books, "count": len(books)})
+            return
+
+        # 3c. Photo Sell Workflow (Sell books identified from photo, remove 1 location for internal books, ignore missing)
+        elif path == "/api/cart/sell-photo-books":
+            items = body.get("books", [])
+            buyer_name = body.get("buyer_name", "")
+            buyer_phone = body.get("buyer_phone") or body.get("phone", "")
+            total_amount = body.get("total_amount")
+            notes = body.get("notes", "")
+            user = body.get("user", "Staff")
+
+            if not items:
+                self._send_json({"error": "No books provided in photo sale."}, 400)
+                return
+
+            res = database.sell_photo_scanned_books(
+                items=items,
+                buyer_name=buyer_name,
+                buyer_phone=buyer_phone,
+                total_amount=total_amount,
+                user=user,
+                notes=notes
+            )
+            if "error" in res:
+                self._send_json(res, 400)
+            else:
+                self._send_json(res)
+            return
+
         # 4. Assign Location (Req 1.6 & 1.7)
         elif path == "/api/books/assign-location":
             book_id = body.get("book_id", "")

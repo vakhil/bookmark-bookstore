@@ -244,7 +244,7 @@ function initSearch() {
     clearBtn.style.display = input.value ? 'inline-block' : 'none';
     searchDebounceTimer = setTimeout(() => {
       performSearch(input.value);
-    }, 100);
+    }, 40);
   });
 
   clearBtn.addEventListener('click', () => {
@@ -6011,6 +6011,15 @@ function renderCartTab() {
       return `<option value="${escapeHtml(g)}" ${isSel}>${escapeHtml(g)}</option>`;
     }).join('');
 
+    const isFoundInternally = item.found_internally !== false && !String(item.book_id || '').startsWith('EXT-');
+    const statusBadgeHtml = isFoundInternally
+      ? `<span style="font-size: 0.74rem; font-weight: 700; color: #065f46; display: inline-flex; align-items: center; gap: 0.25rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 0.12rem 0.55rem;" title="Found in library inventory. Shelf space will be freed upon sale.">
+           <span>✅ In Library</span> &bull; <span>📍 ${escapeHtml(locText)}</span>
+         </span>`
+      : `<span style="font-size: 0.74rem; font-weight: 700; color: #92400e; display: inline-flex; align-items: center; gap: 0.25rem; background: #fef3c7; border: 1px solid #fde68a; border-radius: 9999px; padding: 0.12rem 0.55rem;" title="Not matched in library catalog, but OK to sell.">
+           <span>ℹ️ External / Not in Library</span>
+         </span>`;
+
     return `
       <div class="cart-item-card" data-bid="${escapeHtml(item.book_id)}">
         <div class="cart-item-row-top" style="display: flex; gap: 0.85rem; align-items: flex-start;">
@@ -6020,9 +6029,7 @@ function renderCartTab() {
           <div style="flex: 1; min-width: 0;">
             <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
               <span class="copy-id-chip" style="font-family: monospace; font-size: 0.74rem; font-weight: 800; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 0.1rem 0.45rem; border-radius: 6px;">🆔 ${escapeHtml(item.book_id)}</span>
-              <span style="font-size: 0.75rem; font-weight: 700; color: #064e3b; display: inline-flex; align-items: center; gap: 0.25rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 0.12rem 0.55rem;">
-                <span>📍</span> ${escapeHtml(locText)}
-              </span>
+              ${statusBadgeHtml}
             </div>
             <h4 style="margin: 0 0 0.15rem 0; font-size: 0.95rem; font-weight: 700; color: var(--text-main); line-height: 1.35; word-break: break-word;">
               ${escapeHtml(cleanTitle)}
@@ -6030,6 +6037,11 @@ function renderCartTab() {
             <div style="font-size: 0.8rem; color: var(--text-muted);">
               by <b>${cleanAuthor}</b>
             </div>
+            ${isFoundInternally && item.location_english ? `
+              <div style="font-size: 0.74rem; color: #047857; margin-top: 0.2rem; font-weight: 600;">
+                🏬 Shelf location to be freed on sale: <b>${escapeHtml(locText)}</b>
+              </div>
+            ` : ''}
           </div>
         </div>
 
@@ -6184,6 +6196,9 @@ function initCart() {
         totalCost += p;
         return {
           book_id: item.book_id,
+          title: item.title,
+          author: item.author,
+          found_internally: item.found_internally !== false && !String(item.book_id || '').startsWith('EXT-'),
           selling_price: p,
           genre: (item.genre || item.simple_genre || 'General Non-Fiction').trim(),
           notes: orderNotes
@@ -6195,7 +6210,8 @@ function initCart() {
       btnPlaceOrder.innerHTML = `<span>⏳</span> Selling...`;
 
       try {
-        const res = await fetch('/api/books/sell', {
+        // Use photo sell API which handles both internal (frees 1 location) and external books
+        const res = await fetch('/api/cart/sell-photo-books', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -6247,6 +6263,12 @@ function initCart() {
           const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
           if (liveTotal) liveTotal.textContent = '₹0.00';
 
+          // Reset photo sale preview container if active
+          const previewContainer = document.getElementById('photoSalePreviewContainer');
+          if (previewContainer) previewContainer.style.display = 'none';
+          const fileInput = document.getElementById('photoSaleFileInput');
+          if (fileInput) fileInput.value = '';
+
           fetchStats();
 
           // Refresh current search if query exists
@@ -6262,7 +6284,10 @@ function initCart() {
 
           renderDigitalReceipt(data);
           const buyerMsg = buyerName ? `\nBuyer: ${buyerName}` : '';
-          alert(`✅ Order Completed!\n\nAll ${data.count} books are now marked SOLD OUT.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}${buyerMsg}`);
+          const freedMsg = data.cleared_locations && data.cleared_locations.length > 0
+            ? `\n\n🏬 Freed shelf locations:\n` + data.cleared_locations.map(l => `• ${l.title} (${l.cleared_location})`).join('\n')
+            : '';
+          alert(`✅ Order Completed!\n\nAll ${data.count} books are now sold and recorded.\nTotal Transaction: ₹${parseFloat(totalCost).toFixed(2)}${buyerMsg}${freedMsg}`);
         } else {
           alert('Could not complete order: ' + (data.error || 'Server error'));
         }
@@ -6275,145 +6300,161 @@ function initCart() {
     });
   }
 
-  // Direct Manual Sale (Without Cart Selection) Handlers
-  const btnToggleManual = document.getElementById('btnToggleManualSaleCard');
-  const manualCard = document.getElementById('manualSaleCard');
-  if (btnToggleManual && manualCard) {
-    btnToggleManual.addEventListener('click', () => {
-      if (manualCard.style.display === 'none') {
-        manualCard.style.display = 'block';
-        manualCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        const titleInp = document.getElementById('manualSaleTitle');
-        if (titleInp) titleInp.focus();
-      } else {
-        manualCard.style.display = 'none';
-      }
+  // Photo Scan for Selling Books (Primary Feature)
+  initPhotoSaleUploader();
+}
+
+/**
+ * Primary Cart Feature: Take or upload a photo of books being sold.
+ * Uses Gemini Vision on the backend to detect books, query internal inventory,
+ * and populate the cart automatically with shelf locations.
+ */
+function initPhotoSaleUploader() {
+  const dropzone = document.getElementById('photoSaleDropzone');
+  const fileInput = document.getElementById('photoSaleFileInput');
+  const loadingIndicator = document.getElementById('photoSaleLoading');
+  const loadingText = document.getElementById('photoSaleLoadingText');
+  const previewContainer = document.getElementById('photoSalePreviewContainer');
+  const thumbnail = document.getElementById('photoSaleThumbnail');
+  const countBadge = document.getElementById('photoSaleDetectedCountBadge');
+  const matchStats = document.getElementById('photoSaleMatchStats');
+  const btnRetake = document.getElementById('btnRetakePhotoSale');
+
+  if (!fileInput || !dropzone) return;
+
+  // Dropzone drag-and-drop
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = '#10b981';
+    dropzone.style.background = '#f0fdf4';
+  });
+
+  dropzone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = '#86efac';
+    dropzone.style.background = '#ffffff';
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = '#86efac';
+    dropzone.style.background = '#ffffff';
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handlePhotoSaleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files.length > 0) {
+      handlePhotoSaleFile(fileInput.files[0]);
+    }
+  });
+
+  if (btnRetake) {
+    btnRetake.addEventListener('click', () => {
+      fileInput.value = '';
+      if (previewContainer) previewContainer.style.display = 'none';
+      fileInput.click();
     });
   }
 
-  const btnSubmitManual = document.getElementById('btnSubmitManualSale');
-  if (btnSubmitManual) {
-    btnSubmitManual.addEventListener('click', async () => {
-      const titleInp = document.getElementById('manualSaleTitle');
-      const genreInp = document.getElementById('manualSaleGenre');
-      const priceInp = document.getElementById('manualSalePrice');
-      const authorInp = document.getElementById('manualSaleAuthor');
-      const buyerNameInp = document.getElementById('manualSaleBuyerName');
-      const buyerPhoneInp = document.getElementById('manualSaleBuyerPhone');
-      const notesInp = document.getElementById('manualSaleNotes');
-      const statusMsg = document.getElementById('manualSaleStatusMsg');
+  async function handlePhotoSaleFile(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      alert('Please upload a valid image file (JPEG, PNG, HEIC).');
+      return;
+    }
 
-      const title = titleInp ? titleInp.value.trim() : '';
-      const genre = genreInp ? genreInp.value.trim() : '';
-      const priceVal = priceInp ? priceInp.value.trim() : '';
-      const author = authorInp ? authorInp.value.trim() : '';
-      const buyerName = buyerNameInp ? buyerNameInp.value.trim() : '';
-      const buyerPhone = buyerPhoneInp ? buyerPhoneInp.value.trim() : '';
-      const notes = notesInp ? notesInp.value.trim() : '';
-
-      if (!title) {
-        alert('Please enter the book name or title.');
-        if (titleInp) titleInp.focus();
-        return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const base64Data = ev.target.result;
+      if (thumbnail) thumbnail.src = base64Data;
+      if (loadingIndicator) {
+        loadingIndicator.style.display = 'block';
+        if (loadingText) loadingText.textContent = 'Scanning photograph with Multimodal AI...';
       }
-
-      if (!genre) {
-        alert('A selling book should always have a genre. Please choose a genre from the common genres list.');
-        if (genreInp) genreInp.focus();
-        return;
-      }
-
-      const numPrice = parseFloat(priceVal);
-      if (isNaN(numPrice) || numPrice <= 0) {
-        alert('Please enter a valid positive price / value for this book.');
-        if (priceInp) priceInp.focus();
-        return;
-      }
-
-      if (buyerPhone) {
-        const cleanedPhone = buyerPhone.replace(/[\s\-\(\)]/g, '');
-        const isIndianPhone = /^(\+91[0-9]{10}|91[6-9][0-9]{9}|0[6-9][0-9]{9}|[6-9][0-9]{9}|[0-9]{10})$/.test(cleanedPhone);
-        if (!isIndianPhone) {
-          alert('Please enter a valid Indian contact number or leave mobile blank.');
-          if (buyerPhoneInp) buyerPhoneInp.focus();
-          return;
-        }
-      }
-
-      btnSubmitManual.disabled = true;
-      btnSubmitManual.innerHTML = '<span>⏳</span> Recording Sale...';
-      if (statusMsg) {
-        statusMsg.style.display = 'inline-block';
-        statusMsg.style.color = '#0284c7';
-        statusMsg.textContent = 'Recording sale...';
-      }
+      if (previewContainer) previewContainer.style.display = 'none';
 
       try {
-        const res = await fetch('/api/sales/manual', {
+        const res = await fetch('/api/cart/scan-photo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title,
-            genre: genre,
-            selling_price: numPrice,
-            author: author || 'Custom / Manual',
-            buyer_name: buyerName,
-            buyer_phone: buyerPhone,
-            notes: notes,
-            user: 'Staff'
-          })
+          body: JSON.stringify({ image_data: base64Data })
         });
 
         let data;
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
           data = await res.json();
         } else {
-          const rawText = await res.text();
-          data = { success: false, error: rawText || `Server responded with status ${res.status}` };
+          const txt = await res.text();
+          data = { error: txt || `Server responded with ${res.status}` };
         }
 
-        if (res.ok && data.success) {
-          // Reset form fields
-          if (titleInp) titleInp.value = '';
-          if (genreInp) genreInp.value = '';
-          if (priceInp) priceInp.value = '';
-          if (authorInp) authorInp.value = '';
-          if (buyerNameInp) buyerNameInp.value = '';
-          if (buyerPhoneInp) buyerPhoneInp.value = '';
-          if (notesInp) notesInp.value = '';
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to scan image');
+        }
 
-          if (statusMsg) {
-            statusMsg.style.color = '#059669';
-            statusMsg.textContent = `✓ Recorded! Order ${data.order_id} (₹${numPrice.toFixed(2)})`;
-            setTimeout(() => {
-              statusMsg.style.display = 'none';
-            }, 5000);
+        const books = Array.isArray(data.books) ? data.books : [];
+        if (books.length === 0) {
+          alert('No books could be clearly identified in this photo. Please make sure the book covers or spines are well-lit and clearly visible.');
+          return;
+        }
+
+        let internalMatchCount = 0;
+        let extCount = 0;
+
+        for (const b of books) {
+          // If already in cart, skip adding duplicate copy ID
+          const existing = storeCart.find(item => item.book_id === b.book_id);
+          if (!existing) {
+            storeCart.push({
+              book_id: b.book_id,
+              title: b.title,
+              author: b.author || 'Author',
+              genre: b.genre || 'General Non-Fiction',
+              found_internally: Boolean(b.found_internally),
+              rack: b.rack,
+              column_num: b.column_num,
+              position: b.position,
+              location_english: b.location_english || (b.found_internally ? 'Location Unassigned' : 'External / Not in Library'),
+              selling_price: '',
+              image_url: b.image_url || ''
+            });
           }
-
-          // Refresh KPI statistics and transactions cache immediately
-          fetchStats();
-          loadTransactionsTab(true);
-
-          alert(`✅ Sale Recorded Successfully!\n\nBook: "${title}"\nPrice: ₹${numPrice.toFixed(2)}\nOrder ID: ${data.order_id}\n\nThis sale has been directly added to the Sales Ledger and reflects in the Reports tab.`);
-        } else {
-          alert('Could not record sale: ' + (data.error || 'Server error'));
-          if (statusMsg) {
-            statusMsg.style.color = '#dc2626';
-            statusMsg.textContent = 'Error recording sale';
+          if (b.found_internally) {
+            internalMatchCount++;
+          } else {
+            extCount++;
           }
+        }
+
+        saveStoreCart();
+        updateCartBadge();
+        renderCartTab();
+
+        // Update preview header
+        if (previewContainer) previewContainer.style.display = 'block';
+        if (countBadge) countBadge.textContent = `${books.length} book${books.length === 1 ? '' : 's'} detected`;
+        if (matchStats) {
+          matchStats.innerHTML = `
+            <div><b>${internalMatchCount}</b> found in your internal library (one physical rack location will be freed on sale).</div>
+            ${extCount > 0 ? `<div style="color: #92400e; margin-top: 2px;"><b>${extCount}</b> not in library catalog (still added to cart &amp; ready to sell).</div>` : ''}
+          `;
+        }
+
+        // Scroll to items list
+        const itemsList = document.getElementById('cartItemsList');
+        if (itemsList) {
+          itemsList.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       } catch (err) {
-        alert('Sale recording error: ' + err.message);
-        if (statusMsg) {
-          statusMsg.style.color = '#dc2626';
-          statusMsg.textContent = 'Error: ' + err.message;
-        }
+        console.error('Photo scan error:', err);
+        alert('Could not identify books from photo: ' + err.message);
       } finally {
-        btnSubmitManual.disabled = false;
-        btnSubmitManual.innerHTML = '<span>💰</span> Record Sale Directly';
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
       }
-    });
+    };
+    reader.readAsDataURL(file);
   }
 }
 

@@ -240,142 +240,94 @@
       </div>
     </section>
 
-    <!-- ==================== TAB: CART (MULTI-BOOK TRANSACTIONS) ==================== -->
+    <!-- ==================== TAB: CART (MULTI-BOOK TRANSACTIONS & PHOTO SCAN SELLING) ==================== -->
     <section id="tabCart" class="tab-pane">
       <div class="clean-card" style="margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
           <div>
             <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
-              <span>🛒</span> Shopping Cart &amp; Order Checkout
+              <span>📸</span> Sell Books by Photo &amp; Cart Checkout
             </h2>
             <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
-              Select books across <b>Search</b> or <b>Genre</b>, or enter manual sales directly without adding to a cart. All recorded transactions reflect in monthly reports.
+              <b>Main option:</b> Take or upload a photo of the books being sold. Books found in the library will have one shelf location freed on sale.
             </p>
           </div>
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm" id="btnToggleManualSaleCard" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; background: #f0fdf4; color: #166534; border: 1.5px solid #86efac;">
-              <span>⚡</span> Direct Manual Sale (No Cart)
-            </button>
             <button type="button" class="btn btn-sm btn-outline" id="btnCartAddMore" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
-              <span>➕</span> Add More Books
+              <span>➕</span> Add More from Search
             </button>
             <button type="button" class="btn btn-sm btn-outline" id="btnClearCart" style="color: var(--danger); border-color: #fca5a5; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
-              <span>🗑️</span> Clear Cart
+              <span>🗑️</span> Clear All
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Quick / Direct Manual Sale Box (Enter books without adding to cart) -->
-      <div id="manualSaleCard" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #f8fafc 0%, #f0fdf4 100%); border: 1.5px solid #86efac; border-radius: 14px; padding: 1.25rem; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; border-bottom: 1px solid #dcfce7; padding-bottom: 0.65rem;">
+      <!-- MAIN OPTION: UPLOAD PHOTO OF BOOKS TAKEN / SOLD -->
+      <div id="photoSaleSection" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%); border: 2px solid #86efac; border-radius: 16px; padding: 1.35rem; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1rem; border-bottom: 1px solid #dcfce7; padding-bottom: 0.75rem;">
           <div>
-            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #14532d; display: flex; align-items: center; gap: 0.45rem;">
-              <span>⚡</span> Direct Manual Sale (Without Cart)
-            </h3>
-            <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: #166534;">
-              Record a book sale directly by <b>name and value/price</b> without selecting from inventory or adding to cart. Reflects instantly in monthly reports and ledger!
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="font-size: 1.4rem;">📷</span>
+              <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #14532d;">
+                Snap or Upload Photo of Books Being Sold
+              </h3>
+              <span style="font-size: 0.74rem; font-weight: 800; background: #059669; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; text-transform: uppercase;">
+                Primary Method
+              </span>
+            </div>
+            <p style="margin: 0.3rem 0 0; font-size: 0.85rem; color: #166534; line-height: 1.45;">
+              Snap or upload a photo of the book covers or spines being sold/taken. We will automatically match each book with your internal library, display its current rack location, total all prices, and free up the physical location upon sale. (If a book is not found in the library, that's completely fine—it can still be priced and sold!)
             </p>
           </div>
-          <span style="font-size: 0.74rem; font-weight: 800; background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 0.2rem 0.55rem; border-radius: 9999px;">
-            ⚡ Quick Checkout
-          </span>
         </div>
 
-        <form id="formManualSale" onsubmit="return false;" style="display: flex; flex-direction: column; gap: 0.85rem;">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
-            <!-- Book Name / Title (Required) -->
-            <div>
-              <label for="manualSaleTitle" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
-                Book Name / Title <span style="color: #dc2626;">*</span>
-              </label>
-              <input type="text" id="manualSaleTitle" class="form-control" placeholder="e.g. Rare Vintage Novel or Special Edition" required style="width: 100%; font-size: 0.9rem; font-weight: 600; border-radius: 8px; border: 1.5px solid #cbd5e1; padding: 0.55rem 0.75rem;">
-            </div>
-
-            <!-- Genre Selection (Common Genres Directory) (Required) -->
-            <div>
-              <label for="manualSaleGenre" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
-                Genre <span style="color: #dc2626;">*</span>
-              </label>
-              <select id="manualSaleGenre" class="form-control" required style="width: 100%; font-size: 0.9rem; font-weight: 600; border-radius: 8px; border: 1.5px solid #86efac; padding: 0.55rem 0.75rem; background: #ffffff;">
-                <option value="">-- Choose Genre --</option>
-                <option value="Fiction">Fiction</option>
-                <option value="Business & Economics">Business &amp; Economics</option>
-                <option value="History">History</option>
-                <option value="Biography">Biography</option>
-                <option value="Self-Help">Self-Help</option>
-                <option value="Philosophy">Philosophy</option>
-                <option value="Politics">Politics</option>
-                <option value="Humor & Lifestyle">Humor &amp; Lifestyle</option>
-                <option value="General Non-Fiction">General Non-Fiction</option>
-                <option value="Health & Wellness">Health &amp; Wellness</option>
-                <option value="Science & Technology">Science &amp; Technology</option>
-                <option value="Children & Young Adult">Children &amp; Young Adult</option>
-                <option value="Psychology">Psychology</option>
-                <option value="Religion & Spirituality">Religion &amp; Spirituality</option>
-                <option value="Travel & Adventure">Travel &amp; Adventure</option>
-                <option value="Law">Law</option>
-                <option value="Education & Reference">Education &amp; Reference</option>
-                <option value="Art & Culture">Art &amp; Culture</option>
-                <option value="Music">Music</option>
-                <option value="Cookery & Food">Cookery &amp; Food</option>
-              </select>
-            </div>
-
-            <!-- Price / Value (₹) (Required) -->
-            <div>
-              <label for="manualSalePrice" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
-                Value / Sale Price (₹) <span style="color: #dc2626;">*</span>
-              </label>
-              <div style="position: relative; display: flex; align-items: center;">
-                <span style="position: absolute; left: 0.65rem; font-weight: 800; color: #059669; font-size: 0.95rem;">₹</span>
-                <input type="number" step="any" min="0.01" id="manualSalePrice" class="form-control" placeholder="e.g. 250" required style="width: 100%; padding-left: 1.65rem; font-size: 0.92rem; font-weight: 700; color: #064e3b; border-radius: 8px; border: 1.5px solid #86efac; padding-top: 0.55rem; padding-bottom: 0.55rem;">
-              </div>
-            </div>
-
-            <!-- Author / Editor (Optional) -->
-            <div>
-              <label for="manualSaleAuthor" style="display: block; font-size: 0.8rem; font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
-                Author / Publisher (Optional)
-              </label>
-              <input type="text" id="manualSaleAuthor" class="form-control" placeholder="e.g. Leo Tolstoy (or leave blank)" style="width: 100%; font-size: 0.9rem; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0.55rem 0.75rem;">
-            </div>
+        <!-- Camera / File Upload Drag & Drop Area -->
+        <div class="photo-upload-dropzone" id="photoSaleDropzone" style="border: 2px dashed #86efac; background: #ffffff; border-radius: 12px; padding: 1.5rem 1rem; text-align: center; cursor: pointer; transition: all 0.2s ease;">
+          <input type="file" id="photoSaleFileInput" accept="image/*" capture="environment" style="display: none;">
+          <div style="font-size: 2.4rem; margin-bottom: 0.4rem;">📸</div>
+          <div style="font-size: 1rem; font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">
+            Click to Capture / Upload Photo of Books
           </div>
-
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem;">
-            <!-- Buyer Name (Optional) -->
-            <div>
-              <label for="manualSaleBuyerName" style="display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
-                Buyer Name (Optional)
-              </label>
-              <input type="text" id="manualSaleBuyerName" class="form-control" placeholder="e.g. Ramesh Kumar" style="width: 100%; font-size: 0.88rem; border-radius: 6px; border: 1px solid #cbd5e1; padding: 0.45rem 0.65rem;">
-            </div>
-
-            <!-- Buyer Mobile Number (Optional) -->
-            <div>
-              <label for="manualSaleBuyerPhone" style="display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
-                Mobile Number / Phone (Optional)
-              </label>
-              <input type="tel" id="manualSaleBuyerPhone" class="form-control" placeholder="e.g. 9876543210" style="width: 100%; font-size: 0.88rem; border-radius: 6px; border: 1px solid #cbd5e1; padding: 0.45rem 0.65rem;">
-            </div>
-
-            <!-- Notes / Payment Method -->
-            <div>
-              <label for="manualSaleNotes" style="display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
-                Payment / Notes (Optional)
-              </label>
-              <input type="text" id="manualSaleNotes" class="form-control" placeholder="e.g. Cash, UPI, Direct Counter Sale" style="width: 100%; font-size: 0.88rem; border-radius: 6px; border: 1px solid #cbd5e1; padding: 0.45rem 0.65rem;">
-            </div>
+          <div style="font-size: 0.82rem; color: #64748b;">
+            Supports camera capture on mobile/tablets or image files (JPG, PNG, HEIC) &bull; Single or multiple book covers/spines
           </div>
-
-          <!-- Submit Button & Feedback -->
-          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin-top: 0.25rem;">
-            <span id="manualSaleStatusMsg" style="font-size: 0.85rem; font-weight: 700; display: none;"></span>
-            <button type="button" class="btn btn-primary" id="btnSubmitManualSale" style="padding: 0.7rem 1.5rem; font-size: 0.95rem; font-weight: 800; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; border-radius: 10px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer;">
-              <span>💰</span> Record Sale Directly
+          <div style="margin-top: 0.85rem; display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm btn-primary" onclick="document.getElementById('photoSaleFileInput').click()" style="background: #10b981; border: none; font-weight: 700; padding: 0.5rem 1.2rem;">
+              📷 Take / Choose Photo
             </button>
           </div>
-        </form>
+        </div>
+
+        <!-- Scanning Progress Indicator -->
+        <div id="photoSaleLoading" style="display: none; padding: 1.25rem; text-align: center; background: #f8fafc; border-radius: 10px; margin-top: 0.85rem; border: 1px solid #e2e8f0;">
+          <div class="spinner" style="margin: 0 auto 0.6rem auto; border-top-color: #10b981;"></div>
+          <div style="font-size: 0.95rem; font-weight: 800; color: #0f172a;" id="photoSaleLoadingText">
+            Scanning photograph with Multimodal AI...
+          </div>
+          <div style="font-size: 0.82rem; color: #64748b; margin-top: 0.2rem;">
+            Detecting book titles, authors, and cross-referencing with internal library inventory...
+          </div>
+        </div>
+
+        <!-- Scanned Photo Preview & Detected Status Summary -->
+        <div id="photoSalePreviewContainer" style="display: none; margin-top: 1rem; background: #ffffff; border: 1px solid #bbf7d0; border-radius: 12px; padding: 0.85rem;">
+          <div style="display: flex; gap: 0.85rem; align-items: center; flex-wrap: wrap;">
+            <img id="photoSaleThumbnail" src="" alt="Scanned books" style="width: 75px; height: 95px; object-fit: cover; border-radius: 8px; border: 1.5px solid #86efac; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <div style="flex: 1; min-width: 220px;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                <span style="font-size: 0.95rem; font-weight: 800; color: #14532d;">Photo Processed Successfully</span>
+                <span id="photoSaleDetectedCountBadge" style="font-size: 0.76rem; font-weight: 800; background: #dcfce7; color: #15803d; padding: 0.15rem 0.55rem; border-radius: 9999px;">0 books detected</span>
+              </div>
+              <div id="photoSaleMatchStats" style="font-size: 0.82rem; color: #334155; line-height: 1.4;">
+                <!-- Internal library match stats -->
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" id="btnRetakePhotoSale" style="font-size: 0.8rem; font-weight: 600;">
+              🔄 Change Photo
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Empty Cart View -->

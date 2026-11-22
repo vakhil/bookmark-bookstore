@@ -536,6 +536,40 @@ def _app_dispatch(environ, start_response):
                 cand["image_hash"] = img_hash
                 return json_response(start_response, cand)
 
+        # Photo Scanning for Cart / Selling (Upload a photo of books being sold)
+        elif path == "/api/cart/scan-photo":
+            image_data = body.get("image_data", "")
+            if not image_data:
+                return json_response(start_response, {"error": "Image data is required."}, status=400)
+            google_key = body.get("google_api_key", None)
+            books = ocr_engine.scan_books_from_photo(image_data=image_data, google_api_key=google_key)
+            return json_response(start_response, {"success": True, "books": books, "count": len(books)})
+
+        # Photo Sell Workflow (Sell books identified from photo, remove 1 location for internal books, ignore missing)
+        elif path == "/api/cart/sell-photo-books":
+            items = body.get("books", [])
+            buyer_name = body.get("buyer_name", "")
+            buyer_phone = body.get("buyer_phone") or body.get("phone", "")
+            total_amount = body.get("total_amount")
+            notes = body.get("notes", "")
+            user = body.get("user", "Staff")
+
+            if not items:
+                return json_response(start_response, {"error": "No books provided in photo sale."}, status=400)
+
+            res = database.sell_photo_scanned_books(
+                items=items,
+                buyer_name=buyer_name,
+                buyer_phone=buyer_phone,
+                total_amount=total_amount,
+                user=user,
+                notes=notes
+            )
+            if "error" in res:
+                return json_response(start_response, res, status=400)
+            else:
+                return json_response(start_response, res)
+
         elif path == "/api/sync/trigger":
             res = sheets_sync.process_outbox_queue()
             return json_response(start_response, res)

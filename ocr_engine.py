@@ -30,10 +30,7 @@ def is_valid_google_key(key: Optional[str]) -> bool:
     return len(k) >= 15
 
 def get_google_api_key() -> str:
-    """Gets Google API key from environment or server-side config file."""
-    env_key = (os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")).strip()
-    if is_valid_google_key(env_key):
-        return env_key
+    """Gets Google API key from server-side config file or environment."""
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -43,6 +40,9 @@ def get_google_api_key() -> str:
                     return cand
         except Exception:
             pass
+    env_key = (os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")).strip()
+    if is_valid_google_key(env_key):
+        return env_key
     return ""
 
 AUTHOR_PREFIXES = ["by", "edited by", "author:", "written by", "translated by", "compiled by"]
@@ -166,7 +166,7 @@ def call_google_gemini_multimodal(image_b64: str, api_key: str) -> Optional[Dict
     else:
         mime_type = "image/jpeg"
 
-    models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
     prompt = """You are an automated bookstore scanner. Look at this book cover or spine photograph.
 Identify the exact:
 1. "title": The main book title.
@@ -372,21 +372,20 @@ def call_google_gemini_stack(image_b64: str, api_key: str) -> Optional[List[Dict
     else:
         mime_type = "image/jpeg"
 
-    models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
     prompt = """You are an automated bookstore inventory scanner.
-Look very closely at this photograph of books stacked one on top of each other (or a row of books on a shelf).
-Count and extract EVERY physical book layer in the stack from TOP to BOTTOM, including multiple copies of the same book!
-For EVERY distinct physical book layer visible, extract:
+Look very closely at this photograph of one or more books (whether stacked on top of each other, laid out side by side, in a pile, or a single book cover/spine).
+Extract EVERY distinct physical book visible!
+For EVERY distinct book visible, extract:
 - "title": Clean, full book title as written on the spine or cover.
 - "author": Author or editor name(s) if visible or known.
-- "genre": Likely category (e.g. Textbook, Psychology, Self-Help, Fiction, Business, Science, Philosophy, History).
+- "genre": Likely category (e.g. Fiction, Non-Fiction, Self-Help, Business, Philosophy, History, Science, Psychology, Religion & Spirituality).
 - "language": Language (default "English").
 - "confidence": "high", "medium", or "low".
 
 Return strictly a valid JSON array of objects:
 [
-  {"title": "Title 1", "author": "Author 1", "genre": "Textbook", "language": "English", "confidence": "high"},
-  {"title": "Title 2", "author": "Author 2", "genre": "Psychology", "language": "English", "confidence": "high"}
+  {"title": "Title 1", "author": "Author 1", "genre": "Fiction", "language": "English", "confidence": "high"}
 ]
 Return only the JSON array with no extra text or markdown formatting."""
 
@@ -760,6 +759,86 @@ def extract_visual_cover_info(cleaned_lines: List[str]) -> Tuple[str, str]:
 
     return detected_title, detected_author
 
+def scan_books_from_photo(
+    image_data: str,
+    google_api_key: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Primary photo scanning function for the Bookstore Point-of-Sale / Cart:
+    1. Sends photo of the book(s) being sold/taken to Gemini Vision AI (or Indra).
+    2. Extracts all visible books with title, author, genre.
+    3. Cross-references each detected book with the internal library inventory:
+       - If found internally: attaches book_id, current shelf location, and marks found_internally = True.
+       - If not found internally: marks found_internally = False, keeps title, author, genre.
+    """
+    api_key = google_api_key if is_valid_google_key(google_api_key) else get_google_api_key()
+    detected_list = []
+
+    # 1. Try Gemini Vision Stack scanner
+    if image_data and api_key:
+        stack_res = call_google_gemini_stack(image_data, api_key)
+        if stack_res and isinstance(stack_res, list):
+            detected_list = stack_res
+
+    # 2. If Gemini didn't return list, try single multimodal vision
+    if not detected_list and image_data and api_key:
+        single_res = call_google_gemini_multimodal(image_data, api_key)
+        if single_res and single_res.get("title"):
+            detected_list = [single_res]
+
+    # 3. If still empty, try Indra neural OCR if available
+    if not detected_list and image_data and is_indra_available():
+        indra_ocr = run_indra_ocr_on_image(image_data)
+        if indra_ocr:
+            detected_list = segment_books_from_indra_ocr(indra_ocr)
+
+    final_books = []
+    for idx, item in enumerate(detected_list):
+        raw_title = (item.get("title") or "").strip()
+        raw_author = (item.get("author") or "").strip()
+        raw_genre = (item.get("genre") or "").strip()
+        if not raw_title:
+            continue
+
+        # Look up in internal library inventory
+        matched = database.find_internal_book_for_sale(raw_title, raw_author)
+
+        if matched and matched.get("found_internally"):
+            final_books.append({
+                "scan_id": f"scan-{idx+1}",
+                "title": matched.get("title") or raw_title,
+                "author": matched.get("author") or raw_author or "Author",
+                "genre": matched.get("genre") or raw_genre or "General Non-Fiction",
+                "found_internally": True,
+                "book_id": matched.get("book_id"),
+                "rack": matched.get("rack"),
+                "column_num": matched.get("column_num"),
+                "position": matched.get("position"),
+                "location_english": matched.get("location_english") or "Unassigned shelf",
+                "has_location": matched.get("has_location", False),
+                "image_url": matched.get("image_url") or "",
+                "selling_price": 0.0
+            })
+        else:
+            # Not found in internal library: It's okay! We still allow selling and adding price
+            final_books.append({
+                "scan_id": f"scan-{idx+1}",
+                "title": raw_title,
+                "author": raw_author or "Author",
+                "genre": raw_genre or "General Non-Fiction",
+                "found_internally": False,
+                "book_id": None,
+                "rack": None,
+                "column_num": None,
+                "position": None,
+                "location_english": "Not in internal library (OK to sell)",
+                "has_location": False,
+                "image_url": "",
+                "selling_price": 0.0
+            })
+
+    return final_books
+
 def detect_multiple_books_in_image(
     raw_text_blocks: List[str],
     batch_image_hashes: Optional[List[str]] = None,
@@ -1009,7 +1088,7 @@ def predict_genre_with_llm(title: str, author: str = "") -> str:
             "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
         }
 
-        models_to_try = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
+        models_to_try = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
         for model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:

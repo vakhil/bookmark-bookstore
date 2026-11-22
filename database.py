@@ -1765,6 +1765,275 @@ def sell_books_bulk(
             "message": f"Successfully completed sale for {len(successful_sales)} books."
         }
 
+def find_internal_book_for_sale(query_title: str, query_author: str = "") -> Optional[Dict[str, Any]]:
+    """
+    Searches internal library inventory for an exact or fuzzy match with Available copies.
+    Returns the book details and the best available copy location to remove on sale.
+    """
+    import search_engine
+    clean_t = (query_title or "").strip()
+    if not clean_t:
+        return None
+
+    # Step 1: Direct SQL exact match
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT book_id, title, author, genre, simple_genre, rack, column_num, position, location_english, status, image_url
+               FROM books 
+               WHERE lower(trim(title)) = lower(trim(?)) 
+               ORDER BY CASE WHEN status = 'Available' THEN 0 ELSE 1 END,
+                        CASE WHEN rack IS NOT NULL THEN 0 ELSE 1 END,
+                        id ASC
+               LIMIT 1""",
+            (clean_t,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+    if row:
+        b = dict(row)
+        return {
+            "found_internally": True,
+            "book_id": b.get("book_id"),
+            "title": b.get("title"),
+            "author": b.get("author") or query_author,
+            "genre": b.get("genre") or b.get("simple_genre") or "General Non-Fiction",
+            "rack": b.get("rack"),
+            "column_num": b.get("column_num"),
+            "position": b.get("position"),
+            "location_english": b.get("location_english") or "",
+            "status": b.get("status"),
+            "image_url": b.get("image_url") or "",
+            "has_location": bool(b.get("rack") is not None)
+        }
+
+    # Step 2: Use search_engine for smart fuzzy / keyword matching
+    try:
+        sr = search_engine.search_books(clean_t)
+        best_match = None
+        if sr.get("exact_matches"):
+            best_match = sr["exact_matches"][0]
+        elif sr.get("possible_matches"):
+            top = sr["possible_matches"][0]
+            if top.get("score", 0) >= 0.70:
+                best_match = top
+
+        if best_match:
+            copies = best_match.get("copies") or []
+            # Find an Available copy first, preferably with location
+            avail_copy = None
+            for c in copies:
+                if c.get("status") == "Available":
+                    avail_copy = c
+                    if c.get("rack") is not None:
+                        break
+            if not avail_copy and copies:
+                avail_copy = copies[0]
+
+            return {
+                "found_internally": True,
+                "book_id": avail_copy.get("book_id") if avail_copy else None,
+                "title": best_match.get("title"),
+                "author": best_match.get("author") or query_author,
+                "genre": best_match.get("genre") or best_match.get("simple_genre") or "General Non-Fiction",
+                "rack": avail_copy.get("rack") if avail_copy else None,
+                "column_num": avail_copy.get("column_num") if avail_copy else None,
+                "position": avail_copy.get("position") if avail_copy else None,
+                "location_english": avail_copy.get("location_english") if avail_copy else "",
+                "status": avail_copy.get("status") if avail_copy else "Available",
+                "image_url": best_match.get("image_url") or "",
+                "has_location": bool(avail_copy and avail_copy.get("rack") is not None)
+            }
+    except Exception as e:
+        print(f"Notice matching internal book: {e}")
+
+    return None
+
+def sell_photo_scanned_books(
+    items: List[Dict[str, Any]],
+    buyer_name: str = "",
+    buyer_phone: str = "",
+    total_amount: Optional[float] = None,
+    user: str = "Staff",
+    notes: str = ""
+) -> Dict[str, Any]:
+    """
+    Handles checkout and sale for books scanned via photograph.
+    For each item:
+      - If found internally in inventory:
+          Marks book as 'SOLD OUT' and CLEARS/REMOVES its physical location (rack, column_num, position, location_english = NULL)
+          so the shelf slot is immediately freed up for new inventory.
+      - If not found internally:
+          Records transaction smoothly in sales ledger without caring/failing about missing inventory record.
+      - Calculates total price, logs sales transactions, customer order, and audit log.
+    """
+    if not items:
+        return {"error": "No books provided to sell."}
+
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.now().isoformat()
+        today_code = datetime.now().strftime("%Y%m%d")
+
+        order_id = generate_unique_order_id(cursor, today_code)
+
+        # Pre-compute next transaction reference counter
+        cursor.execute("SELECT transaction_ref FROM sales_transactions WHERE transaction_ref LIKE ?", (f"TX-{today_code}-%",))
+        tx_rows = list(cursor.fetchall())
+        try:
+            cursor.execute("SELECT order_id FROM customer_orders WHERE order_id LIKE ?", (f"TX-{today_code}-%",))
+            tx_rows.extend(cursor.fetchall())
+        except Exception:
+            pass
+
+        max_tx_num = 0
+        for r in tx_rows:
+            ref = list(r.values())[0] if isinstance(r, dict) and r else (r[0] if not isinstance(r, dict) else str(r))
+            try:
+                num = int(str(ref).split("-")[-1])
+                if num > max_tx_num:
+                    max_tx_num = num
+            except (ValueError, IndexError):
+                pass
+        tx_counter = max_tx_num + 1
+
+        successful_sales = []
+        calculated_total = 0.0
+
+        for item in items:
+            title = (item.get("title") or "").strip()
+            if not title:
+                continue
+
+            author = (item.get("author") or "Author").strip()
+            genre = (item.get("genre") or "General Non-Fiction").strip()
+            book_id = (item.get("book_id") or "").strip()
+            found_internally = bool(item.get("found_internally"))
+
+            price = item.get("selling_price")
+            price_val = 0.0
+            if price is not None and str(price).strip() != "":
+                try:
+                    price_val = float(price)
+                except ValueError:
+                    price_val = 0.0
+
+            item_notes = (item.get("notes") or notes or "").strip()
+            tx_ref = f"TX-{today_code}-{tx_counter:04d}"
+            tx_counter += 1
+
+            cleared_location = ""
+            actual_bid = book_id
+
+            if found_internally and book_id:
+                # 1. Check if copy exists in database
+                cursor.execute("SELECT * FROM books WHERE book_id = ?", (book_id,))
+                book_row = cursor.fetchone()
+                if book_row:
+                    b_dict = dict(book_row)
+                    cleared_location = b_dict.get("location_english") or (
+                        f"Rack {b_dict.get('rack')} Col {b_dict.get('column_num')} Pos {b_dict.get('position')}"
+                        if b_dict.get("rack") else ""
+                    )
+                    # Mark SOLD OUT and REMOVE any physical location so shelf space is freed
+                    cursor.execute("""
+                        UPDATE books SET
+                            status = 'SOLD OUT',
+                            selling_price = ?,
+                            rack = NULL,
+                            column_num = NULL,
+                            position = NULL,
+                            location_english = NULL,
+                            updated_at = ?
+                        WHERE book_id = ?
+                    """, (price_val, now_iso, book_id))
+
+                    # Audit log for removing location and marking sold
+                    cursor.execute("""
+                        INSERT INTO audit_log (action, book_id, before_data, after_data, timestamp, user, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        "SELL_PHOTO_BOOK_INTERNAL", book_id,
+                        json.dumps({"status": b_dict.get("status"), "rack": b_dict.get("rack"), "column_num": b_dict.get("column_num"), "position": b_dict.get("position"), "location": cleared_location}),
+                        json.dumps({"status": "SOLD OUT", "location": None, "selling_price": price_val, "transaction_ref": tx_ref}),
+                        now_iso, user, f"Photo sell: Book sold and location freed up ({cleared_location})"
+                    ))
+            elif not actual_bid:
+                # Book was not found in internal catalog - don't care, generate ad-hoc identifier
+                actual_bid = f"EXT-{tx_ref.replace('TX-', '')}"
+
+            # Record sale transaction in sales_transactions table
+            cursor.execute("""
+                INSERT INTO sales_transactions (
+                    transaction_ref, order_id, book_id, title, author, genre,
+                    selling_price, sold_at, sold_by, notes, status, synced_to_sheets
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', 0)
+            """, (
+                tx_ref, order_id, actual_bid, title, author, genre,
+                price_val, now_iso, user, item_notes
+            ))
+
+            calculated_total += price_val
+            successful_sales.append({
+                "book_id": actual_bid,
+                "title": title,
+                "author": author,
+                "genre": genre,
+                "found_internally": found_internally,
+                "selling_price": price_val,
+                "transaction_ref": tx_ref,
+                "cleared_location": cleared_location
+            })
+
+        # Calculate final total
+        if total_amount is not None and str(total_amount).strip() != "":
+            try:
+                final_total = float(total_amount)
+            except (ValueError, TypeError):
+                final_total = calculated_total
+        else:
+            final_total = calculated_total
+
+        # Insert customer order record
+        cursor.execute("""
+            INSERT OR REPLACE INTO customer_orders (
+                order_id, buyer_name, buyer_phone, total_amount, created_at, status, notes, sold_by
+            ) VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?)
+        """, (
+            order_id, buyer_name.strip(), buyer_phone.strip(), round(final_total, 2),
+            now_iso, notes.strip(), user
+        ))
+
+        conn.commit()
+        conn.close()
+
+    # Invalidate search cache so freed shelf location & sold status reflect instantly
+    try:
+        import search_engine
+        search_engine.invalidate_search_cache()
+    except Exception:
+        pass
+
+    cleared_locations_summary = [
+        {"book_id": s["book_id"], "title": s["title"], "cleared_location": s["cleared_location"]}
+        for s in successful_sales if s.get("cleared_location")
+    ]
+
+    return {
+        "success": True,
+        "order_id": order_id,
+        "count": len(successful_sales),
+        "total_amount": round(final_total, 2),
+        "buyer_name": buyer_name.strip(),
+        "buyer_phone": buyer_phone.strip(),
+        "sold_books": successful_sales,
+        "cleared_locations": cleared_locations_summary,
+        "message": f"Successfully sold {len(successful_sales)} books. Total: ₹{final_total:,.2f}"
+    }
+
 def record_manual_sale(
     title: str,
     selling_price: float,
