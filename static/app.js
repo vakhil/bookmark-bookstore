@@ -6293,6 +6293,8 @@ function clearActiveSavedCustomer() {
   window.activeSavedCustomerId = null;
   const banner = document.getElementById('activeSavedCustomerBanner');
   if (banner) banner.style.display = 'none';
+  const photoSection = document.getElementById('photoSaleSection');
+  if (photoSection) photoSection.style.display = 'none';
 }
 
 function selectSavedCustomerForPhoto(cust) {
@@ -6306,6 +6308,11 @@ function selectSavedCustomerForPhoto(cust) {
     totalInp.value = parseFloat(cust.total_price);
   }
 
+  const photoSection = document.getElementById('photoSaleSection');
+  if (photoSection) {
+    photoSection.style.display = 'block';
+  }
+
   const banner = document.getElementById('activeSavedCustomerBanner');
   const label = document.getElementById('activeSavedCustomerLabel');
   if (banner && label) {
@@ -6314,7 +6321,6 @@ function selectSavedCustomerForPhoto(cust) {
     banner.style.display = 'flex';
   }
 
-  const photoSection = document.getElementById('photoSaleSection');
   if (photoSection) {
     photoSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }

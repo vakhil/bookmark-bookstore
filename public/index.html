@@ -291,46 +291,19 @@
         </div>
       </div>
 
-      <!-- MAIN OPTION: UPLOAD PHOTO OF BOOKS TAKEN / SOLD -->
-      <div id="photoSaleSection" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%); border: 2px solid #86efac; border-radius: 16px; padding: 1.35rem; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.1);">
-        <div id="activeSavedCustomerBanner" style="display: none; margin-bottom: 0.85rem; padding: 0.65rem 0.9rem; background: #dbeafe; border: 1.5px solid #3b82f6; border-radius: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+      <!-- PHOTO SCAN STATUS & PREVIEW (SHOWN WHEN ADDING PHOTO FOR A SAVED CUSTOMER) -->
+      <input type="file" id="photoSaleFileInput" accept="image/*" capture="environment" style="display: none;">
+      <div id="photoSaleSection" class="clean-card" style="display: none; margin-bottom: 1.25rem; background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%); border: 2px solid #86efac; border-radius: 16px; padding: 1.15rem; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.1);">
+        <div id="activeSavedCustomerBanner" style="display: none; margin-bottom: 0.5rem; padding: 0.65rem 0.9rem; background: #dbeafe; border: 1.5px solid #3b82f6; border-radius: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
           <div style="font-size: 0.88rem; color: #1e3a8a; font-weight: 700;">
             👤 Adding Photo for: <span id="activeSavedCustomerLabel" style="font-weight: 900;"></span>
           </div>
-          <button type="button" id="btnClearActiveSavedCustomer" class="btn btn-sm btn-outline" style="font-size: 0.76rem; padding: 0.2rem 0.55rem; border-color: #3b82f6; color: #1e3a8a;">
-            ✕ Clear Selection
-          </button>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1rem; border-bottom: 1px solid #dcfce7; padding-bottom: 0.75rem;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 1.4rem;">📷</span>
-              <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #14532d;">
-                Snap or Upload Photo of Books Being Sold
-              </h3>
-              <span style="font-size: 0.74rem; font-weight: 800; background: #059669; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; text-transform: uppercase;">
-                Primary Method
-              </span>
-            </div>
-            <p style="margin: 0.3rem 0 0; font-size: 0.85rem; color: #166534; line-height: 1.45;">
-              Snap or upload a photo of the book covers or spines being sold/taken. We will automatically match each book with your internal library, display its current rack location, total all prices, and free up the physical location upon sale. (If a book is not found in the library, that's completely fine—it can still be priced and sold!)
-            </p>
-          </div>
-        </div>
-
-        <!-- Camera / File Upload Drag & Drop Area -->
-        <div class="photo-upload-dropzone" id="photoSaleDropzone" style="border: 2px dashed #86efac; background: #ffffff; border-radius: 12px; padding: 1.5rem 1rem; text-align: center; cursor: pointer; transition: all 0.2s ease;">
-          <input type="file" id="photoSaleFileInput" accept="image/*" capture="environment" style="display: none;">
-          <div style="font-size: 2.4rem; margin-bottom: 0.4rem;">📸</div>
-          <div style="font-size: 1rem; font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">
-            Click to Capture / Upload Photo of Books
-          </div>
-          <div style="font-size: 0.82rem; color: #64748b;">
-            Supports camera capture on mobile/tablets or image files (JPG, PNG, HEIC) &bull; Single or multiple book covers/spines
-          </div>
-          <div style="margin-top: 0.85rem; display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm btn-primary" onclick="document.getElementById('photoSaleFileInput').click()" style="background: #10b981; border: none; font-weight: 700; padding: 0.5rem 1.2rem;">
-              📷 Take / Choose Photo
+          <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button type="button" class="btn btn-sm btn-primary" onclick="document.getElementById('photoSaleFileInput').click()" style="background: #10b981; border: none; font-size: 0.78rem; font-weight: 700; padding: 0.3rem 0.7rem;">
+              📷 Choose / Retake Photo
+            </button>
+            <button type="button" id="btnClearActiveSavedCustomer" class="btn btn-sm btn-outline" style="font-size: 0.76rem; padding: 0.25rem 0.55rem; border-color: #3b82f6; color: #1e3a8a;">
+              ✕ Clear
             </button>
           </div>
         </div>
