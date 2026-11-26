@@ -320,7 +320,7 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             multiple = body.get("multiple", False) or body.get("spine_mode", False)
             image_data = body.get("image_data", "")
             batch_hashes = body.get("batch_hashes", [])
-            engine = body.get("engine", "indra")
+            engine = body.get("engine", "gemini")
 
             google_key = body.get("google_api_key", "")
             img_hash = ocr_engine.compute_image_hash(image_data) if image_data else ""

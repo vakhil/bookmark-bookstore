@@ -411,9 +411,9 @@ async function processCoverSearchImage(fileOrB64, fallbackName = 'cover.jpg') {
     }
 
     const searchEngineRadio = document.querySelector('input[name="searchOcrEngine"]:checked');
-    const chosenEngine = searchEngineRadio ? searchEngineRadio.value : 'indra';
+    const chosenEngine = 'gemini';
 
-    input.value = `📚 Reading with ${chosenEngine === 'indra' ? 'Indra OCR' : 'Gemini'}...`;
+    input.value = '📚 Reading with Gemini...';
     const ocrRes = await fetch('/api/books/ocr-extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2216,14 +2216,14 @@ function initPictureAdd() {
     if (ocrStatus) ocrStatus.textContent = `Processing ${fileList.length} photo(s)...`;
 
     const picEngineRadio = document.querySelector('input[name="pictureOcrEngine"]:checked');
-    const chosenPicEngine = picEngineRadio ? picEngineRadio.value : 'indra';
+    const chosenPicEngine = 'gemini';
 
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
       try {
         const downscaledB64 = await downscaleImage(file, 1200, 0.85);
         if (previewImg) previewImg.src = downscaledB64;
-        if (ocrStatus) ocrStatus.textContent = `⚡ Reading book photo ${i + 1} of ${fileList.length} with ${chosenPicEngine === 'indra' ? 'Indra OCR' : 'Gemini'}...`;
+        if (ocrStatus) ocrStatus.textContent = `✨ Reading book photo ${i + 1} of ${fileList.length} with Gemini...`;
 
         const res = await fetch('/api/books/ocr-extract', {
           method: 'POST',
@@ -3078,9 +3078,9 @@ async function processBookImageOCR(imageDataUrl, filenameHint = '') {
   }
 
   if (progressFill) progressFill.style.width = '85%';
-  if (ocrStatus) ocrStatus.textContent = '⚡ Analyzing book cover with Indra OCR...';
+  if (ocrStatus) ocrStatus.textContent = '✨ Analyzing book cover with Gemini...';
 
-  // 3. Server-side Recognition with Indra OCR (preferred)
+  // 3. Server-side Recognition with Gemini AI
   try {
     const res = await fetch('/api/books/ocr-extract', {
       method: 'POST',
@@ -3088,7 +3088,7 @@ async function processBookImageOCR(imageDataUrl, filenameHint = '') {
       body: JSON.stringify({
         raw_text: payloadText,
         image_data: imageDataUrl,
-        engine: 'indra'
+        engine: 'gemini'
       })
     });
     const cand = await res.json();
@@ -3598,10 +3598,10 @@ async function processAllStackPhotos() {
   let accumulatedFromShots = [];
   const seenTitlesInBatch = new Set();
 
-  // Selected engine: gemini vs indra
+  // Selected engine: gemini
   const selectedEngineRadio = document.querySelector('input[name="stackOcrEngine"]:checked');
   const chosenEngine = selectedEngineRadio ? selectedEngineRadio.value : 'gemini';
-  const engineLabel = chosenEngine === 'indra' ? 'Indra OCR' : 'Gemini AI Vision';
+  const engineLabel = 'Gemini AI Vision';
 
   // Helper to deduplicate books found in overlapping close-up photos of the same stack
   function deduplicateCandidate(cand) {
@@ -4182,14 +4182,14 @@ async function processPosSearchImage(fileOrB64, fallbackName = 'cover.jpg') {
       }
     }
 
-    searchInput.value = '⚡ Reading cover with Indra OCR...';
+    searchInput.value = '✨ Reading cover with Gemini...';
     const ocrRes = await fetch('/api/books/ocr-extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         raw_text: clientOcrText || fallbackName.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " "),
         image_data: base64Data,
-        engine: 'indra'
+        engine: 'gemini'
       })
     });
     const cand = await ocrRes.json();
@@ -4218,7 +4218,7 @@ async function processPosBatchAFile(fileOrBase64, filename = 'scan.jpg') {
   const notice = document.getElementById('posBatchAStatusNotice');
   if (notice) {
     notice.style.display = 'block';
-    notice.textContent = '⚡ Reading book cover/spine with Indra OCR...';
+    notice.textContent = '✨ Reading book cover/spine with Gemini...';
   }
 
   try {
@@ -4233,7 +4233,7 @@ async function processPosBatchAFile(fileOrBase64, filename = 'scan.jpg') {
       body: JSON.stringify({
         image_data: base64Data,
         raw_text: filename.replace(/\.[^/.]+$/, "").replace(/[_\-]/g, " "),
-        engine: 'indra'
+        engine: 'gemini'
       })
     });
     const cand = await ocrRes.json();
@@ -4299,7 +4299,7 @@ async function processPosStackPhoto(fileOrBase64, filename = 'stack.jpg') {
   if (previewWrap) previewWrap.style.display = 'block';
   if (previewImg) previewImg.src = base64Data;
   posStackCountB++;
-  if (statusLbl) statusLbl.textContent = `⚡ Reading Stack #${posStackCountB} to sell with Indra OCR (spines top to bottom)...`;
+  if (statusLbl) statusLbl.textContent = `✨ Reading Stack #${posStackCountB} to sell with Gemini (spines top to bottom)...`;
 
   try {
     const res = await fetch('/api/books/ocr-extract', {
@@ -4309,7 +4309,7 @@ async function processPosStackPhoto(fileOrBase64, filename = 'stack.jpg') {
         multiple: true,
         spine_mode: true,
         image_data: base64Data,
-        engine: 'indra'
+        engine: 'gemini'
       })
     });
     const data = await res.json();
