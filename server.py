@@ -372,8 +372,9 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
         elif path == "/api/customers/saved":
             name = body.get("name") or body.get("customer_name") or ""
             phone = body.get("phone") or body.get("customer_phone") or ""
+            total_price = body.get("total_price") if body.get("total_price") is not None else body.get("price")
             notes = body.get("notes", "")
-            res = database.save_customer_profile(name=name, phone=phone, notes=notes)
+            res = database.save_customer_profile(name=name, phone=phone, total_price=total_price, notes=notes)
             if "error" in res:
                 self._send_json(res, 400)
             else:

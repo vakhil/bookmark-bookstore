@@ -247,23 +247,30 @@
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 0.85rem; border-bottom: 1px solid #dbeafe; padding-bottom: 0.65rem;">
           <div>
             <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #1e3a8a; display: flex; align-items: center; gap: 0.45rem;">
-              <span>👤</span> Step 1: Save Customer Phone &amp; Name
+              <span>👤</span> Step 1: Save Customer Phone, Name &amp; Total Price
             </h3>
             <p style="margin: 0.2rem 0 0; font-size: 0.83rem; color: #1e40af;">
-              Save the buyer's phone number and name now. Then tap <b>📸 Add Photo</b> on their entry anytime to scan the books and remove them from the racks.
+              Save the buyer's phone number, name, and total price charged now. Then tap <b>📸 Add Photo</b> on their entry anytime to scan the books and remove them from the racks.
             </p>
           </div>
         </div>
 
         <!-- Quick Save Customer Form -->
         <div style="display: flex; gap: 0.65rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem;">
-          <div style="flex: 1; min-width: 170px;">
+          <div style="flex: 1; min-width: 150px;">
             <label for="savedCustPhone" style="display: block; font-size: 0.78rem; font-weight: 700; color: #1e3a8a; margin-bottom: 0.25rem;">Phone Number</label>
             <input type="tel" id="savedCustPhone" class="form-control" placeholder="e.g. 9876543210" style="width: 100%; border-radius: 8px; border: 1px solid #93c5fd; padding: 0.52rem 0.75rem; font-size: 0.92rem;">
           </div>
-          <div style="flex: 1; min-width: 170px;">
+          <div style="flex: 1; min-width: 150px;">
             <label for="savedCustName" style="display: block; font-size: 0.78rem; font-weight: 700; color: #1e3a8a; margin-bottom: 0.25rem;">Customer Name</label>
             <input type="text" id="savedCustName" class="form-control" placeholder="e.g. Rahul Sharma" style="width: 100%; border-radius: 8px; border: 1px solid #93c5fd; padding: 0.52rem 0.75rem; font-size: 0.92rem;">
+          </div>
+          <div style="flex: 0.85; min-width: 150px;">
+            <label for="savedCustPrice" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; font-weight: 700; color: #064e3b; margin-bottom: 0.25rem;">
+              <span>Total Price (₹)</span>
+              <span style="font-size: 0.68rem; color: #dc2626; background: #fee2e2; padding: 0.05rem 0.35rem; border-radius: 4px; font-weight: 800;">Required</span>
+            </label>
+            <input type="number" step="any" min="1" required id="savedCustPrice" class="form-control" placeholder="e.g. 500" style="width: 100%; border-radius: 8px; border: 1.5px solid #10b981; padding: 0.52rem 0.75rem; font-size: 0.95rem; font-weight: 800; color: #064e3b; background: #f0fdf4;">
           </div>
           <button type="button" id="btnSaveCustomerProfile" class="btn btn-primary" style="background: #2563eb; border: none; padding: 0.55rem 1.2rem; font-weight: 800; border-radius: 8px; height: 40px; cursor: pointer;">
             💾 Save Customer

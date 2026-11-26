@@ -131,6 +131,7 @@ def ensure_schema(conn):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     customer_name TEXT NOT NULL,
                     customer_phone TEXT NOT NULL,
+                    total_price REAL DEFAULT 0.0,
                     notes TEXT DEFAULT '',
                     status TEXT DEFAULT 'PENDING',
                     order_id TEXT DEFAULT '',
@@ -138,6 +139,10 @@ def ensure_schema(conn):
                     updated_at TEXT NOT NULL
                 )
             """)
+            cursor.execute("PRAGMA table_info(saved_customers)")
+            sc_cols = [c["name"] if hasattr(c, "__getitem__") and not isinstance(c, tuple) else c[1] for c in cursor.fetchall()]
+            if sc_cols and "total_price" not in sc_cols:
+                cursor.execute("ALTER TABLE saved_customers ADD COLUMN total_price REAL DEFAULT 0.0")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sc_status ON saved_customers(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sc_phone ON saved_customers(customer_phone)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sc_created_at ON saved_customers(created_at DESC)")
@@ -610,6 +615,7 @@ def init_db(force_reseed: bool = False):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 customer_name TEXT NOT NULL,
                 customer_phone TEXT NOT NULL,
+                total_price REAL DEFAULT 0.0,
                 notes TEXT DEFAULT '',
                 status TEXT DEFAULT 'PENDING',
                 order_id TEXT DEFAULT '',
@@ -2113,29 +2119,37 @@ def sell_photo_scanned_books(
         "message": f"Successfully sold {len(successful_sales)} books. Total: ₹{final_total:,.2f}"
     }
 
-def save_customer_profile(name: str, phone: str, notes: str = "") -> Dict[str, Any]:
-    """Saves a customer's name and phone number for deferred photo-sell processing."""
+def save_customer_profile(name: str, phone: str, total_price: Any = None, notes: str = "") -> Dict[str, Any]:
+    """Saves a customer's name, phone number, and total price charged for deferred photo-sell processing."""
     clean_name = (name or "").strip()
     clean_phone = (phone or "").strip()
     clean_notes = (notes or "").strip()
     if not clean_name and not clean_phone:
         return {"error": "Please enter at least a customer name or phone number."}
 
+    try:
+        price_val = round(float(total_price), 2) if total_price is not None and str(total_price).strip() != "" else 0.0
+    except (ValueError, TypeError):
+        price_val = 0.0
+
+    if price_val <= 0:
+        return {"error": "Total price charged to the customer is required and must be greater than 0."}
+
     now_iso = datetime.now().isoformat()
     with db_lock:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO saved_customers (customer_name, customer_phone, notes, status, order_id, created_at, updated_at)
-            VALUES (?, ?, ?, 'PENDING', '', ?, ?)
-        """, (clean_name, clean_phone, clean_notes, now_iso, now_iso))
+            INSERT INTO saved_customers (customer_name, customer_phone, total_price, notes, status, order_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'PENDING', '', ?, ?)
+        """, (clean_name, clean_phone, price_val, clean_notes, now_iso, now_iso))
         new_id = cursor.lastrowid
         conn.commit()
         cursor.execute("SELECT * FROM saved_customers WHERE id = ?", (new_id,))
         row = cursor.fetchone()
         conn.close()
 
-    return {"success": True, "customer": dict(row) if row else {"id": new_id, "customer_name": clean_name, "customer_phone": clean_phone, "status": "PENDING"}}
+    return {"success": True, "customer": dict(row) if row else {"id": new_id, "customer_name": clean_name, "customer_phone": clean_phone, "total_price": price_val, "status": "PENDING"}}
 
 def get_saved_customers(status: Optional[str] = None, query: str = "", limit: int = 100) -> List[Dict[str, Any]]:
     """Lists saved customers (PENDING first, then recent COMPLETED)."""

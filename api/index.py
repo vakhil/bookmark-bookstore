@@ -551,12 +551,13 @@ def _app_dispatch(environ, start_response):
             books = ocr_engine.scan_books_from_photo(image_data=image_data, google_api_key=google_key)
             return json_response(start_response, {"success": True, "books": books, "count": len(books)})
 
-        # Saved Customers (Collect phone number & name first, attach photo later)
+        # Saved Customers (Collect phone number, name & total price first, attach photo later)
         elif path == "/api/customers/saved":
             name = body.get("name") or body.get("customer_name") or ""
             phone = body.get("phone") or body.get("customer_phone") or ""
+            total_price = body.get("total_price") if body.get("total_price") is not None else body.get("price")
             notes = body.get("notes", "")
-            res = database.save_customer_profile(name=name, phone=phone, notes=notes)
+            res = database.save_customer_profile(name=name, phone=phone, total_price=total_price, notes=notes)
             if "error" in res:
                 return json_response(start_response, res, status=400)
             return json_response(start_response, res)

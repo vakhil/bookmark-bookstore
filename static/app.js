@@ -6299,13 +6299,18 @@ function selectSavedCustomerForPhoto(cust) {
   window.activeSavedCustomerId = cust.id;
   const nameInp = document.getElementById('cartBuyerName');
   const phoneInp = document.getElementById('cartBuyerPhone');
+  const totalInp = document.getElementById('cartTotalChargedInput');
   if (nameInp) nameInp.value = cust.customer_name || '';
   if (phoneInp) phoneInp.value = cust.customer_phone || '';
+  if (totalInp && cust.total_price && parseFloat(cust.total_price) > 0) {
+    totalInp.value = parseFloat(cust.total_price);
+  }
 
   const banner = document.getElementById('activeSavedCustomerBanner');
   const label = document.getElementById('activeSavedCustomerLabel');
   if (banner && label) {
-    label.textContent = `${cust.customer_name || 'Customer'} (${cust.customer_phone || 'No phone'})`;
+    const priceTxt = (cust.total_price && parseFloat(cust.total_price) > 0) ? ` — ₹${parseFloat(cust.total_price).toFixed(0)}` : '';
+    label.textContent = `${cust.customer_name || 'Customer'} (${cust.customer_phone || 'No phone'})${priceTxt}`;
     banner.style.display = 'flex';
   }
 
@@ -6347,11 +6352,16 @@ function renderSavedCustomers(filterText = '') {
       ? `<span style="font-size: 0.7rem; font-weight: 800; background: #fef3c7; color: #92400e; padding: 0.12rem 0.45rem; border-radius: 9999px;">PENDING PHOTO</span>`
       : `<span style="font-size: 0.7rem; font-weight: 800; background: #dcfce7; color: #166534; padding: 0.12rem 0.45rem; border-radius: 9999px;">SOLD ${c.order_id ? '(' + escapeHtml(c.order_id) + ')' : ''}</span>`;
 
+    const priceBadge = (c.total_price && parseFloat(c.total_price) > 0)
+      ? `<span style="font-size: 0.78rem; font-weight: 800; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 0.12rem 0.5rem; border-radius: 9999px;">💰 ₹${parseFloat(c.total_price).toFixed(0)}</span>`
+      : '';
+
     row.innerHTML = `
       <div style="min-width: 180px; flex: 1;">
         <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
           <strong style="font-size: 0.92rem; color: #0f172a;">${escapeHtml(c.customer_name || 'Unnamed')}</strong>
           <span style="font-size: 0.86rem; color: #1d4ed8; font-weight: 700;">📞 ${escapeHtml(c.customer_phone || '—')}</span>
+          ${priceBadge}
           ${badge}
         </div>
       </div>
@@ -6405,6 +6415,7 @@ function initSavedCustomersSection() {
   const btnSave = document.getElementById('btnSaveCustomerProfile');
   const phoneInp = document.getElementById('savedCustPhone');
   const nameInp = document.getElementById('savedCustName');
+  const priceInp = document.getElementById('savedCustPrice');
   const searchInp = document.getElementById('savedCustSearchInput');
   const btnClearActive = document.getElementById('btnClearActiveSavedCustomer');
 
@@ -6420,11 +6431,18 @@ function initSavedCustomersSection() {
     btnSave.addEventListener('click', async () => {
       const name = nameInp ? nameInp.value.trim() : '';
       const phone = phoneInp ? phoneInp.value.trim() : '';
+      const rawPrice = priceInp ? parseFloat(priceInp.value.trim()) : NaN;
       if (!name && !phone) {
         alert('Please enter a phone number or customer name to save.');
         if (phoneInp) phoneInp.focus();
         return;
       }
+      if (isNaN(rawPrice) || rawPrice <= 0) {
+        alert('Please enter the Total Price (₹) charged to this customer. Price is required.');
+        if (priceInp) priceInp.focus();
+        return;
+      }
+      const total_price = Math.round(rawPrice * 100) / 100;
 
       btnSave.disabled = true;
       btnSave.textContent = 'Saving...';
@@ -6432,12 +6450,13 @@ function initSavedCustomersSection() {
         const res = await fetch('/api/customers/saved', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone })
+          body: JSON.stringify({ name, phone, total_price })
         });
         const data = await res.json();
         if (res.ok && data.success) {
           if (nameInp) nameInp.value = '';
           if (phoneInp) phoneInp.value = '';
+          if (priceInp) priceInp.value = '';
           await loadSavedCustomers();
         } else {
           alert(data.error || 'Could not save customer.');
