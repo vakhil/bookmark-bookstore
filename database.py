@@ -124,6 +124,27 @@ def ensure_schema(conn):
         except Exception:
             pass
 
+        # Saved customers queue for deferred photo-sell workflow
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS saved_customers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    customer_name TEXT NOT NULL,
+                    customer_phone TEXT NOT NULL,
+                    notes TEXT DEFAULT '',
+                    status TEXT DEFAULT 'PENDING',
+                    order_id TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sc_status ON saved_customers(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sc_phone ON saved_customers(customer_phone)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sc_created_at ON saved_customers(created_at DESC)")
+            conn.commit()
+        except Exception:
+            pass
+
         # High-performance database indices for instant queries and joins
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_book_id ON books(book_id)")
@@ -580,6 +601,20 @@ def init_db(force_reseed: bool = False):
                 password_hash TEXT NOT NULL,
                 role TEXT DEFAULT 'admin',
                 created_at TEXT NOT NULL
+            )
+        """)
+
+        # 9. Saved customers queue for deferred photo-sell workflow
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saved_customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_name TEXT NOT NULL,
+                customer_phone TEXT NOT NULL,
+                notes TEXT DEFAULT '',
+                status TEXT DEFAULT 'PENDING',
+                order_id TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
         """)
 
@@ -1775,35 +1810,41 @@ def sell_books_bulk(
             "message": f"Successfully completed sale for {len(successful_sales)} books."
         }
 
-def find_internal_book_for_sale(query_title: str, query_author: str = "") -> Optional[Dict[str, Any]]:
+def find_internal_book_for_sale(
+    query_title: str,
+    query_author: str = "",
+    exclude_book_ids: Optional[set] = None
+) -> Optional[Dict[str, Any]]:
     """
     Searches internal library inventory for an exact or fuzzy match with Available copies.
-    Returns the book details and the best available copy location to remove on sale.
+    Returns the book details and any available copy location (from any rack) to remove on sale.
     """
     import search_engine
     clean_t = (query_title or "").strip()
     if not clean_t:
         return None
+    excluded = set(exclude_book_ids or ())
 
-    # Step 1: Direct SQL exact match
+    # Step 1: Direct SQL exact match (Available copies only, any rack is fine)
     with db_lock:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
             """SELECT book_id, title, author, genre, simple_genre, rack, column_num, position, location_english, status, image_url
                FROM books 
-               WHERE lower(trim(title)) = lower(trim(?)) 
-               ORDER BY CASE WHEN status = 'Available' THEN 0 ELSE 1 END,
-                        CASE WHEN rack IS NOT NULL THEN 0 ELSE 1 END,
-                        id ASC
-               LIMIT 1""",
+               WHERE lower(trim(title)) = lower(trim(?))
+                 AND status = 'Available'
+               ORDER BY CASE WHEN rack IS NOT NULL THEN 0 ELSE 1 END,
+                        id ASC""",
             (clean_t,)
         )
-        row = cursor.fetchone()
+        rows = cursor.fetchall()
         conn.close()
 
-    if row:
+    for row in rows:
         b = dict(row)
+        if b.get("book_id") in excluded:
+            continue
         return {
             "found_internally": True,
             "book_id": b.get("book_id"),
@@ -1822,40 +1863,38 @@ def find_internal_book_for_sale(query_title: str, query_author: str = "") -> Opt
     # Step 2: Use search_engine for smart fuzzy / keyword matching
     try:
         sr = search_engine.search_books(clean_t)
-        best_match = None
+        candidates = []
         if sr.get("exact_matches"):
-            best_match = sr["exact_matches"][0]
-        elif sr.get("possible_matches"):
-            top = sr["possible_matches"][0]
-            if top.get("score", 0) >= 0.70:
-                best_match = top
+            candidates.extend(sr["exact_matches"])
+        if sr.get("possible_matches"):
+            for top in sr["possible_matches"]:
+                if top.get("score", 0) >= 0.70:
+                    candidates.append(top)
 
-        if best_match:
+        for best_match in candidates:
             copies = best_match.get("copies") or []
-            # Find an Available copy first, preferably with location
+            # Find any Available copy not already excluded, preferring one with a rack
             avail_copy = None
             for c in copies:
-                if c.get("status") == "Available":
+                if c.get("status") == "Available" and c.get("book_id") not in excluded:
                     avail_copy = c
                     if c.get("rack") is not None:
                         break
-            if not avail_copy and copies:
-                avail_copy = copies[0]
-
-            return {
-                "found_internally": True,
-                "book_id": avail_copy.get("book_id") if avail_copy else None,
-                "title": best_match.get("title"),
-                "author": best_match.get("author") or query_author,
-                "genre": best_match.get("genre") or best_match.get("simple_genre") or "General Non-Fiction",
-                "rack": avail_copy.get("rack") if avail_copy else None,
-                "column_num": avail_copy.get("column_num") if avail_copy else None,
-                "position": avail_copy.get("position") if avail_copy else None,
-                "location_english": avail_copy.get("location_english") if avail_copy else "",
-                "status": avail_copy.get("status") if avail_copy else "Available",
-                "image_url": best_match.get("image_url") or "",
-                "has_location": bool(avail_copy and avail_copy.get("rack") is not None)
-            }
+            if avail_copy:
+                return {
+                    "found_internally": True,
+                    "book_id": avail_copy.get("book_id"),
+                    "title": best_match.get("title"),
+                    "author": best_match.get("author") or query_author,
+                    "genre": best_match.get("genre") or best_match.get("simple_genre") or "General Non-Fiction",
+                    "rack": avail_copy.get("rack"),
+                    "column_num": avail_copy.get("column_num"),
+                    "position": avail_copy.get("position"),
+                    "location_english": avail_copy.get("location_english") or "",
+                    "status": avail_copy.get("status") or "Available",
+                    "image_url": best_match.get("image_url") or "",
+                    "has_location": bool(avail_copy.get("rack") is not None)
+                }
     except Exception as e:
         print(f"Notice matching internal book: {e}")
 
@@ -1867,7 +1906,8 @@ def sell_photo_scanned_books(
     buyer_phone: str = "",
     total_amount: Optional[float] = None,
     user: str = "Staff",
-    notes: str = ""
+    notes: str = "",
+    saved_customer_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Handles checkout and sale for books scanned via photograph.
@@ -2017,6 +2057,17 @@ def sell_photo_scanned_books(
             now_iso, notes.strip(), user
         ))
 
+        # Mark saved customer record as COMPLETED if this sale came from a saved customer
+        if saved_customer_id is not None:
+            try:
+                cursor.execute("""
+                    UPDATE saved_customers
+                    SET status = 'COMPLETED', order_id = ?, updated_at = ?
+                    WHERE id = ?
+                """, (order_id, now_iso, int(saved_customer_id)))
+            except Exception as e:
+                print(f"Notice updating saved_customer {saved_customer_id}: {e}")
+
         conn.commit()
         conn.close()
 
@@ -2043,6 +2094,62 @@ def sell_photo_scanned_books(
         "cleared_locations": cleared_locations_summary,
         "message": f"Successfully sold {len(successful_sales)} books. Total: ₹{final_total:,.2f}"
     }
+
+def save_customer_profile(name: str, phone: str, notes: str = "") -> Dict[str, Any]:
+    """Saves a customer's name and phone number for deferred photo-sell processing."""
+    clean_name = (name or "").strip()
+    clean_phone = (phone or "").strip()
+    clean_notes = (notes or "").strip()
+    if not clean_name and not clean_phone:
+        return {"error": "Please enter at least a customer name or phone number."}
+
+    now_iso = datetime.now().isoformat()
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO saved_customers (customer_name, customer_phone, notes, status, order_id, created_at, updated_at)
+            VALUES (?, ?, ?, 'PENDING', '', ?, ?)
+        """, (clean_name, clean_phone, clean_notes, now_iso, now_iso))
+        new_id = cursor.lastrowid
+        conn.commit()
+        cursor.execute("SELECT * FROM saved_customers WHERE id = ?", (new_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+    return {"success": True, "customer": dict(row) if row else {"id": new_id, "customer_name": clean_name, "customer_phone": clean_phone, "status": "PENDING"}}
+
+def get_saved_customers(status: Optional[str] = None, query: str = "", limit: int = 100) -> List[Dict[str, Any]]:
+    """Lists saved customers (PENDING first, then recent COMPLETED)."""
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        sql = "SELECT * FROM saved_customers WHERE 1=1"
+        params = []
+        if status:
+            sql += " AND upper(status) = upper(?)"
+            params.append(status.strip())
+        if query and query.strip():
+            q = f"%{query.strip()}%"
+            sql += " AND (customer_name LIKE ? OR customer_phone LIKE ?)"
+            params.extend([q, q])
+        sql += " ORDER BY CASE WHEN status = 'PENDING' THEN 0 ELSE 1 END, id DESC LIMIT ?"
+        params.append(limit)
+        cursor.execute(sql, params)
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+    return rows
+
+def delete_saved_customer(customer_id: int) -> Dict[str, Any]:
+    """Deletes a saved customer entry by ID."""
+    with db_lock:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM saved_customers WHERE id = ?", (int(customer_id),))
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+    return {"success": True, "deleted": deleted}
 
 def record_manual_sale(
     title: str,

@@ -263,8 +263,58 @@
         </div>
       </div>
 
+      <!-- STEP 1: COLLECT & SAVE CUSTOMER PHONE NUMBER & NAME FIRST -->
+      <div id="savedCustomersSection" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%); border: 2px solid #93c5fd; border-radius: 16px; padding: 1.25rem; box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 0.85rem; border-bottom: 1px solid #dbeafe; padding-bottom: 0.65rem;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #1e3a8a; display: flex; align-items: center; gap: 0.45rem;">
+              <span>👤</span> Step 1: Save Customer Phone &amp; Name
+            </h3>
+            <p style="margin: 0.2rem 0 0; font-size: 0.83rem; color: #1e40af;">
+              Save the buyer's phone number and name now. Then tap <b>📸 Add Photo</b> on their entry anytime to scan the books and remove them from the racks.
+            </p>
+          </div>
+        </div>
+
+        <!-- Quick Save Customer Form -->
+        <div style="display: flex; gap: 0.65rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem;">
+          <div style="flex: 1; min-width: 170px;">
+            <label for="savedCustPhone" style="display: block; font-size: 0.78rem; font-weight: 700; color: #1e3a8a; margin-bottom: 0.25rem;">Phone Number</label>
+            <input type="tel" id="savedCustPhone" class="form-control" placeholder="e.g. 9876543210" style="width: 100%; border-radius: 8px; border: 1px solid #93c5fd; padding: 0.52rem 0.75rem; font-size: 0.92rem;">
+          </div>
+          <div style="flex: 1; min-width: 170px;">
+            <label for="savedCustName" style="display: block; font-size: 0.78rem; font-weight: 700; color: #1e3a8a; margin-bottom: 0.25rem;">Customer Name</label>
+            <input type="text" id="savedCustName" class="form-control" placeholder="e.g. Rahul Sharma" style="width: 100%; border-radius: 8px; border: 1px solid #93c5fd; padding: 0.52rem 0.75rem; font-size: 0.92rem;">
+          </div>
+          <button type="button" id="btnSaveCustomerProfile" class="btn btn-primary" style="background: #2563eb; border: none; padding: 0.55rem 1.2rem; font-weight: 800; border-radius: 8px; height: 40px; cursor: pointer;">
+            💾 Save Customer
+          </button>
+        </div>
+
+        <!-- Saved Customers List -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+            <span style="font-size: 0.85rem; font-weight: 800; color: #1e3a8a;">
+              📋 Saved Customers (<span id="savedCustomersCount">0</span>)
+            </span>
+            <input type="search" id="savedCustSearchInput" placeholder="Filter by name or phone..." style="font-size: 0.8rem; padding: 0.3rem 0.65rem; border: 1px solid #bfdbfe; border-radius: 9999px; background: #ffffff; width: 200px;">
+          </div>
+          <div id="savedCustomersList" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 260px; overflow-y: auto;">
+            <div style="font-size: 0.82rem; color: #64748b; padding: 0.5rem;">Loading saved customers...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- MAIN OPTION: UPLOAD PHOTO OF BOOKS TAKEN / SOLD -->
       <div id="photoSaleSection" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%); border: 2px solid #86efac; border-radius: 16px; padding: 1.35rem; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.1);">
+        <div id="activeSavedCustomerBanner" style="display: none; margin-bottom: 0.85rem; padding: 0.65rem 0.9rem; background: #dbeafe; border: 1.5px solid #3b82f6; border-radius: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div style="font-size: 0.88rem; color: #1e3a8a; font-weight: 700;">
+            👤 Adding Photo for: <span id="activeSavedCustomerLabel" style="font-weight: 900;"></span>
+          </div>
+          <button type="button" id="btnClearActiveSavedCustomer" class="btn btn-sm btn-outline" style="font-size: 0.76rem; padding: 0.2rem 0.55rem; border-color: #3b82f6; color: #1e3a8a;">
+            ✕ Clear Selection
+          </button>
+        </div>
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1rem; border-bottom: 1px solid #dcfce7; padding-bottom: 0.75rem;">
           <div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">

@@ -6164,13 +6164,13 @@ function initCart() {
         }
       }
 
-      // 2. Validate that each individual item in the cart has a positive price and genre added
+      // 2. Validate items (photo-scanned items allow optional/0 price so books can be removed right away)
       for (let i = 0; i < storeCart.length; i++) {
         const item = storeCart[i];
         const itemTitle = cleanBookTitle(item.title || item.book_id || `Book #${i+1}`);
         const priceVal = item.selling_price;
         const num = (priceVal !== undefined && priceVal !== null && priceVal !== '') ? parseFloat(priceVal) : NaN;
-        if (isNaN(num) || num <= 0) {
+        if (!item.is_photo_scan && (isNaN(num) || num <= 0)) {
           alert(`Price has to be added for "${itemTitle}". For any item, price has to be added.`);
           const itemInp = document.querySelector(`.cart-item-price-input[data-bid="${item.book_id}"]`);
           if (itemInp) {
@@ -6181,7 +6181,7 @@ function initCart() {
         }
 
         const genreVal = (item.genre || item.simple_genre || '').trim();
-        if (!genreVal) {
+        if (!genreVal && !item.is_photo_scan) {
           alert(`A genre has to be selected for "${itemTitle}". A selling book should always have a genre.`);
           const genreSel = document.querySelector(`.cart-item-genre-select[data-bid="${item.book_id}"]`);
           if (genreSel) {
@@ -6195,10 +6195,11 @@ function initCart() {
       // Calculate total transaction amount directly from individual book fees
       let totalCost = 0;
       const itemsToSell = storeCart.map(item => {
-        const p = Math.round(parseFloat(item.selling_price) * 100) / 100;
+        const rawP = parseFloat(item.selling_price);
+        const p = (!isNaN(rawP) && rawP > 0) ? Math.round(rawP * 100) / 100 : 0;
         totalCost += p;
         return {
-          book_id: item.book_id,
+          book_id: String(item.book_id || '').startsWith('EXT-SCAN-') ? '' : item.book_id,
           title: item.title,
           author: item.author,
           found_internally: item.found_internally !== false && !String(item.book_id || '').startsWith('EXT-'),
@@ -6223,7 +6224,8 @@ function initCart() {
             buyer_name: buyerName,
             buyer_phone: buyerPhone,
             notes: orderNotes,
-            user: 'Staff'
+            user: 'Staff',
+            saved_customer_id: window.activeSavedCustomerId || null
           })
         });
 
@@ -6260,6 +6262,8 @@ function initCart() {
 
           // Clear cart and input fields
           clearStoreCart();
+          if (typeof clearActiveSavedCustomer === 'function') clearActiveSavedCustomer();
+          if (typeof loadSavedCustomers === 'function') loadSavedCustomers();
           if (buyerNameInput) buyerNameInput.value = '';
           if (buyerPhoneInput) buyerPhoneInput.value = '';
           if (notesInput) notesInput.value = '';
@@ -6308,6 +6312,175 @@ function initCart() {
 
   // Photo Scan for Selling Books (Primary Feature)
   initPhotoSaleUploader();
+  initSavedCustomersSection();
+}
+
+window.activeSavedCustomerId = null;
+let cachedSavedCustomers = [];
+
+function clearActiveSavedCustomer() {
+  window.activeSavedCustomerId = null;
+  const banner = document.getElementById('activeSavedCustomerBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+function selectSavedCustomerForPhoto(cust) {
+  window.activeSavedCustomerId = cust.id;
+  const nameInp = document.getElementById('cartBuyerName');
+  const phoneInp = document.getElementById('cartBuyerPhone');
+  if (nameInp) nameInp.value = cust.customer_name || '';
+  if (phoneInp) phoneInp.value = cust.customer_phone || '';
+
+  const banner = document.getElementById('activeSavedCustomerBanner');
+  const label = document.getElementById('activeSavedCustomerLabel');
+  if (banner && label) {
+    label.textContent = `${cust.customer_name || 'Customer'} (${cust.customer_phone || 'No phone'})`;
+    banner.style.display = 'flex';
+  }
+
+  const photoSection = document.getElementById('photoSaleSection');
+  if (photoSection) {
+    photoSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  const fileInput = document.getElementById('photoSaleFileInput');
+  if (fileInput) {
+    fileInput.click();
+  }
+}
+
+function renderSavedCustomers(filterText = '') {
+  const listEl = document.getElementById('savedCustomersList');
+  const countEl = document.getElementById('savedCustomersCount');
+  if (!listEl) return;
+
+  const q = (filterText || '').trim().toLowerCase();
+  const filtered = cachedSavedCustomers.filter(c => {
+    if (!q) return true;
+    return (c.customer_name || '').toLowerCase().includes(q) || (c.customer_phone || '').toLowerCase().includes(q);
+  });
+
+  if (countEl) countEl.textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div style="font-size: 0.82rem; color: #64748b; padding: 0.6rem; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center;">No saved customers yet. Enter a phone number and name above to save.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = '';
+  filtered.forEach(c => {
+    const isPending = (c.status || 'PENDING').toUpperCase() === 'PENDING';
+    const row = document.createElement('div');
+    row.style.cssText = `display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.65rem 0.85rem; background: ${isPending ? '#ffffff' : '#f8fafc'}; border: 1px solid ${isPending ? '#93c5fd' : '#e2e8f0'}; border-radius: 10px;`;
+
+    const badge = isPending
+      ? `<span style="font-size: 0.7rem; font-weight: 800; background: #fef3c7; color: #92400e; padding: 0.12rem 0.45rem; border-radius: 9999px;">PENDING PHOTO</span>`
+      : `<span style="font-size: 0.7rem; font-weight: 800; background: #dcfce7; color: #166534; padding: 0.12rem 0.45rem; border-radius: 9999px;">SOLD ${c.order_id ? '(' + escapeHtml(c.order_id) + ')' : ''}</span>`;
+
+    row.innerHTML = `
+      <div style="min-width: 180px; flex: 1;">
+        <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
+          <strong style="font-size: 0.92rem; color: #0f172a;">${escapeHtml(c.customer_name || 'Unnamed')}</strong>
+          <span style="font-size: 0.86rem; color: #1d4ed8; font-weight: 700;">📞 ${escapeHtml(c.customer_phone || '—')}</span>
+          ${badge}
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.4rem;">
+        <button type="button" class="btn btn-sm btn-primary btn-cust-add-photo" style="background: #10b981; border: none; font-weight: 700; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer;">
+          📸 ${isPending ? 'Add Photo' : 'Add Another Photo'}
+        </button>
+        <button type="button" class="btn btn-sm btn-outline btn-cust-delete" title="Delete saved customer" style="color: #dc2626; border-color: #fca5a5; padding: 0.3rem 0.55rem; font-size: 0.78rem; cursor: pointer;">
+          🗑️
+        </button>
+      </div>
+    `;
+
+    row.querySelector('.btn-cust-add-photo').addEventListener('click', () => selectSavedCustomerForPhoto(c));
+    row.querySelector('.btn-cust-delete').addEventListener('click', async () => {
+      if (!confirm(`Remove saved customer "${c.customer_name || c.customer_phone}"?`)) return;
+      try {
+        const res = await fetch('/api/customers/saved/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: c.id })
+        });
+        if (res.ok) {
+          if (window.activeSavedCustomerId === c.id) clearActiveSavedCustomer();
+          loadSavedCustomers();
+        }
+      } catch (err) {
+        alert('Error deleting customer: ' + err.message);
+      }
+    });
+
+    listEl.appendChild(row);
+  });
+}
+
+async function loadSavedCustomers() {
+  try {
+    const res = await fetch('/api/customers/saved');
+    const data = await res.json();
+    if (res.ok && data.success) {
+      cachedSavedCustomers = Array.isArray(data.customers) ? data.customers : [];
+      const searchInp = document.getElementById('savedCustSearchInput');
+      renderSavedCustomers(searchInp ? searchInp.value : '');
+    }
+  } catch (err) {
+    console.warn('Could not load saved customers:', err);
+  }
+}
+
+function initSavedCustomersSection() {
+  const btnSave = document.getElementById('btnSaveCustomerProfile');
+  const phoneInp = document.getElementById('savedCustPhone');
+  const nameInp = document.getElementById('savedCustName');
+  const searchInp = document.getElementById('savedCustSearchInput');
+  const btnClearActive = document.getElementById('btnClearActiveSavedCustomer');
+
+  if (btnClearActive) {
+    btnClearActive.addEventListener('click', clearActiveSavedCustomer);
+  }
+
+  if (searchInp) {
+    searchInp.addEventListener('input', () => renderSavedCustomers(searchInp.value));
+  }
+
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      const name = nameInp ? nameInp.value.trim() : '';
+      const phone = phoneInp ? phoneInp.value.trim() : '';
+      if (!name && !phone) {
+        alert('Please enter a phone number or customer name to save.');
+        if (phoneInp) phoneInp.focus();
+        return;
+      }
+
+      btnSave.disabled = true;
+      btnSave.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/customers/saved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, phone })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          if (nameInp) nameInp.value = '';
+          if (phoneInp) phoneInp.value = '';
+          await loadSavedCustomers();
+        } else {
+          alert(data.error || 'Could not save customer.');
+        }
+      } catch (err) {
+        alert('Error saving customer: ' + err.message);
+      } finally {
+        btnSave.disabled = false;
+        btnSave.textContent = '💾 Save Customer';
+      }
+    });
+  }
+
+  loadSavedCustomers();
 }
 
 /**
@@ -6409,20 +6582,23 @@ function initPhotoSaleUploader() {
         let internalMatchCount = 0;
         let extCount = 0;
 
-        for (const b of books) {
+        for (let idx = 0; idx < books.length; idx++) {
+          const b = books[idx];
+          const itemBid = b.book_id || `EXT-SCAN-${Date.now()}-${idx}`;
           // If already in cart, skip adding duplicate copy ID
-          const existing = storeCart.find(item => item.book_id === b.book_id);
+          const existing = storeCart.find(item => item.book_id === itemBid);
           if (!existing) {
             storeCart.push({
-              book_id: b.book_id,
+              book_id: itemBid,
               title: b.title,
               author: b.author || 'Author',
               genre: b.genre || 'General Non-Fiction',
               found_internally: Boolean(b.found_internally),
+              is_photo_scan: true,
               rack: b.rack,
               column_num: b.column_num,
               position: b.position,
-              location_english: b.location_english || (b.found_internally ? 'Location Unassigned' : 'External / Not in Library'),
+              location_english: b.location_english || (b.found_internally ? 'Location Unassigned' : 'External / Not in Library (OK)'),
               selling_price: '',
               image_url: b.image_url || ''
             });

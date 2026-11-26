@@ -135,6 +135,12 @@ def _app_dispatch(environ, start_response):
         elif path == "/api/sync/status":
             return json_response(start_response, {"connected": False, "pending_count": 0, "mode": "local_database"})
 
+        elif path == "/api/customers/saved":
+            status_filter = query_params.get("status", [None])[0]
+            q = query_params.get("q", [""])[0]
+            customers = database.get_saved_customers(status=status_filter, query=q)
+            return json_response(start_response, {"success": True, "customers": customers})
+
         elif path == "/api/genres":
             dist = database.get_genre_distribution()
             return json_response(start_response, {"genres": dist}, cache_control="public, max-age=60, s-maxage=120, stale-while-revalidate=300")
@@ -545,6 +551,23 @@ def _app_dispatch(environ, start_response):
             books = ocr_engine.scan_books_from_photo(image_data=image_data, google_api_key=google_key)
             return json_response(start_response, {"success": True, "books": books, "count": len(books)})
 
+        # Saved Customers (Collect phone number & name first, attach photo later)
+        elif path == "/api/customers/saved":
+            name = body.get("name") or body.get("customer_name") or ""
+            phone = body.get("phone") or body.get("customer_phone") or ""
+            notes = body.get("notes", "")
+            res = database.save_customer_profile(name=name, phone=phone, notes=notes)
+            if "error" in res:
+                return json_response(start_response, res, status=400)
+            return json_response(start_response, res)
+
+        elif path == "/api/customers/saved/delete":
+            cid = body.get("id") or body.get("customer_id")
+            if not cid:
+                return json_response(start_response, {"error": "Customer ID is required."}, status=400)
+            res = database.delete_saved_customer(int(cid))
+            return json_response(start_response, res)
+
         # Photo Sell Workflow (Sell books identified from photo, remove 1 location for internal books, ignore missing)
         elif path == "/api/cart/sell-photo-books":
             items = body.get("books", [])
@@ -553,6 +576,7 @@ def _app_dispatch(environ, start_response):
             total_amount = body.get("total_amount")
             notes = body.get("notes", "")
             user = body.get("user", "Staff")
+            saved_customer_id = body.get("saved_customer_id")
 
             if not items:
                 return json_response(start_response, {"error": "No books provided in photo sale."}, status=400)
@@ -563,7 +587,8 @@ def _app_dispatch(environ, start_response):
                 buyer_phone=buyer_phone,
                 total_amount=total_amount,
                 user=user,
-                notes=notes
+                notes=notes,
+                saved_customer_id=saved_customer_id
             )
             if "error" in res:
                 return json_response(start_response, res, status=400)

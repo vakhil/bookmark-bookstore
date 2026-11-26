@@ -134,6 +134,13 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json({"connected": False, "pending_count": 0, "mode": "local_database"})
             return
 
+        elif path == "/api/customers/saved":
+            status_filter = params.get("status", [None])[0]
+            q = params.get("q", [""])[0]
+            customers = database.get_saved_customers(status=status_filter, query=q)
+            self._send_json({"success": True, "customers": customers})
+            return
+
         elif path == "/api/genres":
             dist = database.get_genre_distribution()
             self._send_json({"genres": dist})
@@ -362,6 +369,26 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             self._send_json({"success": True, "books": books, "count": len(books)})
             return
 
+        elif path == "/api/customers/saved":
+            name = body.get("name") or body.get("customer_name") or ""
+            phone = body.get("phone") or body.get("customer_phone") or ""
+            notes = body.get("notes", "")
+            res = database.save_customer_profile(name=name, phone=phone, notes=notes)
+            if "error" in res:
+                self._send_json(res, 400)
+            else:
+                self._send_json(res)
+            return
+
+        elif path == "/api/customers/saved/delete":
+            cid = body.get("id") or body.get("customer_id")
+            if not cid:
+                self._send_json({"error": "Customer ID is required."}, 400)
+                return
+            res = database.delete_saved_customer(int(cid))
+            self._send_json(res)
+            return
+
         # 3c. Photo Sell Workflow (Sell books identified from photo, remove 1 location for internal books, ignore missing)
         elif path == "/api/cart/sell-photo-books":
             items = body.get("books", [])
@@ -370,6 +397,7 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
             total_amount = body.get("total_amount")
             notes = body.get("notes", "")
             user = body.get("user", "Staff")
+            saved_customer_id = body.get("saved_customer_id")
 
             if not items:
                 self._send_json({"error": "No books provided in photo sale."}, 400)
@@ -381,7 +409,8 @@ class BookstoreAPIHandler(SimpleHTTPRequestHandler):
                 buyer_phone=buyer_phone,
                 total_amount=total_amount,
                 user=user,
-                notes=notes
+                notes=notes,
+                saved_customer_id=saved_customer_id
             )
             if "error" in res:
                 self._send_json(res, 400)

@@ -793,6 +793,7 @@ def scan_books_from_photo(
             detected_list = segment_books_from_indra_ocr(indra_ocr)
 
     final_books = []
+    used_book_ids = set()
     for idx, item in enumerate(detected_list):
         raw_title = (item.get("title") or "").strip()
         raw_author = (item.get("author") or "").strip()
@@ -800,8 +801,10 @@ def scan_books_from_photo(
         if not raw_title:
             continue
 
-        # Look up in internal library inventory
-        matched = database.find_internal_book_for_sale(raw_title, raw_author)
+        # Look up in internal library inventory (any available rack is fine; skip already-claimed copies)
+        matched = database.find_internal_book_for_sale(raw_title, raw_author, exclude_book_ids=used_book_ids)
+        if matched and matched.get("book_id"):
+            used_book_ids.add(matched["book_id"])
 
         if matched and matched.get("found_internally"):
             final_books.append({
