@@ -6046,16 +6046,7 @@ function renderCartTab() {
         </div>
 
         <div class="cart-item-row-bottom" style="display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid #f1f5f9; flex-wrap: wrap;">
-          <!-- Fee / Price Input -->
-          <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 150px;">
-            <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin: 0; white-space: nowrap;">Fee / Price (₹):</label>
-            <div style="position: relative; flex: 1; max-width: 120px; display: flex; align-items: center;">
-              <span style="position: absolute; left: 0.5rem; font-weight: 700; color: #059669; font-size: 0.88rem;">₹</span>
-              <input type="number" step="any" min="0" class="cart-item-price-input form-control" data-bid="${escapeHtml(item.book_id)}" value="${currentPrice}" placeholder="e.g. 150" style="width: 100%; padding-left: 1.35rem; padding-right: 0.4rem; font-size: 0.92rem; font-weight: 700; color: #064e3b; height: 34px; border: 1.5px solid #cbd5e1; border-radius: 8px;">
-            </div>
-          </div>
-
-          <!-- Common Genre Dropdown Selector (Required) -->
+          <!-- Common Genre Dropdown Selector -->
           <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1.2; min-width: 190px;">
             <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin: 0; white-space: nowrap;">Genre:</label>
             <select class="cart-item-genre-select form-control" data-bid="${escapeHtml(item.book_id)}" style="flex: 1; height: 34px; font-size: 0.82rem; font-weight: 600; border: 1.5px solid #86efac; border-radius: 8px; background: #ffffff; padding: 0.2rem 0.5rem;">
@@ -6064,7 +6055,7 @@ function renderCartTab() {
             </select>
           </div>
 
-          <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from cart" style="color: #ef4444; border-color: #fca5a5; padding: 0.35rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0; font-size: 0.78rem; font-weight: 600;">
+          <button type="button" class="btn btn-sm btn-outline btn-remove-cart-item" data-bid="${escapeHtml(item.book_id)}" title="Remove from list" style="color: #ef4444; border-color: #fca5a5; padding: 0.35rem 0.65rem; border-radius: 8px; cursor: pointer; flex-shrink: 0; font-size: 0.78rem; font-weight: 600;">
             <span>🗑️ Remove</span>
           </button>
         </div>
@@ -6164,51 +6155,22 @@ function initCart() {
         }
       }
 
-      // 2. Validate items (photo-scanned items allow optional/0 price so books can be removed right away)
-      for (let i = 0; i < storeCart.length; i++) {
-        const item = storeCart[i];
-        const itemTitle = cleanBookTitle(item.title || item.book_id || `Book #${i+1}`);
-        const priceVal = item.selling_price;
-        const num = (priceVal !== undefined && priceVal !== null && priceVal !== '') ? parseFloat(priceVal) : NaN;
-        if (!item.is_photo_scan && (isNaN(num) || num <= 0)) {
-          alert(`Price has to be added for "${itemTitle}". For any item, price has to be added.`);
-          const itemInp = document.querySelector(`.cart-item-price-input[data-bid="${item.book_id}"]`);
-          if (itemInp) {
-            itemInp.focus();
-            itemInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-          return;
-        }
+      // 2. Read single Total Price Charged (not per-book price)
+      const totalChargedInput = document.getElementById('cartTotalChargedInput');
+      const rawTotalVal = totalChargedInput ? parseFloat(totalChargedInput.value.trim()) : NaN;
+      const totalCost = (!isNaN(rawTotalVal) && rawTotalVal >= 0) ? Math.round(rawTotalVal * 100) / 100 : 0;
 
-        const genreVal = (item.genre || item.simple_genre || '').trim();
-        if (!genreVal && !item.is_photo_scan) {
-          alert(`A genre has to be selected for "${itemTitle}". A selling book should always have a genre.`);
-          const genreSel = document.querySelector(`.cart-item-genre-select[data-bid="${item.book_id}"]`);
-          if (genreSel) {
-            genreSel.focus();
-            genreSel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-          return;
-        }
-      }
-
-      // Calculate total transaction amount directly from individual book fees
-      let totalCost = 0;
       const itemsToSell = storeCart.map(item => {
-        const rawP = parseFloat(item.selling_price);
-        const p = (!isNaN(rawP) && rawP > 0) ? Math.round(rawP * 100) / 100 : 0;
-        totalCost += p;
         return {
           book_id: String(item.book_id || '').startsWith('EXT-SCAN-') ? '' : item.book_id,
           title: item.title,
           author: item.author,
           found_internally: item.found_internally !== false && !String(item.book_id || '').startsWith('EXT-'),
-          selling_price: p,
+          selling_price: 0,
           genre: (item.genre || item.simple_genre || 'General Non-Fiction').trim(),
           notes: orderNotes
         };
       });
-      totalCost = Math.round(totalCost * 100) / 100;
 
       btnPlaceOrder.disabled = true;
       btnPlaceOrder.innerHTML = `<span>⏳</span> Selling...`;
@@ -6267,6 +6229,7 @@ function initCart() {
           if (buyerNameInput) buyerNameInput.value = '';
           if (buyerPhoneInput) buyerPhoneInput.value = '';
           if (notesInput) notesInput.value = '';
+          if (totalChargedInput) totalChargedInput.value = '';
           const liveTotal = document.getElementById('cartPriceMenuLiveTotal');
           if (liveTotal) liveTotal.textContent = '₹0.00';
 

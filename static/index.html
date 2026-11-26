@@ -156,8 +156,8 @@
       <span class="tab-label">Search</span>
     </button>
     <button class="tab-btn" data-tab="tabCart" id="tabBtnCart">
-      <span class="tab-icon">🛒</span>
-      <span class="tab-label">Cart (<span id="tabCartBadge">0</span>)</span>
+      <span class="tab-icon">🛍️</span>
+      <span class="tab-label">Sell (<span id="tabCartBadge">0</span>)</span>
     </button>
     <button class="tab-btn" data-tab="tabAdd">
       <span class="tab-icon">➕</span>
@@ -240,29 +240,8 @@
       </div>
     </section>
 
-    <!-- ==================== TAB: CART (MULTI-BOOK TRANSACTIONS & PHOTO SCAN SELLING) ==================== -->
+    <!-- ==================== TAB: SELL (MULTI-BOOK TRANSACTIONS & PHOTO SCAN SELLING) ==================== -->
     <section id="tabCart" class="tab-pane">
-      <div class="clean-card" style="margin-bottom: 1rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-          <div>
-            <h2 style="margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
-              <span>📸</span> Sell Books by Photo &amp; Cart Checkout
-            </h2>
-            <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: var(--text-muted);">
-              <b>Main option:</b> Take or upload a photo of the books being sold. Books found in the library will have one shelf location freed on sale.
-            </p>
-          </div>
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-sm btn-outline" id="btnCartAddMore" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
-              <span>➕</span> Add More from Search
-            </button>
-            <button type="button" class="btn btn-sm btn-outline" id="btnClearCart" style="color: var(--danger); border-color: #fca5a5; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
-              <span>🗑️</span> Clear All
-            </button>
-          </div>
-        </div>
-      </div>
-
       <!-- STEP 1: COLLECT & SAVE CUSTOMER PHONE NUMBER & NAME FIRST -->
       <div id="savedCustomersSection" class="clean-card" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%); border: 2px solid #93c5fd; border-radius: 16px; padding: 1.25rem; box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 0.85rem; border-bottom: 1px solid #dbeafe; padding-bottom: 0.65rem;">
@@ -448,14 +427,17 @@
                 </div>
               </div>
 
-              <!-- Total Transaction Widget (Derived from Individual Book Fees) -->
-              <div class="form-field" style="margin-bottom: 1.15rem; background: #f8fafc; border: 1.5px solid #10b981; border-radius: 12px; padding: 1rem 1.15rem; display: flex; justify-content: space-between; align-items: center;">
-                <label style="display: block; font-size: 0.92rem; font-weight: 800; color: #064e3b; text-transform: uppercase; letter-spacing: 0.03em; margin: 0;">
-                  Total Transaction
+              <!-- Total Price Charged (Single Total Input for the Whole Sale) -->
+              <div class="form-field" style="margin-bottom: 1.15rem; background: #f0fdf4; border: 1.5px solid #10b981; border-radius: 12px; padding: 0.9rem 1.1rem;">
+                <label for="cartTotalChargedInput" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; font-weight: 800; color: #064e3b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.45rem;">
+                  <span>💰 Total Price Charged</span>
+                  <span style="font-weight: 600; font-size: 0.72rem; color: #047857; text-transform: none;">(Optional)</span>
                 </label>
-                <span id="cartPriceMenuLiveTotal" style="font-size: 1.55rem; font-weight: 900; color: #059669;">
-                  ₹0.00
-                </span>
+                <div style="position: relative; display: flex; align-items: center;">
+                  <span style="position: absolute; left: 0.8rem; font-size: 1.25rem; font-weight: 900; color: #059669;">₹</span>
+                  <input type="number" step="any" min="0" id="cartTotalChargedInput" class="form-control" placeholder="e.g. 500" style="width: 100%; padding-left: 2rem; font-size: 1.25rem; font-weight: 900; color: #064e3b; border: 1.5px solid #86efac; border-radius: 10px; background: #ffffff; height: 46px;">
+                </div>
+                <span id="cartPriceMenuLiveTotal" style="display: none;">₹0.00</span>
               </div>
 
               <!-- Payment Method / Notes -->
