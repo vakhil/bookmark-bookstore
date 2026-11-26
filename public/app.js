@@ -6495,29 +6495,31 @@ function initPhotoSaleUploader() {
   const matchStats = document.getElementById('photoSaleMatchStats');
   const btnRetake = document.getElementById('btnRetakePhotoSale');
 
-  if (!fileInput || !dropzone) return;
+  if (!fileInput) return;
 
-  // Dropzone drag-and-drop
-  dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzone.style.borderColor = '#10b981';
-    dropzone.style.background = '#f0fdf4';
-  });
+  // Dropzone drag-and-drop (if present)
+  if (dropzone) {
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = '#10b981';
+      dropzone.style.background = '#f0fdf4';
+    });
 
-  dropzone.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    dropzone.style.borderColor = '#86efac';
-    dropzone.style.background = '#ffffff';
-  });
+    dropzone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = '#86efac';
+      dropzone.style.background = '#ffffff';
+    });
 
-  dropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzone.style.borderColor = '#86efac';
-    dropzone.style.background = '#ffffff';
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handlePhotoSaleFile(e.dataTransfer.files[0]);
-    }
-  });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = '#86efac';
+      dropzone.style.background = '#ffffff';
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handlePhotoSaleFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
 
   fileInput.addEventListener('change', () => {
     if (fileInput.files && fileInput.files.length > 0) {
@@ -6539,100 +6541,95 @@ function initPhotoSaleUploader() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const base64Data = ev.target.result;
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'block';
+      if (loadingText) loadingText.textContent = 'Compressing & scanning photograph with Gemini AI...';
+    }
+    if (previewContainer) previewContainer.style.display = 'none';
+
+    try {
+      const base64Data = await downscaleImage(file, 1400, 0.85);
       if (thumbnail) thumbnail.src = base64Data;
-      if (loadingIndicator) {
-        loadingIndicator.style.display = 'block';
-        if (loadingText) loadingText.textContent = 'Scanning photograph with Multimodal AI...';
+
+      const res = await fetch('/api/cart/scan-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_data: base64Data })
+      });
+
+      let data;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const txt = await res.text();
+        data = { error: txt || `Server responded with ${res.status}` };
       }
-      if (previewContainer) previewContainer.style.display = 'none';
 
-      try {
-        const res = await fetch('/api/cart/scan-photo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_data: base64Data })
-        });
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to scan image');
+      }
 
-        let data;
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          data = await res.json();
+      const books = Array.isArray(data.books) ? data.books : [];
+      if (books.length === 0) {
+        alert('No books could be clearly identified in this photo. Please make sure the book covers or spines are well-lit and clearly visible.');
+        return;
+      }
+
+      let internalMatchCount = 0;
+      let extCount = 0;
+
+      for (let idx = 0; idx < books.length; idx++) {
+        const b = books[idx];
+        const itemBid = b.book_id || `EXT-SCAN-${Date.now()}-${idx}`;
+        const existing = storeCart.find(item => item.book_id === itemBid);
+        if (!existing) {
+          storeCart.push({
+            book_id: itemBid,
+            title: b.title,
+            author: b.author || 'Author',
+            genre: b.genre || 'General Non-Fiction',
+            found_internally: Boolean(b.found_internally),
+            is_photo_scan: true,
+            rack: b.rack,
+            column_num: b.column_num,
+            position: b.position,
+            location_english: b.location_english || (b.found_internally ? 'Location Unassigned' : 'External / Not in Library (OK)'),
+            selling_price: '',
+            image_url: b.image_url || ''
+          });
+        }
+        if (b.found_internally) {
+          internalMatchCount++;
         } else {
-          const txt = await res.text();
-          data = { error: txt || `Server responded with ${res.status}` };
+          extCount++;
         }
-
-        if (!res.ok || data.error) {
-          throw new Error(data.error || 'Failed to scan image');
-        }
-
-        const books = Array.isArray(data.books) ? data.books : [];
-        if (books.length === 0) {
-          alert('No books could be clearly identified in this photo. Please make sure the book covers or spines are well-lit and clearly visible.');
-          return;
-        }
-
-        let internalMatchCount = 0;
-        let extCount = 0;
-
-        for (let idx = 0; idx < books.length; idx++) {
-          const b = books[idx];
-          const itemBid = b.book_id || `EXT-SCAN-${Date.now()}-${idx}`;
-          // If already in cart, skip adding duplicate copy ID
-          const existing = storeCart.find(item => item.book_id === itemBid);
-          if (!existing) {
-            storeCart.push({
-              book_id: itemBid,
-              title: b.title,
-              author: b.author || 'Author',
-              genre: b.genre || 'General Non-Fiction',
-              found_internally: Boolean(b.found_internally),
-              is_photo_scan: true,
-              rack: b.rack,
-              column_num: b.column_num,
-              position: b.position,
-              location_english: b.location_english || (b.found_internally ? 'Location Unassigned' : 'External / Not in Library (OK)'),
-              selling_price: '',
-              image_url: b.image_url || ''
-            });
-          }
-          if (b.found_internally) {
-            internalMatchCount++;
-          } else {
-            extCount++;
-          }
-        }
-
-        saveStoreCart();
-        updateCartBadge();
-        renderCartTab();
-
-        // Update preview header
-        if (previewContainer) previewContainer.style.display = 'block';
-        if (countBadge) countBadge.textContent = `${books.length} book${books.length === 1 ? '' : 's'} detected`;
-        if (matchStats) {
-          matchStats.innerHTML = `
-            <div><b>${internalMatchCount}</b> found in your internal library (one physical rack location will be freed on sale).</div>
-            ${extCount > 0 ? `<div style="color: #92400e; margin-top: 2px;"><b>${extCount}</b> not in library catalog (still added to cart &amp; ready to sell).</div>` : ''}
-          `;
-        }
-
-        // Scroll to items list
-        const itemsList = document.getElementById('cartItemsList');
-        if (itemsList) {
-          itemsList.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      } catch (err) {
-        console.error('Photo scan error:', err);
-        alert('Could not identify books from photo: ' + err.message);
-      } finally {
-        if (loadingIndicator) loadingIndicator.style.display = 'none';
       }
-    };
-    reader.readAsDataURL(file);
+
+      saveStoreCart();
+      updateCartBadge();
+      renderCartTab();
+
+      if (previewContainer) previewContainer.style.display = 'block';
+      if (countBadge) countBadge.textContent = `${books.length} book${books.length === 1 ? '' : 's'} detected`;
+      if (matchStats) {
+        matchStats.innerHTML = `
+          <div><b>${internalMatchCount}</b> found in your internal library (one physical rack location will be freed on sale).</div>
+          ${extCount > 0 ? `<div style="color: #92400e; margin-top: 2px;"><b>${extCount}</b> not in library catalog (still added &amp; ready to sell).</div>` : ''}
+        `;
+      }
+
+      const itemsList = document.getElementById('cartItemsList');
+      if (itemsList) {
+        itemsList.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } catch (err) {
+      console.error('Photo scan error:', err);
+      alert('Could not identify books from photo: ' + err.message);
+    } finally {
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
+      fileInput.value = '';
+    }
   }
 }
 
