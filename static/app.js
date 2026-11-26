@@ -6155,10 +6155,18 @@ function initCart() {
         }
       }
 
-      // 2. Read single Total Price Charged (not per-book price)
+      // 2. Require single Total Price Charged (compulsory for daily sales reports)
       const totalChargedInput = document.getElementById('cartTotalChargedInput');
       const rawTotalVal = totalChargedInput ? parseFloat(totalChargedInput.value.trim()) : NaN;
-      const totalCost = (!isNaN(rawTotalVal) && rawTotalVal >= 0) ? Math.round(rawTotalVal * 100) / 100 : 0;
+      if (isNaN(rawTotalVal) || rawTotalVal <= 0) {
+        alert('Please enter the Total Price Charged (₹) for this customer. Price is required for the daily sales report.');
+        if (totalChargedInput) {
+          totalChargedInput.focus();
+          totalChargedInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+      const totalCost = Math.round(rawTotalVal * 100) / 100;
 
       const itemsToSell = storeCart.map(item => {
         return {

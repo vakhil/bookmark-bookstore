@@ -2047,6 +2047,24 @@ def sell_photo_scanned_books(
         else:
             final_total = calculated_total
 
+        if final_total <= 0:
+            conn.rollback()
+            conn.close()
+            return {"error": "Total price charged to the customer is required and must be greater than 0."}
+
+        # Distribute final_total across sales_transactions if individual item prices were 0
+        if final_total > 0 and calculated_total <= 0 and len(successful_sales) > 0:
+            n_items = len(successful_sales)
+            per_item = round(final_total / n_items, 2)
+            remainder = round(final_total - (per_item * n_items), 2)
+            for idx, s in enumerate(successful_sales):
+                allocated = round(per_item + (remainder if idx == 0 else 0.0), 2)
+                s["selling_price"] = allocated
+                cursor.execute(
+                    "UPDATE sales_transactions SET selling_price = ? WHERE transaction_ref = ?",
+                    (allocated, s["transaction_ref"])
+                )
+
         # Insert customer order record
         cursor.execute("""
             INSERT OR REPLACE INTO customer_orders (

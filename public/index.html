@@ -427,15 +427,15 @@
                 </div>
               </div>
 
-              <!-- Total Price Charged (Single Total Input for the Whole Sale) -->
+              <!-- Total Price Charged (Required Single Total Input for the Whole Sale) -->
               <div class="form-field" style="margin-bottom: 1.15rem; background: #f0fdf4; border: 1.5px solid #10b981; border-radius: 12px; padding: 0.9rem 1.1rem;">
                 <label for="cartTotalChargedInput" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; font-weight: 800; color: #064e3b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.45rem;">
                   <span>💰 Total Price Charged</span>
-                  <span style="font-weight: 600; font-size: 0.72rem; color: #047857; text-transform: none;">(Optional)</span>
+                  <span style="font-weight: 700; font-size: 0.72rem; color: #dc2626; background: #fee2e2; padding: 0.1rem 0.45rem; border-radius: 4px; text-transform: none;">Required</span>
                 </label>
                 <div style="position: relative; display: flex; align-items: center;">
                   <span style="position: absolute; left: 0.8rem; font-size: 1.25rem; font-weight: 900; color: #059669;">₹</span>
-                  <input type="number" step="any" min="0" id="cartTotalChargedInput" class="form-control" placeholder="e.g. 500" style="width: 100%; padding-left: 2rem; font-size: 1.25rem; font-weight: 900; color: #064e3b; border: 1.5px solid #86efac; border-radius: 10px; background: #ffffff; height: 46px;">
+                  <input type="number" step="any" min="1" required id="cartTotalChargedInput" class="form-control" placeholder="Enter total amount charged (required)" style="width: 100%; padding-left: 2rem; font-size: 1.15rem; font-weight: 900; color: #064e3b; border: 1.5px solid #86efac; border-radius: 10px; background: #ffffff; height: 46px;">
                 </div>
                 <span id="cartPriceMenuLiveTotal" style="display: none;">₹0.00</span>
               </div>
